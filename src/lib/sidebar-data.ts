@@ -1,0 +1,93 @@
+export const sidebarData = [
+  {
+    slug: 'getting-started',
+    label: 'Getting Started',
+    docs: [
+      { slug: 'getting-started/installation', title: 'Installation' },
+      { slug: 'getting-started/quickstart', title: 'Quickstart' },
+      { slug: 'getting-started/configuration', title: 'Configuration' },
+      { slug: 'getting-started/providers', title: 'LLM Providers' },
+    ],
+  },
+  {
+    slug: 'concepts',
+    label: 'Concepts',
+    docs: [
+      { slug: 'concepts/architecture', title: 'Architecture' },
+      { slug: 'concepts/zero-trust-model', title: 'Zero Trust Model' },
+      { slug: 'concepts/scoring-proxy', title: 'Scoring Proxy' },
+      { slug: 'concepts/quarantine-digest', title: 'Quarantine Digest' },
+      { slug: 'concepts/syscall-interception', title: 'Syscall Interception' },
+      { slug: 'concepts/cli-supervisor', title: 'CLI Supervisor' },
+    ],
+  },
+  {
+    slug: 'reference',
+    label: 'Reference',
+    docs: [
+      { slug: 'reference/cli', title: 'CLI' },
+      { slug: 'reference/config', title: 'Configuration' },
+      { slug: 'reference/filters', title: 'Filters' },
+      { slug: 'reference/scoring', title: 'Scoring' },
+      { slug: 'reference/api-rest', title: 'REST API' },
+      { slug: 'reference/websocket-events', title: 'WebSocket Events' },
+      { slug: 'reference/supervisor-profiles', title: 'Supervisor Profiles' },
+      { slug: 'reference/notifications', title: 'Notifications' },
+    ],
+  },
+  {
+    slug: 'guides',
+    label: 'Guides',
+    docs: [
+      { slug: 'guides/filter-tuning', title: 'Filter Tuning' },
+      { slug: 'guides/supervisor-profiles', title: 'Supervisor Profiles' },
+      { slug: 'guides/team-setup', title: 'Team Setup', tier: 'pro' },
+      { slug: 'guides/air-gapped', title: 'Air-Gapped Deployment', tier: 'enterprise' },
+      { slug: 'guides/reverse-proxy', title: 'Reverse Proxy & TLS' },
+      { slug: 'guides/exfiltration-containment', title: 'Exfiltration Containment' },
+      { slug: 'guides/dashboard-operations', title: 'Dashboard Operations' },
+      { slug: 'guides/troubleshooting', title: 'Troubleshooting' },
+    ],
+  },
+  {
+    slug: 'security',
+    label: 'Security',
+    docs: [
+      { slug: 'security/threat-model', title: 'Threat Model' },
+      { slug: 'security/responsible-disclosure', title: 'Responsible Disclosure' },
+      { slug: 'security/advisories', title: 'Security Advisories' },
+      { slug: 'security/notification-security-model', title: 'Notification Security' },
+    ],
+  },
+  {
+    slug: 'analytics',
+    label: 'Analytics',
+    docs: [
+      { slug: 'analytics/overview', title: 'Overview' },
+      { slug: 'analytics/local-dashboard-metrics', title: 'Dashboard Metrics' },
+      { slug: 'analytics/reporting-and-exports', title: 'Reporting & Exports' },
+      { slug: 'analytics/compliance-mapping', title: 'Compliance Mapping', tier: 'enterprise' },
+    ],
+  },
+  {
+    slug: 'pro',
+    label: 'Pro & Licensing',
+    docs: [
+      { slug: 'pro/overview', title: 'Overview', tier: 'pro' },
+      { slug: 'pro/authentication', title: 'Authentication', tier: 'pro' },
+      { slug: 'pro/license-lifecycle', title: 'License Lifecycle', tier: 'pro' },
+      { slug: 'pro/team-sync-and-policy', title: 'Team Sync & Policy', tier: 'pro' },
+    ],
+  },
+  {
+    slug: 'enterprise',
+    label: 'Enterprise',
+    docs: [
+      { slug: 'enterprise/sso-saml', title: 'SSO & SAML', tier: 'enterprise' },
+      { slug: 'enterprise/rbac', title: 'RBAC', tier: 'enterprise' },
+      { slug: 'enterprise/compliance', title: 'Compliance', tier: 'enterprise' },
+      { slug: 'enterprise/siem-integration', title: 'SIEM Integration', tier: 'enterprise' },
+      { slug: 'enterprise/deployment', title: 'Deployment', tier: 'enterprise' },
+    ],
+  },
+];
