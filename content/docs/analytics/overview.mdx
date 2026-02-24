@@ -1,0 +1,138 @@
+---
+title: "Analytics Overview"
+description: "Structured telemetry, metric categories, and local-first analytics in grith"
+section: "analytics"
+order: 1
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+Every tool call that passes through grith's security proxy generates structured telemetry. This data powers dashboards, compliance reports, cost tracking, and security posture analysis — all stored locally on your machine.
+
+## How telemetry works
+
+When the security proxy evaluates a tool call, it records a telemetry event containing:
+
+- **Timestamp** — when the call was intercepted
+- **Tool call type** — file read, file write, process exec, network request, etc.
+- **Arguments** — the parameters passed to the tool (secrets are redacted)
+- **Filter results** — which filters fired, their individual scores, and pass/fail status
+- **Composite score** — the aggregated score from all filters
+- **Decision** — ALLOW, QUEUE, or DENY
+- **Session context** — session ID, project, provider, model
+- **Human decision** — for queued items, whether the reviewer approved or denied
+
+This telemetry feeds into seven metric categories that cover the full spectrum of AI agent operations.
+
+## Seven metric categories
+
+### 1. Cost management
+
+Track spending across LLM providers, models, and projects. grith records token counts and maps them to provider pricing.
+
+| Metric | Description |
+|---|---|
+| Cost per session | Total token cost for a single agent session |
+| Cost per provider | Aggregate spend by provider (OpenAI, Anthropic, Ollama, etc.) |
+| Cost per model | Spend by specific model (gpt-4o, claude-sonnet-4-20250514, etc.) |
+| Cost per project | Spend attributed to each project context |
+| Daily/weekly/monthly trends | Rolling cost aggregations |
+
+### 2. Security posture
+
+Aggregate view of how the filter chain is performing across all sessions.
+
+| Metric | Description |
+|---|---|
+| Decision distribution | Percentage of calls that are ALLOW, QUEUE, DENY |
+| Filter trigger rate | How often each filter contributes a non-zero score |
+| Score histogram | Distribution of composite scores across all calls |
+| Deny rate trend | Whether the deny rate is increasing or decreasing over time |
+| Mean time to review | Average time queued items spend waiting for human review |
+
+### 3. Threat intelligence
+
+Patterns that indicate active attack attempts or misconfigured agents.
+
+| Metric | Description |
+|---|---|
+| Canary trigger count | Number of canary token detections |
+| Exfiltration attempts | Tool calls flagged by `network_egress`, `dns_tunnelling`, or `exfil_size` |
+| Privilege escalation attempts | Tool calls flagged by `process_spawn` or `command_denylist` for `sudo`/`su` |
+| Path traversal attempts | Tool calls attempting to access files outside project scope |
+| Repeat offender sessions | Sessions with unusually high deny rates |
+
+### 4. Data loss prevention (DLP)
+
+Metrics focused on preventing sensitive data from leaving the system.
+
+| Metric | Description |
+|---|---|
+| Secrets detected | Count of tool calls flagged by `secrets_scan` |
+| High-entropy arguments | Count of tool calls flagged by `entropy_check` |
+| Exfil payload sizes | Size distribution of outbound tool call arguments |
+| Canary token coverage | Number of active canary tokens and their placement |
+
+### 5. Quarantine analytics
+
+Operational metrics for the quarantine queue.
+
+| Metric | Description |
+|---|---|
+| Queue depth | Number of items currently awaiting review |
+| Approval rate | Percentage of queued items that are approved vs. denied |
+| Queue latency | Time from quarantine to human decision |
+| Auto-learn adjustments | Filter weight changes from adaptive learning feedback |
+
+### 6. Usage and productivity
+
+How agents are being used across the team.
+
+| Metric | Description |
+|---|---|
+| Sessions per day | Total agent sessions started |
+| Tool calls per session | Average number of tool calls per session |
+| Tool type distribution | Breakdown by tool type (file, process, network) |
+| Project activity | Sessions and calls per project |
+| Provider utilisation | Which providers and models are being used most |
+
+### 7. Quality
+
+Metrics that indicate whether the security proxy is well-calibrated.
+
+| Metric | Description |
+|---|---|
+| False positive rate | Queued items that are subsequently approved (indicates over-sensitivity) |
+| False negative rate | Post-hoc review of allowed items that should have been queued |
+| Score calibration | Whether scores are clustering at useful decision boundaries |
+| Filter overlap | How often multiple filters flag the same call (indicates redundancy or convergence) |
+
+## Local-first storage
+
+All telemetry is stored locally in a SQLite database at `~/.grith/analytics.db`. No data leaves your machine unless you explicitly export it or opt in to team sync (Pro feature).
+
+<Terminal command="ls -lh ~/.grith/analytics.db" />
+
+The database schema is append-only and uses WAL mode for concurrent read access from the dashboard while the proxy writes new records.
+
+<Callout type="info" title="Data retention">
+By default, grith retains 90 days of telemetry. Configure retention with `grith config set digest.retention_days 365`. Data older than the retention window is pruned automatically on startup.
+</Callout>
+
+## Dashboard
+
+grith includes a local web dashboard that visualises all seven metric categories in real time.
+
+<Terminal command="grith dashboard start" />
+
+The dashboard runs at [http://localhost:3141](http://localhost:3141) and connects to the proxy via WebSocket for live updates. See [Local Dashboard Metrics](/docs/analytics/local-dashboard-metrics) for a detailed walkthrough of every panel.
+
+<Callout type="tip" title="Dashboard is optional">
+The dashboard is a convenience layer. All data is available via the CLI (`grith audit`, `grith audit export`) and REST API (`GET /api/analytics/summary`). You can build your own dashboards or pipe data into existing observability tools.
+</Callout>
+
+## Next steps
+
+- [Local Dashboard Metrics](/docs/analytics/local-dashboard-metrics) — Detailed walkthrough of the dashboard
+- [Reporting and Exports](/docs/analytics/reporting-and-exports) — Export data in JSON, CSV, and other formats
+- [Compliance Mapping](/docs/analytics/compliance-mapping) — Map telemetry to compliance frameworks

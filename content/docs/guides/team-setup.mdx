@@ -1,0 +1,222 @@
+---
+title: "Team Setup"
+description: "Configure grith for teams with shared policies, centralised dashboard, and policy sync"
+section: "guides"
+order: 3
+tier: "pro"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+<Badge variant="pro">Pro</Badge>
+
+grith Pro adds team features on top of the core security platform: shared filter policies, centralised dashboard, and automatic policy synchronisation across team members. Every developer still runs grith locally — the security proxy never leaves their machine — but team-wide policies ensure consistent security standards.
+
+This guide walks through setting up grith for a team from scratch.
+
+## Prerequisites
+
+- Each team member has grith installed ([Installation](/docs/getting-started/installation))
+- A team admin has a grith Pro subscription at [grith.ai](https://grith.ai)
+- Team members have been invited via the grith.ai team dashboard
+
+## Step 1: Install grith on each machine
+
+Every team member installs grith locally. The security proxy runs on each developer's machine — no central server required for core functionality.
+
+<Tabs items={["macOS / Linux", "Windows"]} storageKey="team-os">
+<div>
+
+<Terminal command="curl -fsSL https://grith.ai/install | sh" />
+
+</div>
+<div>
+
+<Terminal command="winget install grith-ai.grith" />
+
+</div>
+</Tabs>
+
+Verify the installation:
+
+<Terminal command="grith --version" />
+
+## Step 2: Create team policies
+
+The team admin creates shared policies on the grith.ai dashboard. Policies define:
+
+- **Filter configurations** — Which filters are enabled, their weights, and custom settings
+- **Threshold standards** — Allow, queue, and deny threshold ranges
+- **Supervisor profiles** — Approved profiles and their configurations
+- **Notification routing** — Where security alerts go (Slack, email, PagerDuty)
+- **Audit requirements** — Retention periods and export formats
+
+Policies are defined through the web dashboard at [grith.ai/dashboard/team](https://grith.ai/dashboard/team) or via the API.
+
+<Callout type="info" title="Policy enforcement model">
+Team policies set minimum security standards. Individual developers can make their local configuration stricter than the team policy, but not more permissive. If the team policy sets `auto_allow_threshold` to 2.5, a developer can lower it to 2.0 but cannot raise it to 3.0.
+</Callout>
+
+## Step 3: Authenticate team members
+
+Each team member authenticates with grith.ai using device auth:
+
+<Terminal command="grith pro login" />
+
+<CodeBlock
+  code={`[grith] Starting device authentication...
+[grith] Open this URL in your browser:
+
+    https://grith.ai/auth/device?code=ABCD-1234
+
+[grith] Waiting for authorisation...
+[grith] ✓ Authenticated as alice@example.com
+[grith] ✓ Team: Acme Engineering (Pro)
+[grith] ✓ License valid until 2027-02-24`}
+  language="text"
+/>
+
+Alternatively, team members can authenticate with an API key:
+
+<Terminal command="grith pro login --api-key gk_live_abc123..." />
+
+<Callout type="tip" title="CI/CD environments">
+For headless environments (CI runners, remote servers), use API key authentication. Generate API keys from the team dashboard at grith.ai.
+</Callout>
+
+## Step 4: Sync team policies
+
+After authentication, pull the team's shared policies:
+
+<Terminal command="grith pro sync" />
+
+<CodeBlock
+  code={`[grith] Syncing with grith.ai...
+[grith] ✓ Downloaded team policy: acme-engineering-v3
+[grith] ✓ Applied filter configuration (14 filters configured)
+[grith] ✓ Applied threshold standards
+[grith] ✓ Applied supervisor profiles (3 profiles)
+[grith] ✓ Uploaded local audit records (127 events)
+[grith] Sync complete.`}
+  language="text"
+/>
+
+Sync does two things:
+
+1. **Pulls team policies** — Downloads the latest team filter configs, thresholds, and profiles. These are merged with the local config (team policy wins on conflicts).
+2. **Uploads audit records** — Sends anonymised audit data to the team dashboard for aggregate visibility. No tool call content is uploaded — only metadata (scores, decisions, filter IDs, timestamps).
+
+### Automatic sync
+
+By default, grith syncs every 4 hours in the background. Configure the interval or disable automatic sync:
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[pro]
+auto_sync_interval = "4h"    # Options: "1h", "4h", "8h", "24h", "off"`}
+/>
+
+## Step 5: Verify team configuration
+
+After sync, verify that team policies are active:
+
+<Terminal command="grith pro status" />
+
+<CodeBlock
+  code={`Plan:          Pro
+Team:          Acme Engineering
+Members:       8 / 25
+Policy:        acme-engineering-v3 (applied)
+Last sync:     2026-02-24 14:30:00 UTC
+License:       Valid (expires 2027-02-24)
+
+Policy overrides active:
+  proxy.auto_allow_threshold  = 2.5 (team minimum)
+  proxy.auto_deny_threshold   = 7.5 (team minimum)
+  proxy.filters.secret_scan.weight = 2.0 (team enforced)
+  proxy.filters.egress_policy.weight = 1.5 (team enforced)`}
+  language="text"
+/>
+
+## Team dashboard
+
+The grith.ai team dashboard provides aggregate visibility across all team members:
+
+- **Security posture** — Allow/queue/deny rates across the team, trending over time
+- **Filter effectiveness** — Which filters fire most often, false positive rates
+- **Member activity** — Per-member tool call volumes and security scores (no content visible)
+- **Policy compliance** — Which members are running the latest policy version
+- **Alert routing** — Centralised notification management
+
+Access the team dashboard at [grith.ai/dashboard/team](https://grith.ai/dashboard/team).
+
+<Callout type="warning" title="Privacy by design">
+The team dashboard shows aggregate security metrics only. Tool call content (file paths, command arguments, file contents) never leaves the developer's machine. The admin sees scores, decisions, and filter IDs — not what the developer was working on.
+</Callout>
+
+## Shared filter configs
+
+Team policies can enforce specific filter configurations. These are defined in the team dashboard and pushed to all members on sync.
+
+Common team-level filter policies:
+
+| Policy | Effect |
+|---|---|
+| Enforce `secret_scan` at weight 2.0 | Secrets detection is always high-priority |
+| Enable `egress_policy` with denied destinations | Block known-risky outbound endpoints team-wide |
+| Set minimum `auto_deny_threshold` of 7.5 | Prevent developers from setting an overly permissive deny threshold |
+| Require `taint` filter enabled | Ensure information flow tracking is always active |
+
+## Shared supervisor profiles
+
+Team admins can define standard supervisor profiles that sync to all members:
+
+<CodeBlock
+  code={`# Defined in team dashboard, synced via grith pro sync
+
+[team/secure-coding]
+description = "Team-standard profile for AI coding tools"
+allowed_paths = ["."]
+denied_paths = [
+    "~/.ssh/",
+    "~/.aws/",
+    "~/.config/grith/",
+    ".env",
+    ".env.local",
+    ".env.production",
+]
+allowed_commands = [
+    "git", "npm", "node", "python", "cargo", "make",
+    "grep", "find", "cat", "ls",
+]
+network_policy = "score"
+
+[team/secure-coding.noise_reduction]
+enabled = true
+deduplicate_reads = true
+suppress_stat_calls = true`}
+  language="toml"
+/>
+
+Team-defined profiles use the `team/` prefix:
+
+<Terminal command='grith exec --profile team/secure-coding -- claude-code "implement the auth module"' />
+
+## Onboarding new members
+
+To add a new team member:
+
+1. Invite them from the grith.ai team dashboard
+2. They install grith and run `grith pro login`
+3. They run `grith pro sync` to pull team policies
+4. They are immediately operating under team security standards
+
+The entire process takes under five minutes.
+
+## Next steps
+
+- [Pro Overview](/docs/pro/overview) — Full Pro feature documentation
+- [Authentication](/docs/pro/authentication) — Device auth and API key details
+- [Team Sync & Policy](/docs/pro/team-sync-and-policy) — Policy authoring reference
+- [Filter Tuning](/docs/guides/filter-tuning) — Per-developer filter adjustments within team bounds

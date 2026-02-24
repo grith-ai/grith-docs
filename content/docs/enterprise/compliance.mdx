@@ -1,0 +1,174 @@
+---
+title: "Compliance"
+description: "SOC 2, NIST AI RMF, EU AI Act, and FedRAMP compliance evidence and reporting"
+section: "enterprise"
+order: 3
+tier: "enterprise"
+lastUpdated: "2026-02-24"
+---
+
+grith Enterprise provides compliance tooling that maps its security controls directly to regulatory frameworks. Because grith already records every tool call, every filter decision, and every human review in a tamper-evident audit log, most of the evidence collection is automatic — the compliance features package that evidence into formats your auditors expect.
+
+<Callout type="info" title="Roadmap">
+Automated compliance report generation is planned for grith v2.0. The underlying audit infrastructure (hash-chained logs, tamper detection, data retention) is available today in all tiers. The enterprise features described here add automated packaging, framework mapping, and GRC platform integration.
+</Callout>
+
+## Supported frameworks
+
+| Framework | Coverage | Output format |
+|---|---|---|
+| SOC 2 Type II | Evidence packages for Trust Services Criteria (CC6, CC7, CC8) | PDF report + JSON evidence bundle |
+| NIST AI RMF | Measurement reports mapped to GOVERN, MAP, MEASURE, MANAGE functions | PDF report + CSV metrics |
+| EU AI Act | Conformity assessment documentation for high-risk AI systems | PDF + structured JSON |
+| FedRAMP | Continuous monitoring (ConMon) packages | OSCAL JSON + PDF narrative |
+
+## Hash-chained audit logs
+
+The foundation of grith's compliance story is its audit log. Every entry is cryptographically chained to the previous one using SHA-256 hashes, creating a tamper-evident record that auditors can independently verify.
+
+```
+Entry N:
+  hash: SHA-256(entry_data + previous_hash)
+  previous_hash: <hash of entry N-1>
+  timestamp: 2026-02-24T14:30:00Z
+  event: tool_call_evaluated
+  tool: write_file
+  score: 7.2
+  decision: QUEUE
+  filters_fired: [path_traversal, sensitive_path]
+```
+
+If any entry is modified or removed, the hash chain breaks and grith reports a tamper alert. This can be verified at any time:
+
+<Terminal command="grith audit verify" />
+
+Expected output when the chain is intact:
+
+```
+Audit log integrity: VERIFIED
+  Entries checked: 14,832
+  Chain start:     2026-01-15T00:00:00Z
+  Chain end:       2026-02-24T14:32:00Z
+  Hash algorithm:  SHA-256
+  Broken links:    0
+```
+
+<Callout type="danger" title="Tamper detection">
+If `grith audit verify` reports broken links, the audit log has been modified outside of grith. This should be treated as a security incident and investigated immediately.
+</Callout>
+
+## SOC 2 Type II
+
+grith maps its controls to the SOC 2 Trust Services Criteria most relevant to AI agent security:
+
+| Criteria | grith control | Evidence source |
+|---|---|---|
+| CC6.1 — Logical access | RBAC roles, SSO integration | RBAC config, SSO logs, access audit trail |
+| CC6.3 — Access removal | JIT provisioning, session management | User lifecycle events in audit log |
+| CC7.1 — System monitoring | Real-time scoring proxy, dashboard | Proxy evaluation logs, alert history |
+| CC7.2 — Anomaly detection | Adaptive learning, canary tokens | Score trends, canary trigger events |
+| CC7.3 — Incident response | DENY actions, quarantine queue | Blocked call log, digest review records |
+| CC8.1 — Change management | Policy-as-code, signed policy sync | Git history, policy sync verification logs |
+
+### Generating a SOC 2 evidence package
+
+<Terminal command="grith compliance generate --framework soc2 --period 2026-Q1 --output ./compliance/soc2-q1.zip" />
+
+The generated package includes:
+
+- **Narrative report** (PDF) — maps each control to the relevant Trust Services Criteria with timestamps and counts
+- **Evidence bundle** (JSON) — machine-readable export of all relevant audit log entries, filter configurations, and RBAC state for the reporting period
+- **Chain verification certificate** — proof that the audit log hash chain was intact at generation time
+
+## NIST AI RMF
+
+grith maps to the four functions of the NIST AI Risk Management Framework:
+
+| Function | grith mapping |
+|---|---|
+| **GOVERN** | Policy-as-code, RBAC, team policy sync, enterprise configuration management |
+| **MAP** | Filter categorization (17+ filters mapped to risk categories), scoring thresholds |
+| **MEASURE** | Continuous scoring, trend analysis, anomaly detection via adaptive learning |
+| **MANAGE** | Quarantine queue, human review workflow, DENY enforcement, incident audit trail |
+
+<Terminal command="grith compliance generate --framework nist-ai-rmf --period 2026-Q1 --output ./compliance/nist-q1.zip" />
+
+## EU AI Act
+
+For organizations deploying AI agents in the EU or processing EU citizen data, grith provides conformity assessment documentation aligned with the EU AI Act requirements for high-risk AI systems:
+
+| Requirement | grith evidence |
+|---|---|
+| Risk management system (Art. 9) | Scoring proxy, filter pipeline, threshold configuration |
+| Data governance (Art. 10) | Audit log of all data access by AI agents, canary token coverage |
+| Technical documentation (Art. 11) | Auto-generated system description, filter inventory, scoring methodology |
+| Record-keeping (Art. 12) | Hash-chained audit logs with configurable retention |
+| Transparency (Art. 13) | Score breakdowns, per-filter explanations in digest review |
+| Human oversight (Art. 14) | Quarantine queue, digest review workflow, RBAC for reviewers |
+| Accuracy and robustness (Art. 15) | Adaptive learning metrics, false positive/negative rates |
+
+<Terminal command="grith compliance generate --framework eu-ai-act --output ./compliance/eu-ai-act.zip" />
+
+## FedRAMP continuous monitoring
+
+For organizations in US federal environments, grith will generate continuous monitoring (ConMon) packages in OSCAL format:
+
+<Terminal command="grith compliance generate --framework fedramp --period 2026-02 --output ./compliance/fedramp-conmon.zip" />
+
+<Callout type="warning" title="FedRAMP authorization">
+grith itself is not FedRAMP authorized. These packages document grith's controls as a component within your broader authorization boundary. Your FedRAMP assessor determines how grith's evidence factors into your overall assessment.
+</Callout>
+
+## Data retention
+
+Audit log retention is configurable per organizational requirements. Enterprise deployments can retain data for up to 10 years:
+
+<ConfigExample code={`[enterprise.compliance.retention]
+audit_log = "7y"           # Retain audit logs for 7 years
+digest_reviews = "7y"      # Retain digest review records
+policy_history = "10y"     # Retain policy change history
+session_logs = "1y"        # Retain authentication session logs
+export_on_delete = true    # Export records before deletion
+`} title="Data retention configuration" />
+
+| Retention setting | Range | Default |
+|---|---|---|
+| `audit_log` | 90 days to 10 years | 1 year |
+| `digest_reviews` | 90 days to 10 years | 1 year |
+| `policy_history` | 90 days to 10 years | 3 years |
+| `session_logs` | 30 days to 3 years | 90 days |
+
+When a record reaches its retention limit, grith can optionally export it to cold storage before deletion:
+
+<ConfigExample code={`[enterprise.compliance.retention.archive]
+enabled = true
+destination = "s3://grith-compliance-archive/audit/"
+encryption = "AES-256-GCM"
+compression = "zstd"
+`} title="Archive configuration" />
+
+## GRC platform integration
+
+grith will integrate with governance, risk, and compliance platforms to push evidence directly into your existing compliance workflows:
+
+| Platform | Integration method | Status |
+|---|---|---|
+| ServiceNow GRC | REST API push | <Badge variant="roadmap">Planned</Badge> |
+| Drata | API integration | <Badge variant="roadmap">Planned</Badge> |
+| Vanta | API integration | <Badge variant="roadmap">Planned</Badge> |
+| OneTrust | File export + API | <Badge variant="roadmap">Planned</Badge> |
+| Custom | Webhook + file export | <Badge variant="roadmap">Planned</Badge> |
+
+<ConfigExample code={`[enterprise.compliance.grc]
+platform = "drata"
+api_endpoint = "https://api.drata.com/v1"
+api_key_env = "GRITH_DRATA_API_KEY"
+sync_interval = "24h"
+evidence_types = ["audit_log", "rbac_state", "policy_config", "chain_verification"]
+`} title="GRC platform integration" />
+
+## Next steps
+
+- [SIEM Integration](/docs/enterprise/siem-integration) — Export security events to your SIEM
+- [RBAC](/docs/enterprise/rbac) — Role-based access control model
+- [Deployment](/docs/enterprise/deployment) — Enterprise deployment patterns including data residency

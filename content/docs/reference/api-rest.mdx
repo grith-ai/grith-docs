@@ -1,0 +1,600 @@
+---
+title: "REST API Reference"
+description: "Complete reference for the grith REST API at localhost:3141"
+section: "reference"
+order: 5
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+The grith API server runs on `localhost:3141` by default and provides programmatic access to the proxy, digest queue, audit logs, configuration, and supervisor. All endpoints return JSON. The API is designed for local use and integration with the web dashboard.
+
+<Terminal command="grith dashboard start" />
+
+## Authentication
+
+The API binds to `127.0.0.1` by default and does not require authentication for local access. If you expose the API via a reverse proxy, you must add your own authentication layer. See the [Reverse Proxy guide](/docs/guides/reverse-proxy).
+
+## Error format
+
+All error responses follow a consistent shape:
+
+<CodeBlock language="json" code={`{
+  "error": "Human-readable error message",
+  "code": "ERROR_CODE"
+}`} />
+
+Feature-gated endpoints (Pro or Enterprise) return HTTP 403 with code `FEATURE_GATED` when the required plan is not active.
+
+## Health
+
+### GET /api/health
+
+Returns server health status.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "status": "ok",
+  "version": "1.0.0",
+  "uptime_seconds": 3600
+}`} />
+
+### GET /api/tier
+
+Returns the active license tier and feature entitlements.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "tier": "community",
+  "features": ["proxy", "audit", "digest", "supervisor"],
+  "expires": null
+}`} />
+
+---
+
+## Digest
+
+The digest queue holds tool calls that scored in the QUEUE zone. These endpoints let you review and act on pending items.
+
+### GET /api/digest
+
+List pending digest items.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit` | Integer | 50 | Maximum number of items to return |
+| `offset` | Integer | 0 | Pagination offset |
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "items": [
+    {
+      "id": "d_abc123",
+      "tool": "write_file",
+      "args": {"path": "/home/user/.bashrc", "content": "..."},
+      "score": 4.5,
+      "filters": [
+        {"name": "path_match", "score": 2.0},
+        {"name": "operation_risk", "score": 2.0},
+        {"name": "allowlist", "score": 0.5}
+      ],
+      "created_at": "2026-02-24T10:30:00Z",
+      "status": "pending"
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}`} />
+
+### POST /api/digest/:id/approve
+
+Approve a queued tool call. The call will be executed.
+
+**Response:** `{"status": "approved"}`
+
+### POST /api/digest/:id/deny
+
+Deny a queued tool call. The call is blocked and logged.
+
+**Response:** `{"status": "denied"}`
+
+### POST /api/digest/:id/learn
+
+Submit feedback for adaptive learning. Provide a signal indicating whether the score was too high (false positive) or too low (false negative).
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "signal": "false_positive"
+}`} />
+
+Valid signals: `false_positive`, `false_negative`, `correct`.
+
+**Response:** `{"status": "learned"}`
+
+### POST /api/digest/:id/escalate
+
+Escalate a digest item to a higher-severity notification channel.
+
+**Response:** `{"status": "escalated"}`
+
+### POST /api/digest/:id/unlock-egress
+
+Approve an outbound network request that was blocked by the egress policy filter. This is a targeted approval that allows only the specific blocked request.
+
+**Response:** `{"status": "egress_unlocked"}`
+
+### POST /api/digest/:id/deny-terminate
+
+Deny the tool call and terminate the session that produced it. Use this for clearly malicious activity.
+
+**Response:** `{"status": "denied_terminated"}`
+
+### POST /api/digest/:id/allow-always
+
+Approve the tool call and add a permanent allowlist rule so similar calls are auto-allowed in the future.
+
+**Response:** `{"status": "allowed_always"}`
+
+### POST /api/digest/:id/webhook-review
+
+Send the digest item to a configured webhook for external review (e.g., a Slack approval workflow).
+
+**Response:** `{"status": "webhook_sent"}`
+
+---
+
+## Audit
+
+### GET /api/audit
+
+Query audit log entries.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit` | Integer | 100 | Maximum entries |
+| `offset` | Integer | 0 | Pagination offset |
+| `session` | String | — | Filter by session ID |
+| `decision` | String | — | Filter by decision: `allow`, `queue`, `deny` |
+| `from` | ISO 8601 | — | Start time |
+| `to` | ISO 8601 | — | End time |
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "entries": [
+    {
+      "id": "a_xyz789",
+      "session_id": "s_abc123",
+      "tool": "execute_command",
+      "args": {"command": "ls -la"},
+      "composite_score": 1.2,
+      "decision": "allow",
+      "filters": [...],
+      "timestamp": "2026-02-24T10:00:00Z"
+    }
+  ],
+  "total": 42,
+  "limit": 100,
+  "offset": 0
+}`} />
+
+### GET /api/audit/:id
+
+Get a single audit entry by ID.
+
+**Response:** Single audit entry object (same shape as above).
+
+### GET /api/audit/export
+
+Export audit logs in bulk.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `format` | String | `"json"` | Export format: `json`, `csv` |
+| `from` | ISO 8601 | — | Start time |
+| `to` | ISO 8601 | — | End time |
+
+**Response:** JSON array or CSV file depending on format.
+
+### GET /api/audit/exfil-stats
+
+Get exfiltration detection statistics.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "canary_triggers": 3,
+  "dlp_blocks": 12,
+  "egress_denials": 7,
+  "taint_propagations": 45,
+  "period": "7d"
+}`} />
+
+---
+
+## Proxy
+
+### GET /api/proxy/status
+
+Get the current proxy status, including filter states and throughput metrics.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "status": "running",
+  "listen_addr": "127.0.0.1:3142",
+  "auto_allow_threshold": 3.0,
+  "auto_deny_threshold": 8.0,
+  "cold_start_remaining": 150,
+  "filters": {
+    "operation_risk": {"enabled": true, "weight": 1.0},
+    "path_match": {"enabled": true, "weight": 1.0},
+    "secret_scan": {"enabled": true, "weight": 1.5}
+  },
+  "stats": {
+    "total_calls": 50,
+    "allowed": 35,
+    "queued": 12,
+    "denied": 3
+  }
+}`} />
+
+### POST /api/proxy/test
+
+Dry-run a tool call against the scoring pipeline.
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "tool": "write_file",
+  "args": {
+    "path": "/etc/hosts",
+    "content": "127.0.0.1 malicious.com"
+  }
+}`} />
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "composite_score": 11.0,
+  "decision": "deny",
+  "filters": [
+    {"name": "operation_risk", "raw_score": 2.0, "weight": 1.0, "weighted_score": 2.0},
+    {"name": "path_match", "raw_score": 3.0, "weight": 1.0, "weighted_score": 3.0},
+    {"name": "sensitive_path", "raw_score": 4.0, "weight": 1.0, "weighted_score": 4.0},
+    {"name": "behavioural", "raw_score": 2.0, "weight": 1.0, "weighted_score": 2.0}
+  ],
+  "early_termination": false
+}`} />
+
+---
+
+## Config
+
+### GET /api/config
+
+Retrieve the current resolved configuration.
+
+**Response:** Full configuration object in JSON format.
+
+### PUT /api/config
+
+Update configuration values. Accepts a partial configuration object. Only provided keys are updated.
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "proxy": {
+    "auto_allow_threshold": 2.5
+  }
+}`} />
+
+**Response:** `{"status": "updated"}`
+
+<Callout type="warning" title="Runtime updates">
+Configuration changes via the API take effect immediately without a restart. Be cautious when adjusting thresholds on a running system.
+</Callout>
+
+---
+
+## Canaries
+
+### GET /api/canaries
+
+List all active canary tokens.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "canaries": [
+    {
+      "id": "c_abc123",
+      "label": "database credentials",
+      "token": "grith_canary_a1b2c3d4...",
+      "created_at": "2026-02-20T08:00:00Z",
+      "last_rotated": "2026-02-22T12:00:00Z",
+      "trigger_count": 0
+    }
+  ]
+}`} />
+
+### POST /api/canaries
+
+Create a new canary token.
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "label": "AWS credentials file"
+}`} />
+
+**Response:** Created canary object with generated token.
+
+### DELETE /api/canaries/:id
+
+Remove a canary token.
+
+**Response:** `{"status": "deleted"}`
+
+### POST /api/canaries/:id/rotate
+
+Rotate a canary token, generating a new value.
+
+**Response:** Updated canary object with new token.
+
+---
+
+## Notifications
+
+### GET /api/notifications/channels
+
+List configured notification channels and their status.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "channels": [
+    {"name": "desktop", "enabled": true, "status": "connected"},
+    {"name": "slack", "enabled": true, "status": "connected"},
+    {"name": "email", "enabled": false, "status": "not_configured"}
+  ]
+}`} />
+
+### GET /api/notifications/status
+
+Get overall notification system status.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "enabled": true,
+  "default_channel": "desktop",
+  "active_channels": 2,
+  "recent_notifications": 15,
+  "rate_limit_remaining": 8
+}`} />
+
+### POST /api/notifications/test/:channel
+
+Send a test notification to a specific channel.
+
+**Response:** `{"status": "sent"}`
+
+---
+
+## Adaptive
+
+### GET /api/adaptive/stats
+
+Get adaptive learning statistics and current weight adjustments.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "enabled": true,
+  "total_feedback": 150,
+  "feedback_window": "7d",
+  "weight_adjustments": {
+    "operation_risk": 0.98,
+    "path_match": 1.02,
+    "secret_scan": 1.15
+  },
+  "accuracy": {
+    "true_positives": 45,
+    "false_positives": 12,
+    "true_negatives": 85,
+    "false_negatives": 3
+  }
+}`} />
+
+### POST /api/adaptive/feedback
+
+Submit manual feedback for a past tool call.
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "audit_id": "a_xyz789",
+  "signal": "false_positive"
+}`} />
+
+**Response:** `{"status": "recorded"}`
+
+---
+
+## Analytics
+
+### GET /api/analytics/summary
+
+Get a summary of proxy analytics.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "period": "24h",
+  "total_calls": 500,
+  "decisions": {
+    "allow": 380,
+    "queue": 95,
+    "deny": 25
+  },
+  "top_filters": [
+    {"name": "operation_risk", "trigger_count": 450},
+    {"name": "path_match", "trigger_count": 120}
+  ],
+  "avg_score": 2.1,
+  "avg_latency_ms": 12
+}`} />
+
+---
+
+## Policies
+
+### GET /api/policies
+
+List all configured policies.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "policies": [
+    {
+      "name": "project-backend",
+      "description": "Backend service development policy",
+      "rules": [...]
+    }
+  ]
+}`} />
+
+### POST /api/policies
+
+Create a new policy.
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "name": "project-backend",
+  "description": "Backend service development policy",
+  "rules": [
+    {"type": "allow", "tool": "read_file", "path_prefix": "/home/user/backend/"},
+    {"type": "deny", "tool": "write_file", "path_prefix": "/etc/"}
+  ]
+}`} />
+
+**Response:** Created policy object.
+
+### GET /api/policies/:name
+
+Get a policy by name.
+
+### PUT /api/policies/:name
+
+Update an existing policy.
+
+### DELETE /api/policies/:name
+
+Delete a policy.
+
+**Response:** `{"status": "deleted"}`
+
+---
+
+## Events
+
+### POST /api/events
+
+Submit external events into grith's event pipeline. Useful for integrating third-party tools that need to report activity to grith.
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "type": "tool_call",
+  "source": "custom-agent",
+  "data": {
+    "tool": "write_file",
+    "args": {"path": "/tmp/output.txt"}
+  }
+}`} />
+
+**Response:** `{"status": "accepted", "id": "e_abc123"}`
+
+---
+
+## Server
+
+### POST /api/server/shutdown
+
+Gracefully shut down the grith server. Active sessions are terminated and the digest queue is flushed to disk.
+
+**Response:** `{"status": "shutting_down"}`
+
+<Callout type="danger" title="Destructive operation">
+This endpoint terminates the server process. All active supervisor sessions will be stopped. The digest queue is persisted before shutdown.
+</Callout>
+
+---
+
+## Supervisor
+
+### GET /api/supervisor/sessions
+
+List all active supervisor sessions.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "sessions": [
+    {
+      "id": "sup_abc123",
+      "pid": 12345,
+      "profile": "claude-code",
+      "command": "claude",
+      "started_at": "2026-02-24T10:00:00Z",
+      "syscall_count": 1500,
+      "active_alerts": 0
+    }
+  ]
+}`} />
+
+### POST /api/supervisor/sessions
+
+Create a new supervisor session programmatically.
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "command": "claude",
+  "args": [],
+  "profile": "claude-code"
+}`} />
+
+**Response:** Created session object.
+
+### GET /api/supervisor/sessions/:id
+
+Get detailed status for a specific supervisor session.
+
+### POST /api/supervisor/sessions/:id/kill
+
+Terminate a supervised process.
+
+**Response:** `{"status": "killed"}`
+
+### DELETE /api/supervisor/sessions/:id
+
+Remove a supervisor session record (after the process has exited).
+
+**Response:** `{"status": "deleted"}`

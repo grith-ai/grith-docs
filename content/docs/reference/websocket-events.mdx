@@ -1,0 +1,283 @@
+---
+title: "WebSocket Events"
+description: "Real-time event streams for the dashboard and supervisor sessions"
+section: "reference"
+order: 6
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+grith provides two WebSocket endpoints for real-time event streaming. The live endpoint powers the web dashboard with proxy-wide events. The supervisor endpoint streams per-session syscall-level events. Both use standard WebSocket protocol and emit JSON-encoded messages.
+
+## Connecting
+
+WebSocket connections use the same host and port as the REST API (default: `localhost:3141`).
+
+<CodeBlock language="javascript" title="Browser example" code={`const ws = new WebSocket("ws://localhost:3141/ws/live");
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log(data.type, data.payload);
+};
+
+ws.onclose = () => {
+  console.log("Connection closed");
+};`} />
+
+<Callout type="info" title="Automatic reconnection">
+The grith dashboard handles reconnection automatically. If you build a custom integration, implement exponential backoff on reconnection attempts.
+</Callout>
+
+## ws://localhost:3141/ws/live
+
+The live event stream delivers proxy-wide events in real time. This is the primary data source for the web dashboard.
+
+### Event types
+
+All messages follow a common envelope:
+
+<CodeBlock language="json" code={`{
+  "type": "event_type",
+  "timestamp": "2026-02-24T10:30:00.123Z",
+  "payload": { ... }
+}`} />
+
+### tool_call
+
+Emitted when a tool call enters the scoring proxy.
+
+<CodeBlock language="json" code={`{
+  "type": "tool_call",
+  "timestamp": "2026-02-24T10:30:00.123Z",
+  "payload": {
+    "id": "tc_abc123",
+    "session_id": "s_def456",
+    "tool": "write_file",
+    "args": {
+      "path": "/home/user/project/main.rs",
+      "content": "fn main() { ... }"
+    }
+  }
+}`} />
+
+### score_result
+
+Emitted after the scoring pipeline completes for a tool call.
+
+<CodeBlock language="json" code={`{
+  "type": "score_result",
+  "timestamp": "2026-02-24T10:30:00.145Z",
+  "payload": {
+    "tool_call_id": "tc_abc123",
+    "composite_score": 1.2,
+    "decision": "allow",
+    "filters": [
+      {"name": "operation_risk", "score": 2.0, "weighted": 2.0},
+      {"name": "allowlist", "score": -1.0, "weighted": -1.0}
+    ],
+    "latency_ms": 8
+  }
+}`} />
+
+### digest_item
+
+Emitted when a tool call is added to the digest queue (QUEUE decision).
+
+<CodeBlock language="json" code={`{
+  "type": "digest_item",
+  "timestamp": "2026-02-24T10:30:01.000Z",
+  "payload": {
+    "id": "d_ghi789",
+    "tool_call_id": "tc_xyz456",
+    "tool": "execute_command",
+    "args": {"command": "curl https://unknown-host.com/api"},
+    "composite_score": 5.2,
+    "status": "pending"
+  }
+}`} />
+
+### session_start
+
+Emitted when a new agent or supervisor session begins.
+
+<CodeBlock language="json" code={`{
+  "type": "session_start",
+  "timestamp": "2026-02-24T10:00:00.000Z",
+  "payload": {
+    "session_id": "s_def456",
+    "type": "agent",
+    "provider": "ollama",
+    "model": "llama3.2"
+  }
+}`} />
+
+### session_end
+
+Emitted when a session terminates.
+
+<CodeBlock language="json" code={`{
+  "type": "session_end",
+  "timestamp": "2026-02-24T11:30:00.000Z",
+  "payload": {
+    "session_id": "s_def456",
+    "duration_seconds": 5400,
+    "total_calls": 120,
+    "decisions": {
+      "allow": 105,
+      "queue": 12,
+      "deny": 3
+    }
+  }
+}`} />
+
+### filter_trigger
+
+Emitted when a filter fires above a notable threshold. Useful for real-time alerting.
+
+<CodeBlock language="json" code={`{
+  "type": "filter_trigger",
+  "timestamp": "2026-02-24T10:30:00.200Z",
+  "payload": {
+    "tool_call_id": "tc_abc123",
+    "filter": "secret_scan",
+    "score": 5.0,
+    "detail": "Detected AWS access key pattern in arguments"
+  }
+}`} />
+
+---
+
+## ws://localhost:3141/ws/supervisor/:id
+
+A per-session WebSocket endpoint for supervisor events. Replace `:id` with the supervisor session ID (e.g., `sup_abc123`). This stream provides syscall-level visibility into a supervised process.
+
+<CodeBlock language="javascript" title="Connecting to a supervisor session" code={`const sessionId = "sup_abc123";
+const ws = new WebSocket(\`ws://localhost:3141/ws/supervisor/\${sessionId}\`);
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log(data.type, data.payload);
+};`} />
+
+### Event types
+
+### syscall_intercept
+
+Emitted when the supervisor intercepts a syscall from the supervised process.
+
+<CodeBlock language="json" code={`{
+  "type": "syscall_intercept",
+  "timestamp": "2026-02-24T10:30:00.050Z",
+  "payload": {
+    "session_id": "sup_abc123",
+    "pid": 12345,
+    "syscall": "openat",
+    "args": {
+      "dirfd": -100,
+      "pathname": "/etc/passwd",
+      "flags": "O_RDONLY"
+    },
+    "decision": "allow",
+    "score": 2.5
+  }
+}`} />
+
+### process_freeze
+
+Emitted when the supervisor freezes (pauses) the supervised process because a syscall scored in the QUEUE zone and requires review.
+
+<CodeBlock language="json" code={`{
+  "type": "process_freeze",
+  "timestamp": "2026-02-24T10:30:01.000Z",
+  "payload": {
+    "session_id": "sup_abc123",
+    "pid": 12345,
+    "reason": "Syscall openat(/etc/shadow) scored 6.5, awaiting review",
+    "syscall": "openat",
+    "score": 6.5
+  }
+}`} />
+
+<Callout type="warning" title="Process frozen">
+When a process is frozen, it is suspended via `SIGSTOP`. The process does not consume CPU while frozen but retains its memory. It will remain frozen until the queued syscall is approved or denied via the digest queue.
+</Callout>
+
+### process_thaw
+
+Emitted when a frozen process is resumed after digest review.
+
+<CodeBlock language="json" code={`{
+  "type": "process_thaw",
+  "timestamp": "2026-02-24T10:31:00.000Z",
+  "payload": {
+    "session_id": "sup_abc123",
+    "pid": 12345,
+    "decision": "approved",
+    "frozen_duration_ms": 59000
+  }
+}`} />
+
+### score_result
+
+Same shape as the live stream `score_result`, but scoped to the supervisor session. Emitted for each syscall that passes through the scoring pipeline.
+
+<CodeBlock language="json" code={`{
+  "type": "score_result",
+  "timestamp": "2026-02-24T10:30:00.060Z",
+  "payload": {
+    "tool_call_id": "tc_sup_001",
+    "composite_score": 2.5,
+    "decision": "allow",
+    "filters": [
+      {"name": "operation_risk", "score": 1.0, "weighted": 1.0},
+      {"name": "path_match", "score": 1.5, "weighted": 1.5}
+    ],
+    "latency_ms": 3
+  }
+}`} />
+
+### session_event
+
+General session lifecycle events for the supervisor session.
+
+<CodeBlock language="json" code={`{
+  "type": "session_event",
+  "timestamp": "2026-02-24T10:30:00.000Z",
+  "payload": {
+    "session_id": "sup_abc123",
+    "event": "child_spawned",
+    "detail": {
+      "child_pid": 12346,
+      "command": "/bin/sh"
+    }
+  }
+}`} />
+
+Possible `event` values:
+
+| Event | Description |
+|---|---|
+| `child_spawned` | Supervised process spawned a child process |
+| `child_exited` | A child process exited |
+| `signal_delivered` | A signal was delivered to the supervised process |
+| `profile_violation` | The supervised process violated a profile rule |
+| `session_timeout` | Session exceeded its time limit |
+
+## Message flow
+
+A typical sequence when monitoring a supervisor session:
+
+1. `session_start` (on live stream) — session created
+2. `syscall_intercept` (on supervisor stream) — syscalls evaluated
+3. `score_result` (on both streams) — scoring results
+4. `process_freeze` (on supervisor stream) — risky syscall pauses process
+5. `digest_item` (on live stream) — queued item appears in dashboard
+6. User approves via dashboard
+7. `process_thaw` (on supervisor stream) — process resumes
+8. `session_end` (on live stream) — session terminates
+
+<Callout type="tip" title="Dashboard integration">
+The web dashboard consumes both WebSocket streams simultaneously. The live stream powers the global activity feed, while the supervisor stream powers the per-session detail view with its syscall timeline.
+</Callout>
