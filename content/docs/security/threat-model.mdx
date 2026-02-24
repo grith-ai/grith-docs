@@ -64,7 +64,7 @@ An attacker publishes or compromises a package that, when installed or imported,
 | `network_egress` | Restricts which registries and hosts packages can be fetched from |
 | `write_scope` | Limits where installed packages can write files |
 
-<Terminal command="grith proxy test --tool process_exec --args '{\"command\": \"npm install totally-legit-package\", \"args\": [\"--ignore-scripts\"]}'" />
+<Terminal command='grith proxy test --tool process_exec --args &apos;{"command": "npm install totally-legit-package"}&apos;' />
 
 Use `grith proxy test` to validate that your filter configuration catches suspicious installation patterns before they reach production.
 

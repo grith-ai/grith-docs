@@ -1,0 +1,204 @@
+---
+title: "Compliance Mapping"
+description: "Map grith telemetry and audit data to SOC 2, NIST AI RMF, EU AI Act, and other compliance frameworks"
+section: "analytics"
+order: 4
+tier: "enterprise"
+lastUpdated: "2026-02-24"
+---
+
+<Badge variant="enterprise">Enterprise</Badge>
+
+grith generates the audit trail, decision logs, and configuration evidence that compliance frameworks require. This page maps grith's data to specific framework controls and explains how to generate compliance-ready reports.
+
+## Supported frameworks
+
+| Framework | Focus area | grith data sources |
+|---|---|---|
+| SOC 2 Type II | Security, availability, processing integrity | Audit logs, filter configs, quarantine decisions, access controls |
+| NIST AI RMF | AI risk management | Score decomposition, filter results, human override records |
+| EU AI Act | High-risk AI system requirements | Decision explanability, human oversight records, risk assessment |
+| ISO 42001 | AI management systems | Policy configs, audit trails, continuous monitoring metrics |
+| OWASP LLM Top 10 | LLM-specific security risks | Filter trigger data, prompt injection detection, exfiltration stats |
+| FedRAMP | US federal cloud security | Continuous monitoring data, audit logs, configuration baselines |
+| HIPAA | Healthcare data protection | DLP metrics, access logs, data handling audit trails |
+| PCI-DSS | Payment card data security | Secrets detection, network egress controls, audit log integrity |
+
+## Data sources and control mapping
+
+### Tool call audit logs
+
+Every tool call evaluated by the security proxy produces an audit record. These records are the primary evidence source for most compliance controls.
+
+**Maps to:**
+- SOC 2 CC6.1 (Logical access security)
+- SOC 2 CC7.2 (System monitoring)
+- NIST AI RMF GOVERN 1.1 (Policies and procedures)
+- EU AI Act Article 12 (Record-keeping)
+- ISO 42001 8.4 (AI system operation)
+
+### Quarantine decisions and human overrides
+
+When a tool call is quarantined and a human reviewer approves or denies it, grith records both the automated decision and the human override. This provides evidence of meaningful human oversight.
+
+**Maps to:**
+- SOC 2 CC7.3 (Change detection)
+- NIST AI RMF MAP 3.5 (Human-AI interaction)
+- EU AI Act Article 14 (Human oversight)
+- ISO 42001 9.1 (Monitoring and measurement)
+
+### Filter configuration and scoring
+
+The active filter chain, individual filter weights, scoring thresholds, and any adaptive learning adjustments are recorded as configuration snapshots.
+
+**Maps to:**
+- SOC 2 CC6.2 (Prior to issuing system credentials)
+- NIST AI RMF MEASURE 2.6 (Risk tolerance)
+- EU AI Act Article 9 (Risk management system)
+- OWASP LLM01 (Prompt injection prevention)
+
+### Score decomposition
+
+For each tool call, grith records the contribution of every filter to the composite score. This provides interpretable, auditable explanations for every security decision.
+
+**Maps to:**
+- NIST AI RMF MEASURE 2.11 (Explainability)
+- EU AI Act Article 13 (Transparency)
+- ISO 42001 8.2 (AI risk assessment)
+
+### Exfiltration and DLP metrics
+
+Aggregated statistics on data loss prevention filter activity: secrets detected, canary triggers, high-entropy payloads, network egress denials.
+
+**Maps to:**
+- SOC 2 CC6.7 (Restriction of data transmission)
+- PCI-DSS 3.4 (Rendering PAN unreadable)
+- HIPAA 164.312(e)(1) (Transmission security)
+- OWASP LLM06 (Sensitive information disclosure)
+
+## Generating compliance reports
+
+<Terminal command="grith audit compliance --framework soc2 --period 2026-Q1 --output soc2-q1.json" />
+
+The `grith audit compliance` command generates a report mapped to the specified framework. Available framework identifiers:
+
+| Identifier | Framework |
+|---|---|
+| `soc2` | SOC 2 Type II |
+| `nist-ai-rmf` | NIST AI Risk Management Framework |
+| `eu-ai-act` | EU AI Act |
+| `iso42001` | ISO/IEC 42001 |
+| `owasp-llm` | OWASP LLM Top 10 |
+| `fedramp` | FedRAMP |
+| `hipaa` | HIPAA Security Rule |
+| `pci-dss` | PCI-DSS v4.0 |
+
+### Export formats
+
+<Tabs items={["JSON", "CSV", "Markdown", "PDF", "OSCAL"]} storageKey="compliance-format">
+<div>
+
+<Terminal command="grith audit compliance --framework soc2 --format json --output report.json" />
+
+Structured JSON with control mappings, evidence references, and status indicators.
+
+</div>
+<div>
+
+<Terminal command="grith audit compliance --framework soc2 --format csv --output report.csv" />
+
+Flat CSV with one row per control, suitable for spreadsheet review.
+
+</div>
+<div>
+
+<Terminal command="grith audit compliance --framework soc2 --format markdown --output report.md" />
+
+Human-readable Markdown document with sections per control family.
+
+</div>
+<div>
+
+<Terminal command="grith audit compliance --framework soc2 --format pdf --output report.pdf" />
+
+Formatted PDF report suitable for auditor submission.
+
+</div>
+<div>
+
+<Terminal command="grith audit compliance --framework fedramp --format oscal --output report.oscal.json" />
+
+OSCAL (Open Security Controls Assessment Language) format for federal compliance automation. Supported for FedRAMP and NIST frameworks.
+
+</div>
+</Tabs>
+
+## Tamper-evident audit logs
+
+For compliance contexts that require audit log integrity, grith supports hash-chained audit records. Each record includes a SHA-256 hash of the previous record, creating a verifiable chain.
+
+<ConfigExample
+  title="Enable hash-chained audit logs"
+  code={`[audit]
+hash_chain = true               # enable hash-chained records
+algorithm = "sha256"            # SHA-256 (default)
+verify_on_read = true           # verify chain integrity on every read`}
+/>
+
+<Callout type="warning" title="Performance consideration">
+Enabling `verify_on_read` adds a small overhead to every audit log query, as the chain must be verified from the last checkpoint. For large deployments, consider running verification as a periodic job rather than on every read.
+</Callout>
+
+Verify the chain manually:
+
+<Terminal command="grith audit verify-chain" />
+
+<CodeBlock
+  code={`[grith] Verifying audit chain integrity...
+[grith] Records checked: 14,832
+[grith] Chain status: VALID
+[grith] Last verified: 2026-02-24T14:32:01Z
+[grith] No gaps or tampering detected.`}
+  language="text"
+/>
+
+If any record has been modified or deleted, the verification fails and reports the exact point of divergence.
+
+## OWASP LLM Top 10 mapping
+
+grith's filter chain maps directly to the OWASP Top 10 for LLM Applications:
+
+| OWASP ID | Risk | grith mitigation |
+|---|---|---|
+| LLM01 | Prompt injection | Scoring proxy quarantines suspicious tool calls triggered by injected instructions |
+| LLM02 | Insecure output handling | All tool calls are evaluated before execution, not after |
+| LLM03 | Training data poisoning | Out of scope (grith does not control model training) |
+| LLM04 | Model denial of service | Rate limiting on tool call throughput |
+| LLM05 | Supply chain vulnerabilities | `command_denylist`, `process_spawn`, `network_egress` filters |
+| LLM06 | Sensitive information disclosure | `secrets_scan`, `entropy_check`, `canary_detection`, `exfil_size` |
+| LLM07 | Insecure plugin design | Every tool call is scored regardless of plugin origin |
+| LLM08 | Excessive agency | Scoring thresholds limit the scope of autonomous execution |
+| LLM09 | Overreliance | Quarantine queue ensures human review for uncertain decisions |
+| LLM10 | Model theft | `network_egress` prevents exfiltration of model weights or outputs |
+
+## Retention requirements by framework
+
+Different frameworks have different minimum retention periods. Configure `retention_days` to meet your strictest requirement.
+
+| Framework | Minimum retention | Recommended setting |
+|---|---|---|
+| SOC 2 Type II | 1 year | `retention_days = 365` |
+| HIPAA | 6 years | `retention_days = 2190` |
+| PCI-DSS | 1 year | `retention_days = 365` |
+| FedRAMP | 3 years | `retention_days = 1095` |
+| EU AI Act | Duration of AI system lifecycle | `retention_days = 3650` |
+
+<Callout type="info" title="Storage considerations">
+At typical usage levels (1,000 tool calls per day), the analytics database grows at approximately 50 MB per year. Multi-year retention is feasible on any modern system.
+</Callout>
+
+## Next steps
+
+- [Reporting and Exports](/docs/analytics/reporting-and-exports) — Raw data export capabilities
+- [Analytics Overview](/docs/analytics/overview) — The seven metric categories
+- [SIEM Integration](/docs/enterprise/siem) — Forward audit data to enterprise SIEM platforms

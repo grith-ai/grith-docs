@@ -1,0 +1,378 @@
+---
+title: "Supervisor Profiles"
+description: "Pre-built and custom profiles for grith exec syscall-level supervision"
+section: "reference"
+order: 7
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+Supervisor profiles define the security policy for `grith exec`. Each profile specifies which file paths, commands, and network destinations a supervised process is allowed to access. When a syscall violates the active profile, grith either blocks it, queues it for review, or logs it, depending on the scoring result.
+
+<Terminal command="grith exec --profile claude-code -- claude" />
+
+grith ships with four pre-built profiles optimised for popular AI coding agents. You can also define custom profiles for any tool.
+
+## How profiles work
+
+When you run `grith exec --profile <name> -- <command>`, grith:
+
+1. Loads the named profile from configuration.
+2. Spawns the command under ptrace/seccomp-BPF supervision (Linux) or process-lifecycle monitoring (macOS).
+3. Intercepts every syscall the supervised process makes.
+4. Evaluates each syscall against the profile rules and the scoring pipeline.
+5. Allows, queues, or denies the syscall based on the composite score.
+
+Profile rules feed into the scoring pipeline as additional context. A syscall that matches an `allowed_paths` rule receives a score reduction. A syscall targeting a `denied_paths` entry receives a score increase. The profile does not bypass the scoring pipeline; it adjusts how the pipeline evaluates calls.
+
+## Pre-built profiles
+
+### claude-code
+
+Optimised for [Claude Code](https://claude.ai/code), Anthropic's CLI coding agent.
+
+<ConfigExample title="claude-code profile" code={`[profiles.claude-code]
+description = "Anthropic Claude Code agent"
+
+allowed_paths = [
+  "$PROJECT_DIR/**",
+  "$HOME/.config/claude/**",
+  "/tmp/claude-*/**",
+  "$HOME/.local/share/claude/**",
+]
+
+denied_paths = [
+  "$HOME/.ssh/**",
+  "$HOME/.aws/**",
+  "$HOME/.gnupg/**",
+  "/etc/shadow",
+  "/etc/sudoers",
+]
+
+allowed_commands = [
+  "git *",
+  "npm *",
+  "npx *",
+  "node *",
+  "python *",
+  "pip *",
+  "cargo *",
+  "rustc *",
+  "go *",
+  "make *",
+  "ls *",
+  "cat *",
+  "grep *",
+  "find *",
+  "rg *",
+]
+
+[profiles.claude-code.network_policy]
+allowed_domains = [
+  "api.anthropic.com",
+  "*.github.com",
+  "registry.npmjs.org",
+  "crates.io",
+  "pypi.org",
+]
+deny_all_other = false
+
+[profiles.claude-code.noise_reduction]
+ignore_patterns = [
+  "futex",
+  "clock_gettime",
+  "clock_nanosleep",
+  "epoll_wait",
+  "epoll_ctl",
+  "mmap",
+  "munmap",
+  "mprotect",
+  "brk",
+  "rt_sigaction",
+  "rt_sigprocmask",
+]`} />
+
+### codex
+
+Optimised for OpenAI Codex CLI.
+
+<ConfigExample title="codex profile" code={`[profiles.codex]
+description = "OpenAI Codex CLI agent"
+
+allowed_paths = [
+  "$PROJECT_DIR/**",
+  "$HOME/.config/codex/**",
+  "/tmp/codex-*/**",
+]
+
+denied_paths = [
+  "$HOME/.ssh/**",
+  "$HOME/.aws/**",
+  "$HOME/.gnupg/**",
+  "/etc/shadow",
+  "/etc/sudoers",
+]
+
+allowed_commands = [
+  "git *",
+  "npm *",
+  "npx *",
+  "node *",
+  "python *",
+  "pip *",
+  "cargo *",
+  "go *",
+  "make *",
+  "ls *",
+  "cat *",
+  "grep *",
+  "find *",
+]
+
+[profiles.codex.network_policy]
+allowed_domains = [
+  "api.openai.com",
+  "*.github.com",
+  "registry.npmjs.org",
+  "crates.io",
+  "pypi.org",
+]
+deny_all_other = false
+
+[profiles.codex.noise_reduction]
+ignore_patterns = [
+  "futex",
+  "clock_gettime",
+  "clock_nanosleep",
+  "epoll_wait",
+  "mmap",
+  "munmap",
+  "mprotect",
+  "brk",
+]`} />
+
+### aider
+
+Optimised for [aider](https://aider.chat), the AI pair programming tool.
+
+<ConfigExample title="aider profile" code={`[profiles.aider]
+description = "Aider AI pair programming"
+
+allowed_paths = [
+  "$PROJECT_DIR/**",
+  "$HOME/.config/aider/**",
+  "$HOME/.aider*",
+  "/tmp/aider-*/**",
+]
+
+denied_paths = [
+  "$HOME/.ssh/**",
+  "$HOME/.aws/**",
+  "$HOME/.gnupg/**",
+  "/etc/shadow",
+  "/etc/sudoers",
+]
+
+allowed_commands = [
+  "git *",
+  "python *",
+  "pip *",
+  "npm *",
+  "node *",
+  "cargo *",
+  "go *",
+  "make *",
+  "ls *",
+  "cat *",
+  "grep *",
+  "find *",
+  "rg *",
+]
+
+[profiles.aider.network_policy]
+allowed_domains = [
+  "api.openai.com",
+  "api.anthropic.com",
+  "*.github.com",
+  "pypi.org",
+]
+deny_all_other = false
+
+[profiles.aider.noise_reduction]
+ignore_patterns = [
+  "futex",
+  "clock_gettime",
+  "clock_nanosleep",
+  "epoll_wait",
+  "mmap",
+  "munmap",
+  "mprotect",
+  "brk",
+]`} />
+
+### generic
+
+A conservative default profile for any tool. Use this as a starting point for custom profiles.
+
+<ConfigExample title="generic profile" code={`[profiles.generic]
+description = "Conservative default profile"
+
+allowed_paths = [
+  "$PROJECT_DIR/**",
+  "/tmp/**",
+]
+
+denied_paths = [
+  "$HOME/.ssh/**",
+  "$HOME/.aws/**",
+  "$HOME/.gnupg/**",
+  "$HOME/.config/grith/**",
+  "/etc/shadow",
+  "/etc/sudoers",
+  "/etc/passwd",
+  "/boot/**",
+  "/proc/kcore",
+]
+
+allowed_commands = [
+  "ls *",
+  "cat *",
+  "grep *",
+  "find *",
+  "head *",
+  "tail *",
+  "wc *",
+]
+
+[profiles.generic.network_policy]
+allowed_domains = []
+deny_all_other = true
+
+[profiles.generic.noise_reduction]
+ignore_patterns = [
+  "futex",
+  "clock_gettime",
+  "clock_nanosleep",
+  "epoll_wait",
+  "mmap",
+  "munmap",
+  "mprotect",
+  "brk",
+]`} />
+
+<Callout type="warning" title="Generic is restrictive">
+The generic profile denies all network access by default (`deny_all_other = true`) and only allows read-only commands. Use a tool-specific profile when one is available, or create a custom profile tailored to your use case.
+</Callout>
+
+## Profile configuration
+
+### Path rules
+
+Path rules use glob syntax with two special variables:
+
+| Variable | Expands to |
+|---|---|
+| `$PROJECT_DIR` | The current working directory when `grith exec` was invoked |
+| `$HOME` | The user's home directory |
+
+`allowed_paths` entries reduce the scoring penalty for file access syscalls. `denied_paths` entries increase it. A path not matching either list is evaluated neutrally by the profile (other filters still apply).
+
+### Command rules
+
+Command rules use glob syntax. The `*` wildcard matches any arguments. Commands not in `allowed_commands` are not automatically blocked; they receive a higher score from the profile context but may still pass through the scoring pipeline.
+
+<Callout type="info" title="Profiles adjust scores, not hard blocks">
+Profile rules adjust the score that the scoring pipeline computes. A denied path adds points to the composite score, which may push it above the deny threshold. But if you have custom allowlist rules or low weights on the relevant filters, the call could still be allowed. For hard blocks, set the deny threshold low or use the allowlist filter with explicit deny rules.
+</Callout>
+
+### Network policy
+
+| Key | Type | Description |
+|---|---|---|
+| `allowed_domains` | Array | Domains the supervised process is allowed to connect to. Supports glob patterns. |
+| `deny_all_other` | Boolean | If `true`, any domain not in `allowed_domains` receives a high score increase. |
+
+### Noise reduction
+
+High-frequency harmless syscalls (like `futex`, `clock_gettime`, `mmap`) generate noise in the supervisor log. The `ignore_patterns` array lists syscall names that should be silently passed through without scoring or logging.
+
+## Custom profiles
+
+Define custom profiles in your configuration file or in `config/supervisor/profiles.toml` in the grith data directory.
+
+<ConfigExample title="Custom profile example" code={`[profiles.my-agent]
+description = "Custom profile for my internal agent"
+
+allowed_paths = [
+  "$PROJECT_DIR/**",
+  "$HOME/.config/my-agent/**",
+  "/var/data/my-agent/**",
+]
+
+denied_paths = [
+  "$HOME/.ssh/**",
+  "$HOME/.aws/**",
+  "/etc/**",
+]
+
+allowed_commands = [
+  "git *",
+  "python *",
+  "pip *",
+  "docker *",
+  "kubectl *",
+]
+
+[profiles.my-agent.network_policy]
+allowed_domains = [
+  "api.openai.com",
+  "*.internal.company.com",
+  "registry.npmjs.org",
+]
+deny_all_other = true
+
+[profiles.my-agent.noise_reduction]
+ignore_patterns = [
+  "futex",
+  "clock_gettime",
+  "epoll_wait",
+  "mmap",
+  "munmap",
+  "mprotect",
+  "brk",
+]`} />
+
+<Terminal command="grith exec --profile my-agent -- python my_agent.py" />
+
+## Setting the default profile
+
+The default profile is used when `--profile` is not specified:
+
+<ConfigExample title="Default profile" code={`[supervisor]
+default_profile = "generic"`} />
+
+## Managing sessions
+
+Active supervisor sessions can be listed and managed via the CLI:
+
+<Terminal command="grith supervisor list" />
+
+<Terminal command="grith supervisor status <SESSION_ID>" />
+
+<Terminal command="grith supervisor kill <SESSION_ID>" />
+
+See also the [Supervisor API endpoints](/docs/reference/api-rest#supervisor) and [Supervisor WebSocket events](/docs/reference/websocket-events#wslocalhost3141wssupervisorid) for programmatic access.
+
+## Platform support
+
+| Platform | Interception level | Notes |
+|---|---|---|
+| Linux x86_64 / aarch64 | Full syscall (ptrace + seccomp-BPF) | Recommended. All profile rules enforced at syscall level. |
+| macOS (Apple Silicon / Intel) | Process lifecycle | File and network access monitored at process boundaries. Less granular than Linux. |
+| Windows | Planned | Not yet supported. See roadmap. |
+
+<Callout type="tip" title="Linux recommended for supervisor">
+For the most effective supervision, run `grith exec` on Linux where ptrace and seccomp-BPF provide true syscall-level interception. On macOS, grith monitors process lifecycle events which covers file creation, network connections, and process spawning but cannot intercept individual read/write operations within a process.
+</Callout>

@@ -1,0 +1,391 @@
+---
+title: "Troubleshooting"
+description: "Common issues and solutions when running grith"
+section: "guides"
+order: 8
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+This page covers the most common issues you may encounter when running grith, along with their solutions. If your issue is not listed here, check the [GitHub issues](https://github.com/grith-ai/grith/issues) or reach out on the community Discord.
+
+## grith will not start
+
+### Port already in use
+
+**Symptom:** `grith dashboard start` fails with "Address already in use" or similar.
+
+**Cause:** Another process is using port 3141 (grith's default port).
+
+**Solution:**
+
+Find what is using the port:
+
+<Terminal command="lsof -i :3141" />
+
+Either stop the conflicting process or change grith's port:
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[server]
+bind = "127.0.0.1:3142"    # Use a different port`}
+/>
+
+### Configuration file errors
+
+**Symptom:** grith exits immediately with a config parse error.
+
+**Solution:**
+
+Validate your config file:
+
+<Terminal command="grith config" />
+
+<CodeBlock
+  code={`[grith] Error parsing configuration:
+  File: /home/user/.config/grith/config.toml
+  Line: 14
+  Error: expected string, found integer for key 'proxy.filters.secret_scan.weight'
+
+  Hint: weight must be a float (e.g., 2.0, not 2)`}
+  language="text"
+/>
+
+Common config mistakes:
+
+| Mistake | Fix |
+|---|---|
+| Integer where float expected | Use `2.0` not `2` for weight values |
+| Missing quotes on strings | Wrap string values in double quotes |
+| Invalid TOML section nesting | Check that `[proxy.filters.secret_scan]` is a valid section path |
+| Duplicate section headers | Each `[section]` can only appear once |
+
+To reset to defaults:
+
+<Terminal command="grith init" />
+
+<Callout type="warning" title="grith init overwrites">
+Running `grith init` when a config already exists will prompt for confirmation before overwriting. Back up your config first if you have custom settings.
+</Callout>
+
+### Permission denied
+
+**Symptom:** grith cannot write to its data directory or bind to its port.
+
+**Solution:**
+
+Verify grith's data directory is writable:
+
+<Terminal command="ls -la ~/.local/share/grith/" />
+
+If the directory does not exist, `grith init` creates it. If permissions are wrong:
+
+<Terminal command="chmod 700 ~/.local/share/grith" />
+
+For port binding below 1024 (not the default), either use a port above 1024 or run with appropriate capabilities:
+
+<Terminal command="sudo setcap 'cap_net_bind_service=+ep' $(which grith)" />
+
+## High denial rate
+
+### Too many safe operations being denied
+
+**Symptom:** Routine file writes or network calls are being denied or queued too frequently.
+
+**Cause:** Thresholds are too strict, or a filter's weight is too high.
+
+**Solution:**
+
+First, check which filters are contributing the most to denials:
+
+<Terminal command="grith audit --filter denied --limit 20" />
+
+<CodeBlock
+  code={`Recent denied tool calls:
+
+  Time                 Tool call                Score  Top filter
+  2026-02-24 14:32    fs.write → package.json   8.5   path_match (+3.0)
+  2026-02-24 14:31    net.connect → npm          9.2   egress_policy (+4.0)
+  2026-02-24 14:30    process.exec → npm test    8.1   command (+3.5)`}
+  language="text"
+/>
+
+If a specific filter is consistently over-scoring safe operations, reduce its weight:
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[proxy.filters.path_match]
+weight = 0.5    # Reduce from default 1.0`}
+/>
+
+Or adjust the global thresholds:
+
+<Terminal command="grith config set proxy.auto_allow_threshold 3.0" />
+<Terminal command="grith config set proxy.auto_deny_threshold 9.0" />
+
+Use `grith proxy test` to dry-run tool calls and verify your changes:
+
+<Terminal command='grith proxy test fs.write package.json "{}"' />
+
+See [Filter Tuning](/docs/guides/filter-tuning) for a comprehensive guide to threshold and weight adjustment.
+
+### Cold-start causing excessive queuing
+
+**Symptom:** A newly installed grith is queuing far more operations than expected.
+
+**Cause:** During the first 200 tool calls, grith operates in cold-start mode with a wider queue zone (allow threshold 2.0, deny threshold 10.0).
+
+**Solution:**
+
+Run representative tasks to build up the baseline quickly:
+
+<Terminal command='grith run "build the project and run tests"' />
+
+Or skip cold-start if you are confident in your configuration:
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[adaptive]
+cold_start_calls = 0`}
+/>
+
+## Supervisor does not intercept
+
+### Syscall interception not working
+
+**Symptom:** `grith exec` runs the tool but no tool calls appear in the audit log or dashboard.
+
+**Cause:** Full syscall interception requires Linux with ptrace and seccomp-BPF support.
+
+**Solution:**
+
+Check your platform:
+
+<Terminal command="uname -s" />
+
+| Platform | Interception level | Notes |
+|---|---|---|
+| Linux | Full syscall (ptrace + seccomp-BPF) | Requires kernel 3.5+ (virtually all modern distros) |
+| macOS | Process lifecycle only | Spawn, attach, freeze, thaw — no individual syscall visibility |
+| Windows | Not yet supported | Planned for v2.0 |
+
+On Linux, verify ptrace is allowed:
+
+<Terminal command="cat /proc/sys/kernel/yama/ptrace_scope" />
+
+<CodeBlock
+  code={`0    # Classic ptrace permissions (allows tracing by same-user processes)
+1    # Restricted ptrace (only parent can trace — this is fine for grith exec)
+2    # Admin only (grith exec won't work without CAP_SYS_PTRACE)
+3    # No ptrace (grith exec won't work)`}
+  language="text"
+/>
+
+If `ptrace_scope` is 2 or 3, you need to either lower it or grant grith the capability:
+
+<Terminal command="sudo setcap 'cap_sys_ptrace=+ep' $(which grith)" />
+
+<Callout type="danger" title="Do not disable ptrace restrictions system-wide">
+Lowering `ptrace_scope` to 0 affects all processes on the system. Prefer granting `CAP_SYS_PTRACE` to the grith binary specifically.
+</Callout>
+
+### Docker/container environments
+
+**Symptom:** `grith exec` fails inside a Docker container with a ptrace permission error.
+
+**Solution:**
+
+Docker containers block ptrace by default. Add the `SYS_PTRACE` capability:
+
+<CodeBlock
+  code={`docker run --cap-add=SYS_PTRACE -it myimage grith exec -- tool`}
+  language="bash"
+/>
+
+Or in Docker Compose:
+
+<CodeBlock
+  code={`services:
+  dev:
+    cap_add:
+      - SYS_PTRACE`}
+  language="yaml"
+/>
+
+### macOS limitations
+
+On macOS, grith operates in process-lifecycle fallback mode. This means:
+
+- Process spawn and exit events are captured
+- File and network operations within the process are not individually intercepted
+- The security proxy evaluates process-level events, not per-syscall events
+
+Full macOS syscall interception via Endpoint Security is planned for v2.0.
+
+## Dashboard not loading
+
+### Blank page or connection refused
+
+**Symptom:** Browser shows a blank page, "connection refused", or a loading spinner that never completes.
+
+**Solution:**
+
+1. Verify the dashboard is running:
+
+<Terminal command="grith dashboard status" />
+
+2. Check the port is correct and not blocked by a firewall:
+
+<Terminal command="curl -s http://localhost:3141/api/health" />
+
+3. If the health endpoint responds but the dashboard does not load, check browser console for JavaScript errors. Clear the browser cache and try again.
+
+4. Check grith's logs for errors:
+
+<Terminal command="grith log --limit 50" />
+
+### Dashboard starts but shows stale data
+
+**Symptom:** The dashboard loads but the event stream is not updating or shows old data.
+
+**Solution:**
+
+The live event stream uses WebSocket. Check that the WebSocket connection is established by looking at the browser's Network tab for a connection to `/ws/live`. If the WebSocket fails to connect:
+
+- Verify no browser extensions are blocking WebSocket connections
+- If behind a reverse proxy, ensure WebSocket upgrade is configured (see [Reverse Proxy](/docs/guides/reverse-proxy))
+- Try restarting the dashboard: `grith dashboard stop && grith dashboard start`
+
+## Notification failures
+
+### Notifications not being delivered
+
+**Symptom:** Security events occur but no notifications arrive.
+
+**Solution:**
+
+Check notification channel status:
+
+<Terminal command="grith notifications status" />
+
+<CodeBlock
+  code={`Notification channels:
+
+  Channel    Status     Last sent          Health
+  desktop    enabled    2026-02-24 14:30   OK
+  slack      enabled    never              ERROR: invalid webhook URL
+  email      disabled   —                  —
+  telegram   enabled    2026-02-24 12:00   OK`}
+  language="text"
+/>
+
+Test a specific channel:
+
+<Terminal command="grith notifications test slack" />
+
+Common notification issues:
+
+| Channel | Common issue | Fix |
+|---|---|---|
+| Slack | Invalid webhook URL | Regenerate webhook in Slack app settings |
+| Email | SMTP auth failure | Verify SMTP credentials in config, use `_env` suffix for secrets |
+| Telegram | Bot token expired | Create a new bot via @BotFather |
+| Desktop | Notification daemon not running | Check `notify-send` works on Linux, notification centre on macOS |
+
+### Rate limiting
+
+**Symptom:** First few notifications arrive, then they stop.
+
+**Cause:** grith rate-limits notifications to prevent flooding.
+
+**Solution:**
+
+Check and adjust rate limits:
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[notifications.rate_limits]
+max_per_minute = 10          # Default: 10
+max_per_hour = 60            # Default: 60
+cooldown_after_burst = "5m"  # Default: 5 minutes`}
+/>
+
+If you are seeing legitimate high-frequency events, consider raising the limits or routing high-volume events to the audit log only.
+
+## Proxy timeouts
+
+### Tool calls taking too long
+
+**Symptom:** Agent operations are slow, or grith reports proxy timeout errors.
+
+**Cause:** One or more filters are taking longer than expected to evaluate.
+
+**Solution:**
+
+Check which filters are slow:
+
+<Terminal command="grith log --tail" />
+
+Look for filter evaluation times in the log output. The proxy has a configurable timeout:
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[proxy]
+filter_timeout_ms = 5000    # Default: 5000 (5 seconds)
+total_timeout_ms = 10000    # Default: 10000 (10 seconds)`}
+/>
+
+Common causes of slow filter evaluation:
+
+| Filter | Cause | Fix |
+|---|---|---|
+| `reputation` | DNS lookup for destination reputation | Increase timeout or disable if running offline |
+| `dlp_gate` | Large payload inspection | Increase `filter_timeout_ms` or reduce payload size limits |
+| `secret_scan` | Complex regex on large content | Reduce content inspection limits in filter config |
+| `taint` | Large taint graph in long sessions | Restart sessions periodically |
+
+If the proxy times out, it defaults to DENY (fail-closed). This is by design — an unknown state is treated as a security risk.
+
+## Debugging with log levels
+
+When investigating any issue, increase the log level for more detail:
+
+<Terminal command="grith --log-level debug dashboard start" />
+
+Log levels from least to most verbose:
+
+| Level | Use case |
+|---|---|
+| `error` | Only critical failures |
+| `warn` | Warnings and errors (default) |
+| `info` | Operational events |
+| `debug` | Filter evaluation details, timing, internal state |
+| `trace` | Full syscall-level tracing (very verbose) |
+
+<Callout type="tip" title="Log to file">
+For persistent debugging, redirect grith's log output. Use `grith log --tail --session <id>` to follow a specific session's audit trail in another terminal while reproducing the issue.
+</Callout>
+
+You can also set the log level via environment variable:
+
+<Terminal command="GRITH_LOG_LEVEL=debug grith exec --profile claude-code -- claude-code" />
+
+## Getting help
+
+If none of the above resolves your issue:
+
+1. Search [GitHub issues](https://github.com/grith-ai/grith/issues) for similar problems
+2. Export a debug log and include it when filing a new issue:
+
+<Terminal command="grith audit export --format json --limit 100 > debug-export.json" />
+
+3. Join the community Discord for real-time help (link at [grith.ai/community](https://grith.ai/community))
+
+## Next steps
+
+- [Filter Tuning](/docs/guides/filter-tuning) — Fine-tune filter behaviour
+- [Configuration](/docs/getting-started/configuration) — Full configuration reference
+- [Dashboard Operations](/docs/guides/dashboard-operations) — Dashboard usage guide
+- [Reverse Proxy](/docs/guides/reverse-proxy) — Network setup for team access

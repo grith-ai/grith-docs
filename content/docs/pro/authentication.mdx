@@ -1,0 +1,137 @@
+---
+title: "Authentication"
+description: "Device auth, API key auth, token storage, and session management for grith Pro"
+section: "pro"
+order: 2
+tier: "pro"
+lastUpdated: "2026-02-24"
+---
+
+<Badge variant="pro">Pro</Badge>
+
+grith Pro requires authentication to verify your license and enable team features. Two authentication methods are available: device auth (the default, interactive flow) and API key auth (for headless environments like CI).
+
+## Device auth (default)
+
+Device auth is the standard flow for interactive use. It opens your browser, you authenticate on grith.ai, and grith receives a token via device code exchange.
+
+<Terminal command="grith pro login" />
+
+<CodeBlock
+  code={`[grith] Opening browser for authentication...
+[grith] If the browser does not open, visit: https://grith.ai/auth/device
+[grith] Enter code: ABCD-1234
+
+Waiting for authentication...
+
+[grith] Authenticated as dan@example.com
+[grith] License: Pro (25 seats)
+[grith] Expires: 2027-02-24
+[grith] Token stored in system keychain.`}
+  language="text"
+/>
+
+### How device auth works
+
+1. `grith pro login` requests a device code from the grith.ai auth server
+2. grith opens your default browser to `https://grith.ai/auth/device`
+3. You log in (or create an account) and enter the device code displayed in your terminal
+4. The auth server validates the code and issues an access token and refresh token
+5. grith stores both tokens in your OS keychain
+6. Subsequent commands use the access token; when it expires, grith uses the refresh token to obtain a new one transparently
+
+<Callout type="info" title="No password stored locally">
+grith never sees or stores your password. The device auth flow uses OAuth 2.0 Device Authorization Grant (RFC 8628). Only the access and refresh tokens are stored, and they are held in the OS keychain — not in plaintext config files.
+</Callout>
+
+## API key auth
+
+For headless environments — CI pipelines, Docker containers, remote servers — use an API key instead of the interactive device flow.
+
+Generate an API key from the [grith.ai dashboard](https://grith.ai/dashboard/api-keys), then pass it to the login command:
+
+<Terminal command="grith pro login --api-key grith_pro_k_abc123..." />
+
+<CodeBlock
+  code={`[grith] Authenticated via API key.
+[grith] License: Pro (25 seats)
+[grith] Expires: 2027-02-24
+[grith] Token stored in system keychain.`}
+  language="text"
+/>
+
+For CI environments where the keychain is unavailable, set the API key as an environment variable:
+
+<Terminal command="export GRITH_PRO_API_KEY=grith_pro_k_abc123..." />
+
+When `GRITH_PRO_API_KEY` is set, grith uses it directly without checking the keychain.
+
+<Callout type="warning" title="Protect your API keys">
+API keys grant full access to your Pro license. Treat them like passwords. Use environment variables or CI secret stores — never commit them to version control. Rotate keys regularly from the dashboard.
+</Callout>
+
+## Token storage
+
+grith stores authentication tokens in the OS keychain using platform-native APIs:
+
+| Platform | Storage backend |
+|---|---|
+| macOS | Keychain (via Security framework) |
+| Linux | Secret Service API (GNOME Keyring, KDE Wallet, or compatible) |
+| Windows | Windows Credential Manager |
+
+Tokens are stored under the service name `grith-pro` with your email as the account identifier.
+
+If no keychain backend is available (common in minimal Linux environments), grith falls back to an encrypted file at `~/.config/grith/credentials.enc`. The encryption key is derived from your machine ID. This fallback is less secure than the OS keychain; use `GRITH_PRO_API_KEY` in environments where the keychain is unavailable.
+
+## Session management
+
+### Checking status
+
+<Terminal command="grith pro status" />
+
+<CodeBlock
+  code={`Plan:    Pro
+Email:   dan@example.com
+Seats:   4 / 25 used
+Expires: 2027-02-24
+Token:   valid (refreshed 2h ago)
+Sync:    last sync 2026-02-24T12:00:00Z`}
+  language="text"
+/>
+
+### Refreshing tokens
+
+Tokens are refreshed automatically when they expire. If you need to force a refresh (e.g., after a plan change):
+
+<Terminal command="grith pro sync" />
+
+This contacts the license server, refreshes your token, and pulls the latest team policies.
+
+### Logging out
+
+<Terminal command="grith pro logout" />
+
+<CodeBlock
+  code={`[grith] Removing stored credentials...
+[grith] Keychain entry removed.
+[grith] Logged out. Pro features disabled.
+[grith] Falling back to Community tier.`}
+  language="text"
+/>
+
+Logout removes all stored tokens from the keychain and any cached license data. grith reverts to Community tier behaviour immediately. Your local audit data, configuration, and filter tunings are preserved.
+
+<Callout type="tip" title="Logout does not delete data">
+Logging out only removes authentication tokens. Your local configuration, audit history, and analytics database remain intact. If you log back in, everything is restored.
+</Callout>
+
+## Multiple machines
+
+Your Pro license can be active on multiple machines simultaneously (within your seat count). Each machine authenticates independently and receives its own token pair. Revoking access for a specific machine can be done from the [grith.ai dashboard](https://grith.ai/dashboard/devices).
+
+## Next steps
+
+- [License Lifecycle](/docs/pro/license-lifecycle) — Activation, renewal, and expiry behaviour
+- [Team Sync and Policy](/docs/pro/team-sync-and-policy) — What happens after you authenticate
+- [Pro Overview](/docs/pro/overview) — Full feature comparison

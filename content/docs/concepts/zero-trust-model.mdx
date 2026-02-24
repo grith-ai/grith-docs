@@ -36,8 +36,8 @@ If a filter errors, times out, or returns an unexpected result, the call is deni
 Each tool operates within a profile that defines exactly what it can access. A profile for `claude-code` might allow reads in the project directory and writes to specific output paths, while denying access to `~/.ssh`, `~/.aws`, and anything outside the workspace. The tool never receives more permission than the profile grants.
 
 <ConfigExample title="Excerpt from a supervisor profile" code={`[profile.claude-code]
-allow_read = ["${workdir}/**"]
-allow_write = ["${workdir}/src/**", "${workdir}/tests/**"]
+allow_read = ["\${workdir}/**"]
+allow_write = ["\${workdir}/src/**", "\${workdir}/tests/**"]
 deny_read = ["~/.ssh/**", "~/.aws/**", "~/.config/grith/**"]
 deny_network = ["metadata.google.internal", "169.254.169.254"]
 `} />

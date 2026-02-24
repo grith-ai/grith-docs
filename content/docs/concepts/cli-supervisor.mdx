@@ -174,7 +174,7 @@ Behind the scenes:
 
 1. grith spawns `claude-code` under ptrace (Linux) or process monitoring (macOS).
 2. `claude-code` connects to the Anthropic API — grith evaluates the network call, scores it low (expected destination), and allows it.
-3. `claude-code` reads project files — grith evaluates each file open, confirms paths are within `${workdir}`, and allows them.
+3. `claude-code` reads project files — grith evaluates each file open, confirms paths are within the work directory, and allows them.
 4. `claude-code` writes `src/components/SignupForm.tsx` — grith scores the write, confirms the path is allowed, and allows it.
 5. `claude-code` runs `npm test` — grith evaluates the command, confirms it matches the profile's `allow_commands`, and allows it.
 6. `npm test` spawns `node` — grith adds it to the process tree and continues monitoring.

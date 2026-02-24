@@ -1,0 +1,218 @@
+---
+title: "Reporting and Exports"
+description: "Export audit data, analytics summaries, and exfiltration statistics from grith"
+section: "analytics"
+order: 3
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+grith stores all telemetry locally. When you need to share data with external tools, compliance systems, or teammates, you can export it via the CLI or REST API in structured formats.
+
+## Export formats
+
+| Format | Use case |
+|---|---|
+| JSON | Programmatic consumption, piping into `jq`, integration with SIEM tools |
+| CSV | Spreadsheet analysis, importing into BI tools, ad-hoc reporting |
+
+## CLI exports
+
+### Full audit export
+
+Export the complete audit log for a given time range:
+
+<Terminal command="grith audit export --format json --output audit.json" />
+
+<Terminal command="grith audit export --format csv --output audit.csv --since 2026-02-01 --until 2026-02-24" />
+
+Without `--since` and `--until`, the export includes all records within the configured retention window.
+
+The JSON output is a newline-delimited JSON (NDJSON) stream, one record per line. Each record contains:
+
+<CodeBlock
+  code={`{
+  "id": "evt_abc123",
+  "timestamp": "2026-02-24T14:32:01Z",
+  "session_id": "ses_xyz789",
+  "tool_call_type": "fs.write",
+  "arguments": {
+    "path": "src/main.rs",
+    "content_hash": "sha256:a1b2c3..."
+  },
+  "filters": [
+    {"name": "path_traversal", "score": 0.0, "passed": true},
+    {"name": "write_scope", "score": 0.0, "passed": true},
+    {"name": "secrets_scan", "score": 0.0, "passed": true}
+  ],
+  "composite_score": 0.0,
+  "decision": "allow",
+  "project": "my-app",
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-20250514"
+}`}
+  language="json"
+/>
+
+<Callout type="info" title="Content is hashed, not exported">
+File contents in `fs.write` calls are stored as SHA-256 hashes in the audit log, not as plaintext. This prevents the audit export from becoming a data exfiltration vector itself.
+</Callout>
+
+### Filtered exports
+
+Narrow exports to specific criteria:
+
+<Terminal command="grith audit export --format json --decision deny --since 2026-02-01" />
+
+<Terminal command="grith audit export --format csv --filter secrets_scan --output secrets-report.csv" />
+
+<Terminal command="grith audit export --format json --session ses_xyz789" />
+
+Available filters:
+
+| Flag | Description |
+|---|---|
+| `--decision <allow\|queue\|deny>` | Filter by proxy decision |
+| `--filter <filter_name>` | Only include records where this filter triggered |
+| `--session <session_id>` | Export records from a specific session |
+| `--project <project_name>` | Export records from a specific project |
+| `--since <date>` | Start date (ISO 8601) |
+| `--until <date>` | End date (ISO 8601) |
+
+## REST API exports
+
+When the grith server is running, the same data is available via HTTP endpoints.
+
+### Audit export endpoint
+
+<CodeBlock
+  code={`GET /api/audit/export?format=json&since=2026-02-01&until=2026-02-24
+
+# Response: NDJSON stream
+# Content-Type: application/x-ndjson`}
+  language="http"
+/>
+
+Query parameters mirror the CLI flags: `format`, `decision`, `filter`, `session`, `project`, `since`, `until`.
+
+### Exfiltration statistics
+
+A dedicated endpoint for data loss prevention reporting:
+
+<CodeBlock
+  code={`GET /api/audit/exfil-stats
+
+{
+  "period": "2026-02-01/2026-02-24",
+  "canary_triggers": 0,
+  "network_egress_denials": 12,
+  "dns_tunnelling_flags": 0,
+  "high_entropy_flags": 3,
+  "exfil_size_flags": 1,
+  "total_outbound_calls": 847,
+  "exfil_attempt_rate": "1.89%"
+}`}
+  language="json"
+/>
+
+This endpoint aggregates all exfiltration-related filter results into a single summary, useful for security reviews and compliance reporting.
+
+### Analytics summary
+
+A high-level summary of all seven metric categories:
+
+<CodeBlock
+  code={`GET /api/analytics/summary?period=30d
+
+{
+  "period": "30d",
+  "total_sessions": 142,
+  "total_tool_calls": 8934,
+  "decisions": {
+    "allow": 7891,
+    "queue": 734,
+    "deny": 309
+  },
+  "top_filters": [
+    {"name": "write_scope", "trigger_count": 412},
+    {"name": "network_egress", "trigger_count": 287},
+    {"name": "secrets_scan", "trigger_count": 198}
+  ],
+  "cost": {
+    "total_usd": 47.23,
+    "by_provider": {
+      "anthropic": 32.10,
+      "openai": 15.13,
+      "ollama": 0.00
+    }
+  },
+  "quarantine": {
+    "current_depth": 3,
+    "approval_rate": 0.72,
+    "mean_review_time_seconds": 340
+  }
+}`}
+  language="json"
+/>
+
+The `period` parameter accepts `7d`, `30d`, `90d`, `365d`, or custom ISO date ranges.
+
+## Data retention
+
+grith retains telemetry data according to the configured retention window. The default is 90 days.
+
+<ConfigExample
+  title="Retention configuration"
+  code={`[digest]
+retention_days = 90             # default: 90 days
+# retention_days = 365          # one year
+# retention_days = 3650         # ten years (enterprise compliance)`}
+/>
+
+Data older than the retention window is pruned on startup. To preserve data beyond the retention window, export it before pruning occurs.
+
+<Callout type="warning" title="Retention and compliance">
+If you operate under a compliance framework that requires long-term audit retention (SOC 2, HIPAA, PCI-DSS), set `retention_days` accordingly. See [Compliance Mapping](/docs/analytics/compliance-mapping) for framework-specific retention requirements.
+</Callout>
+
+## Piping to external tools
+
+Exports are designed to integrate with standard Unix tools and observability platforms:
+
+<Tabs items={["jq", "Splunk", "Elasticsearch"]} storageKey="export-integration">
+<div>
+
+<Terminal command="grith audit export --format json | jq '.filters[] | select(.score > 0)'" />
+
+Filter for tool calls where any filter contributed a non-zero score.
+
+</div>
+<div>
+
+<Terminal command="grith audit export --format json | /opt/splunkforwarder/bin/splunk add oneshot -sourcetype grith_audit" />
+
+Ingest audit records into Splunk as a one-shot input.
+
+</div>
+<div>
+
+<CodeBlock
+  code={`grith audit export --format json | \\
+  while IFS= read -r line; do
+    curl -s -X POST "http://localhost:9200/grith-audit/_doc" \\
+      -H "Content-Type: application/json" \\
+      -d "$line"
+  done`}
+  language="bash"
+/>
+
+Stream audit records into Elasticsearch one document at a time.
+
+</div>
+</Tabs>
+
+## Next steps
+
+- [Analytics Overview](/docs/analytics/overview) — The seven metric categories
+- [Compliance Mapping](/docs/analytics/compliance-mapping) — Map exports to compliance frameworks
+- [CLI Reference](/docs/reference/cli) — Full `grith audit` command reference

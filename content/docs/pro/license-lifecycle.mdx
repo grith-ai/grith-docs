@@ -1,0 +1,148 @@
+---
+title: "License Lifecycle"
+description: "License activation, validation, renewal, grace periods, and expiry behaviour in grith Pro"
+section: "pro"
+order: 3
+tier: "pro"
+lastUpdated: "2026-02-24"
+---
+
+<Badge variant="pro">Pro</Badge>
+
+grith Pro licenses are validated locally and refreshed periodically from the license server. This page covers the full lifecycle: activation, ongoing validation, offline grace periods, renewal, and expiry.
+
+## Activation
+
+After authenticating with `grith pro login`, activate your license:
+
+<Terminal command="grith pro activate" />
+
+<CodeBlock
+  code={`[grith] Validating license with server...
+[grith] License activated.
+[grith] Plan: Pro (25 seats)
+[grith] Valid until: 2027-02-24
+[grith] License file written to ~/.config/grith/license.json`}
+  language="text"
+/>
+
+If you received a license key directly (e.g., from a sales order), activate it by passing the key:
+
+<Terminal command="grith pro activate GRITH-PRO-XXXX-XXXX-XXXX" />
+
+The license file at `~/.config/grith/license.json` contains a signed JWT with your plan details, seat count, and expiry date. grith validates this file on every startup.
+
+<Callout type="info" title="License file structure">
+The license file is a signed JSON Web Token. It cannot be modified without invalidating the signature. grith verifies the signature using a public key embedded in the binary.
+</Callout>
+
+## Validation on startup
+
+Every time grith starts, it validates the local license:
+
+1. **Check file exists** — `~/.config/grith/license.json` must be present
+2. **Verify signature** — the JWT signature is checked against the embedded public key
+3. **Check expiry** — the `exp` claim must be in the future
+4. **Check grace period** — if the license is expired, a grace period may apply (see below)
+
+If validation passes, Pro features are available. If validation fails, grith falls back to Community tier with a warning message.
+
+<CodeBlock
+  code={`[grith] License validation failed: expired 3 days ago.
+[grith] Grace period active: 7 days remaining.
+[grith] Pro features are available during the grace period.
+[grith] Run 'grith pro sync' to renew.`}
+  language="text"
+/>
+
+## License refresh
+
+grith refreshes the license automatically during `grith pro sync`:
+
+<Terminal command="grith pro sync" />
+
+The sync command contacts the license server, validates your subscription status, and downloads a fresh license file if your subscription is active. This also pulls the latest team policies.
+
+Automatic refresh occurs:
+
+- On `grith pro sync` (explicit)
+- On `grith pro login` (during authentication)
+- On startup, if the license will expire within 7 days and the server is reachable
+
+<Callout type="tip" title="Sync regularly">
+Run `grith pro sync` at least once per week to keep your license fresh and pull the latest team policies. In a CI environment, add it to your setup step.
+</Callout>
+
+## Offline grace period
+
+grith is designed to work offline. When the license server is unreachable, grith uses the locally cached license file. If the license expires while offline, a grace period applies:
+
+| Situation | Grace period | Behaviour |
+|---|---|---|
+| License expired, server reachable | None — renews immediately if subscription is active | Pro features continue |
+| License expired, server unreachable | 14 days | Pro features continue with a warning |
+| Grace period expired, server unreachable | None | Falls back to Community tier |
+| License revoked by admin | None | Immediately falls back to Community tier |
+
+During the grace period, grith shows a warning on every command:
+
+<CodeBlock
+  code={`[grith] WARNING: License expired. Grace period: 11 days remaining.
+[grith] Connect to the internet and run 'grith pro sync' to renew.`}
+  language="text"
+/>
+
+After the grace period expires, grith falls back to Community tier. No data is lost — your local configuration, audit history, and filter tunings are preserved. Pro-only features (team dashboard, centralised policies, shared configs) become unavailable until the license is renewed.
+
+## Expiry behaviour
+
+When a Pro license expires and the grace period is exhausted, grith degrades gracefully:
+
+| Feature | Behaviour after expiry |
+|---|---|
+| Security proxy | Continues with local configuration (Community tier) |
+| All 17+ filters | Continue working with local weights |
+| Quarantine queue | Continues locally |
+| Audit log | Continues locally |
+| Local dashboard | Continues at localhost:3141 |
+| Team dashboard | Unavailable |
+| Centralised policies | Last-synced policies remain active, no new updates |
+| Shared filter configs | Last-synced configs remain, cannot pull new ones |
+| Team sync | `grith pro sync` attempts renewal; fails if subscription lapsed |
+| Usage analytics (team) | Unavailable |
+
+<Callout type="warning" title="Last-synced policies persist">
+If your team admin pushed a strict policy before the license expired, that policy remains active on your machine even after fallback to Community tier. This is by design — security policies should not silently weaken when a billing issue occurs. Override manually with `grith config set` if needed.
+</Callout>
+
+## Billing management
+
+<Terminal command="grith pro billing" />
+
+This opens the billing portal in your browser where you can:
+
+- Update payment method
+- Switch between monthly and annual billing
+- View invoices and payment history
+- Cancel or downgrade your subscription
+- Add or remove seats
+
+## License file location
+
+The license file is stored at:
+
+| Platform | Path |
+|---|---|
+| Linux | `~/.config/grith/license.json` |
+| macOS | `~/.config/grith/license.json` |
+| Windows | `%APPDATA%\grith\license.json` |
+
+<Callout type="danger" title="Do not share your license file">
+The license file is tied to your account and contains a signed JWT. Sharing it with others does not grant them Pro access (the signature is validated against the account), but it does expose your account metadata. Treat it as confidential.
+</Callout>
+
+## Next steps
+
+- [Authentication](/docs/pro/authentication) — Authentication methods and token storage
+- [Team Sync and Policy](/docs/pro/team-sync-and-policy) — What sync uploads and downloads
+- [Pro Overview](/docs/pro/overview) — Full feature comparison
