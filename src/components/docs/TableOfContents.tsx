@@ -45,7 +45,7 @@ export default function TableOfContents({ headings }: { headings: TocItem[] }) {
               href={`#${h.id}`}
               className={`block border-l-2 py-1 text-sm transition-colors ${h.level === 3 ? 'pl-6' : 'pl-4'} ${
                 activeId === h.id
-                  ? 'border-green text-green'
+                  ? 'border-green font-medium text-green-dark'
                   : 'border-transparent text-text-dim hover:text-text-secondary'
               }`}
             >

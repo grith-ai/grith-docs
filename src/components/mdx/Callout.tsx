@@ -8,26 +8,26 @@ interface CalloutProps {
 
 const styles: Record<CalloutType, { border: string; bg: string; icon: string; title: string }> = {
   tip: {
-    border: 'border-green/30',
-    bg: 'bg-green-dim',
+    border: 'border-green-border',
+    bg: 'bg-green-light',
     icon: '💡',
-    title: 'text-green',
+    title: 'text-green-dark',
   },
   info: {
-    border: 'border-info/30',
-    bg: 'bg-info-dim',
+    border: 'border-info-border',
+    bg: 'bg-info-light',
     icon: 'ℹ️',
     title: 'text-info',
   },
   warning: {
-    border: 'border-warning/30',
-    bg: 'bg-warning-dim',
+    border: 'border-warning-border',
+    bg: 'bg-warning-light',
     icon: '⚠️',
     title: 'text-warning',
   },
   danger: {
-    border: 'border-danger/30',
-    bg: 'bg-danger-dim',
+    border: 'border-danger-border',
+    bg: 'bg-danger-light',
     icon: '🚨',
     title: 'text-danger',
   },

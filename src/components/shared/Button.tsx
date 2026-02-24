@@ -15,9 +15,9 @@ interface ButtonProps {
 }
 
 const variantStyles: Record<Variant, string> = {
-  primary: 'bg-green text-bg font-semibold hover:bg-green-dark',
+  primary: 'bg-text text-bg font-semibold hover:opacity-85',
   secondary: 'border border-border bg-surface text-text font-medium hover:bg-surface-2',
-  ghost: 'text-text-secondary hover:text-text hover:bg-surface-2',
+  ghost: 'text-text-secondary hover:text-text hover:bg-surface',
 };
 
 const sizeStyles: Record<Size, string> = {
@@ -34,7 +34,7 @@ export default function Button({
   className = '',
   onClick,
 }: ButtonProps) {
-  const styles = `inline-flex items-center justify-center transition-colors ${variantStyles[variant]} ${sizeStyles[size]} ${className}`;
+  const styles = `inline-flex items-center justify-center transition-all ${variantStyles[variant]} ${sizeStyles[size]} ${className}`;
 
   if (href) {
     return (

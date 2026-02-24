@@ -37,7 +37,7 @@ export default function Tabs({ items, children, storageKey }: TabsProps) {
             onClick={() => select(i)}
             className={`border-b-2 px-4 py-2 text-sm transition-colors ${
               active === i
-                ? 'border-green text-green'
+                ? 'border-green font-medium text-green-dark'
                 : 'border-transparent text-text-dim hover:text-text-secondary'
             }`}
           >

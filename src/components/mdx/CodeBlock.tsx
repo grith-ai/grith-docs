@@ -25,15 +25,15 @@ export default function CodeBlock({
 
   return (
     <div
-      className={`my-6 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_4px_20px_rgba(0,0,0,0.3)] ${className}`}
+      className={`my-6 overflow-hidden rounded-xl border border-terminal-border bg-terminal-bg shadow-[0_4px_20px_rgba(0,0,0,0.15)] ${className}`}
     >
-      <div className="flex items-center justify-between border-b border-border bg-surface-2 px-4 py-2">
-        <span className="font-label text-[10px] uppercase tracking-[0.12em] text-text-dim">
+      <div className="flex items-center justify-between border-b border-terminal-border bg-[#161b22] px-4 py-2">
+        <span className="font-label text-[10px] uppercase tracking-[0.12em] text-terminal-muted">
           {title || language}
         </span>
         <button
           onClick={copyToClipboard}
-          className="rounded-md p-1.5 text-text-dim transition-colors hover:text-text"
+          className="rounded-md p-1.5 text-terminal-muted transition-colors hover:text-terminal-text"
           aria-label="Copy code"
         >
           {copied ? (
@@ -49,7 +49,7 @@ export default function CodeBlock({
         </button>
       </div>
       <pre className="overflow-x-auto p-4">
-        <code className="font-code text-sm leading-relaxed text-text">{code}</code>
+        <code className="font-code text-sm leading-relaxed text-terminal-text">{code}</code>
       </pre>
     </div>
   );

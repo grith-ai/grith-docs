@@ -23,21 +23,21 @@ export default function Terminal({ command, children, title = 'terminal', classN
 
   return (
     <div
-      className={`my-6 overflow-hidden rounded-xl border border-border bg-surface shadow-[0_4px_20px_rgba(0,0,0,0.3)] ${className}`}
+      className={`my-6 overflow-hidden rounded-xl border border-terminal-border bg-terminal-bg shadow-[0_4px_20px_rgba(0,0,0,0.15)] ${className}`}
     >
-      <div className="flex items-center gap-1.5 border-b border-border bg-surface-2 px-4 py-2.5">
+      <div className="flex items-center gap-1.5 border-b border-terminal-border bg-[#161b22] px-4 py-2.5">
         <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
         <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
         <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-        <span className="ml-2 font-label text-[10px] uppercase tracking-[0.12em] text-text-dim">
+        <span className="ml-2 font-label text-[10px] uppercase tracking-[0.12em] text-terminal-muted">
           {title}
         </span>
       </div>
       <div className="flex items-start justify-between px-4 py-3">
-        <pre className="flex-1 overflow-x-auto font-code text-sm text-text">
+        <pre className="flex-1 overflow-x-auto font-code text-sm text-terminal-text">
           {command ? (
             <code>
-              <span className="text-green">$</span> {command}
+              <span className="text-[#7ee787]">$</span> {command}
             </code>
           ) : (
             <code>{children}</code>
@@ -46,7 +46,7 @@ export default function Terminal({ command, children, title = 'terminal', classN
         {copyText && (
           <button
             onClick={copyToClipboard}
-            className="ml-4 shrink-0 rounded-md p-1.5 text-text-dim transition-colors hover:text-text"
+            className="ml-4 shrink-0 rounded-md p-1.5 text-terminal-muted transition-colors hover:text-terminal-text"
             aria-label="Copy command"
           >
             {copied ? (

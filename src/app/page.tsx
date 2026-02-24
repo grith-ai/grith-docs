@@ -52,7 +52,8 @@ export default function Home() {
         <div className="mx-auto max-w-4xl px-6 py-20">
           <div className="mb-16 text-center">
             <h1 className="font-heading text-5xl font-extrabold tracking-tight text-text">
-              grith <span className="text-green">docs</span>
+              grith<span className="text-green">.ai</span>{' '}
+              <span className="text-text-secondary font-bold">docs</span>
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-text-secondary">
               Documentation for grith — the security-first local AI agent platform. Everything you
@@ -82,15 +83,15 @@ export default function Home() {
 
           <div className="mt-16 rounded-xl border border-border bg-surface p-8 text-center">
             <h2 className="font-heading text-xl font-bold text-text">Quick install</h2>
-            <div className="mx-auto mt-4 max-w-md overflow-hidden rounded-lg border border-border bg-bg">
-              <div className="flex items-center gap-1.5 border-b border-border bg-surface-2 px-4 py-2">
+            <div className="mx-auto mt-4 max-w-md overflow-hidden rounded-lg border border-terminal-border bg-terminal-bg">
+              <div className="flex items-center gap-1.5 border-b border-terminal-border bg-[#161b22] px-4 py-2">
                 <span className="h-2 w-2 rounded-full bg-[#ff5f57]" />
                 <span className="h-2 w-2 rounded-full bg-[#febc2e]" />
                 <span className="h-2 w-2 rounded-full bg-[#28c840]" />
               </div>
               <div className="px-4 py-3">
-                <code className="font-code text-sm text-text">
-                  <span className="text-green">$</span> curl -fsSL https://grith.ai/install | sh
+                <code className="font-code text-sm text-terminal-text">
+                  <span className="text-[#7ee787]">$</span> curl -fsSL https://grith.ai/install | sh
                 </code>
               </div>
             </div>

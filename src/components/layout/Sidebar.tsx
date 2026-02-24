@@ -64,7 +64,7 @@ export default function Sidebar({
                     onClick={onClose}
                     className={`flex items-center gap-2 border-l-2 px-4 py-1.5 text-sm transition-colors ${
                       isActive(doc.slug)
-                        ? 'border-green text-green'
+                        ? 'border-green bg-green-light font-medium text-green-dark'
                         : 'border-transparent text-text-secondary hover:border-border hover:text-text'
                     }`}
                   >
@@ -85,9 +85,12 @@ export default function Sidebar({
     <>
       {/* Mobile overlay */}
       {open && (
-        <div className="fixed inset-0 z-40 bg-bg/80 backdrop-blur-sm lg:hidden" onClick={onClose}>
+        <div
+          className="fixed inset-0 z-40 bg-text/20 backdrop-blur-sm lg:hidden"
+          onClick={onClose}
+        >
           <aside
-            className="h-full w-[280px] overflow-y-auto border-r border-border bg-surface"
+            className="h-full w-[280px] overflow-y-auto border-r border-border bg-bg"
             onClick={(e) => e.stopPropagation()}
           >
             {nav}
@@ -96,8 +99,8 @@ export default function Sidebar({
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-[260px] shrink-0 overflow-y-auto border-r border-border bg-surface lg:block">
-        <div className="sticky top-14 max-h-[calc(100vh-3.5rem)] overflow-y-auto">{nav}</div>
+      <aside className="hidden w-[260px] shrink-0 overflow-y-auto border-r border-border bg-bg lg:block">
+        <div className="sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto">{nav}</div>
       </aside>
     </>
   );

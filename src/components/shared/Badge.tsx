@@ -7,11 +7,11 @@ interface BadgeProps {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  community: 'bg-green-dim text-green border-green/20',
-  pro: 'bg-info-dim text-info border-info/20',
-  enterprise: 'bg-[rgba(167,139,250,0.15)] text-purple border-purple/20',
-  roadmap: 'bg-warning-dim text-warning border-warning/20',
-  info: 'bg-surface-2 text-text-secondary border-border',
+  community: 'bg-green-light text-green-dark border-green-border',
+  pro: 'bg-info-light text-info border-info-border',
+  enterprise: 'bg-purple-light text-purple border-purple/20',
+  roadmap: 'bg-warning-light text-warning border-warning-border',
+  info: 'bg-surface text-text-secondary border-border',
 };
 
 export default function Badge({ variant, children, className = '' }: BadgeProps) {
