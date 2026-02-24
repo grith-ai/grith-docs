@@ -1,0 +1,96 @@
+---
+title: "Architecture"
+description: "System architecture, crate layout, and dual execution paths with enforcement convergence"
+section: "concepts"
+order: 1
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+grith is a Rust monorepo that intercepts every system call from AI agents and evaluates them against 17+ security filters before execution. This page covers how the pieces fit together.
+
+## Crate layout
+
+The core project is split into four crates, each with a single responsibility:
+
+| Crate | Role |
+|---|---|
+| `grith-core` | CLI entry point, configuration loading, command dispatch |
+| `grith-proxy` | Multi-filter security proxy — the scoring engine that decides ALLOW, QUEUE, or DENY |
+| `grith-server` | HTTP and WebSocket server powering the dashboard at `localhost:3141` |
+| `grith-supervisor` | OS-level syscall interception via ptrace, seccomp-BPF, and process lifecycle management |
+
+<Callout type="info" title="Three-repo architecture">
+grith ships as three repositories. **grith** is the Rust daemon (the product). **grith-docs** is the documentation site at `docs.grith.ai`. **grith-website** is the marketing site at `grith.ai`. The docs site and marketing site share a design system and tech stack (Next.js, Tailwind, TypeScript) but deploy independently.
+</Callout>
+
+## Dual execution paths
+
+grith secures AI agents through two distinct execution paths. Both paths converge on the same security proxy, which means every tool call — regardless of origin — is evaluated by the same filters, the same scoring engine, and the same audit log.
+
+### Path 1: Built-in agent
+
+When you use grith as your AI agent directly, tool calls flow through an internal pipeline:
+
+```
+User → CLI → LLM Router → Tool Call Dispatcher → Security Proxy
+```
+
+The LLM Router selects the configured provider (Ollama, OpenAI, Anthropic, etc.), sends the prompt, and receives tool call requests back. The Tool Call Dispatcher translates those requests into typed `ToolCallType` values and hands them to the security proxy for evaluation.
+
+### Path 2: CLI Supervisor
+
+When you wrap an external tool with `grith exec`, syscall interception takes over:
+
+```
+grith exec → spawn tool → syscall interception → convert to ToolCallType → Security Proxy
+```
+
+The supervisor spawns the target process under ptrace (Linux) or process lifecycle monitoring (macOS), intercepts every file, network, and process syscall, converts each into the same `ToolCallType` used by the built-in agent, and routes it through the security proxy.
+
+<Callout type="tip" title="Enforcement convergence">
+Both paths share the same filters, the same scoring thresholds, the same audit log, the same digest system, and the same adaptive learning. This is what we call enforcement convergence — there is exactly one security boundary, regardless of how a tool call originates.
+</Callout>
+
+## Security proxy pipeline
+
+The security proxy evaluates every tool call through a four-phase filter pipeline:
+
+```
+Static filters (parallel)
+    ↓
+Pattern filters (parallel)
+    ↓
+Context filters (parallel)
+    ↓
+Score aggregation → ALLOW / QUEUE / DENY
+```
+
+Within each phase, filters run in parallel for performance. Between phases, scores accumulate. If the auto-deny threshold is exceeded at any point, remaining phases are skipped and the call is blocked immediately.
+
+The result is a weighted composite score that determines the outcome:
+
+| Score range | Decision | Typical frequency |
+|---|---|---|
+| < 3.0 | ALLOW — auto-execute | 80–90% of calls |
+| 3.0–8.0 | QUEUE — quarantine for human review | 5–15% of calls |
+| > 8.0 | DENY — block immediately | 1–5% of calls |
+
+See [Scoring Proxy](/docs/concepts/scoring-proxy) for the full breakdown of filters, phases, and scoring mechanics.
+
+## Data flow
+
+Every tool call that passes through the security proxy generates an audit record. These records feed into several downstream systems:
+
+- **Audit log** — append-only, tamper-evident log of every call, filter result, score, and decision
+- **Quarantine digest** — batched summary of QUEUE decisions for periodic human review
+- **Adaptive learning** — user feedback on digest items adjusts filter weights over time
+- **Dashboard** — real-time WebSocket feed of calls, scores, and decisions at `localhost:3141`
+
+This means a single tool call produces a complete chain of evidence: what was requested, which filters fired, what score was assigned, what decision was made, and (for queued calls) what the human reviewer decided.
+
+## Next steps
+
+- [Zero-Trust Model](/docs/concepts/zero-trust-model) — The security principles behind every design decision
+- [Scoring Proxy](/docs/concepts/scoring-proxy) — Deep dive into the filter pipeline and scoring mechanics
+- [CLI Supervisor](/docs/concepts/cli-supervisor) — How `grith exec` wraps any external tool

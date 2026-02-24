@@ -1,0 +1,345 @@
+---
+title: "Configuration Reference"
+description: "Complete reference for all grith configuration options in config.toml"
+section: "reference"
+order: 2
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+grith is configured via a TOML file at `~/.config/grith/config.toml`. You can generate a default configuration with `grith init` and modify it with `grith config set` or by editing the file directly.
+
+<Terminal command="grith init" />
+
+The configuration is organised into sections that map to grith's major subsystems: general settings, LLM providers, the scoring proxy, adaptive learning, the digest queue, the API server, the supervisor, and notifications.
+
+<Callout type="info" title="Secret management">
+Any configuration value that holds a secret (API key, webhook URL, token) supports the `*_env` pattern. Instead of placing the secret directly in the config file, set the value to the name of an environment variable. For example, `api_key_env = "OPENAI_API_KEY"` tells grith to read the key from `$OPENAI_API_KEY` at runtime. This keeps secrets out of version-controlled files.
+</Callout>
+
+## [general]
+
+Top-level settings that apply globally.
+
+<ConfigExample title="General settings" code={`[general]
+project = "my-project"
+log_level = "info"          # trace | debug | info | warn | error
+data_dir = "~/.local/share/grith"`} />
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `project` | String | `""` | Active project context. Scopes audit logs and adaptive learning data. |
+| `log_level` | Enum | `"info"` | Logging verbosity. One of `trace`, `debug`, `info`, `warn`, `error`. |
+| `data_dir` | Path | `~/.local/share/grith` | Directory for audit logs, adaptive weights, and canary data. |
+
+## [llm]
+
+Configure LLM providers for agent tasks. grith supports multiple providers and lets you switch between them without changing your workflow.
+
+<ConfigExample title="LLM provider configuration" code={`[llm]
+default_provider = "ollama"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+model = "llama3.2"
+
+[llm.openai]
+base_url = "https://api.openai.com/v1"
+model = "gpt-4o"
+api_key_env = "OPENAI_API_KEY"
+
+[llm.anthropic]
+base_url = "https://api.anthropic.com"
+model = "claude-sonnet-4-20250514"
+api_key_env = "ANTHROPIC_API_KEY"`} />
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `default_provider` | String | `"ollama"` | Which provider block to use by default. |
+
+Each provider sub-block supports:
+
+| Key | Type | Description |
+|---|---|---|
+| `base_url` | URL | API endpoint for the provider. |
+| `model` | String | Model identifier. |
+| `api_key_env` | String | Environment variable holding the API key. |
+
+<Callout type="tip" title="Local-first by default">
+grith defaults to Ollama so that your data never leaves your machine. You can configure cloud providers for tasks that require larger models, and grith will apply the same security controls regardless of provider.
+</Callout>
+
+## [proxy]
+
+Configure the scoring proxy that evaluates every tool call.
+
+<ConfigExample title="Proxy configuration" code={`[proxy]
+listen_addr = "127.0.0.1:3142"
+auto_allow_threshold = 3.0
+auto_deny_threshold = 8.0
+cold_start_calls = 200`} />
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `listen_addr` | Address | `"127.0.0.1:3142"` | Address the proxy listens on. |
+| `auto_allow_threshold` | Float | `3.0` | Tool calls scoring below this are automatically allowed. |
+| `auto_deny_threshold` | Float | `8.0` | Tool calls scoring above this are automatically denied. |
+| `cold_start_calls` | Integer | `200` | Number of initial calls during which thresholds are widened (QUEUE zone: 2.0-10.0). |
+
+### [proxy.filters.*]
+
+Per-filter configuration overrides. Each filter can be enabled/disabled and have its weight adjusted.
+
+<ConfigExample title="Per-filter overrides" code={`[proxy.filters.secret_scan]
+enabled = true
+weight = 1.5
+
+[proxy.filters.path_match]
+enabled = true
+weight = 1.0
+sensitive_paths = [
+  "/etc/shadow",
+  "/etc/passwd",
+  "~/.ssh/",
+  "~/.aws/credentials",
+]
+
+[proxy.filters.egress_policy]
+enabled = true
+allowed_domains = ["api.openai.com", "api.anthropic.com"]
+denied_domains = ["*.pastebin.com"]`} />
+
+See [Filters Reference](/docs/reference/filters) for the full list of filters and their configuration options.
+
+## [adaptive]
+
+Control the adaptive learning system that adjusts filter weights based on your approve/deny feedback.
+
+<ConfigExample title="Adaptive learning" code={`[adaptive]
+enabled = true
+learning_rate = 0.01
+feedback_window = "7d"`} />
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | Boolean | `true` | Enable adaptive weight adjustment. |
+| `learning_rate` | Float | `0.01` | How aggressively weights shift in response to feedback. Lower values are more conservative. |
+| `feedback_window` | Duration | `"7d"` | Time window of feedback to consider when computing weight adjustments. |
+
+## [digest]
+
+Configure the digest queue where QUEUE-zone tool calls are held for review.
+
+<ConfigExample title="Digest configuration" code={`[digest]
+mode = "cli"
+batch_interval = "5m"
+max_queue_size = 1000`} />
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `mode` | Enum | `"cli"` | Review interface: `cli` for terminal review, `dashboard` for web UI. |
+| `batch_interval` | Duration | `"5m"` | How often to batch pending items for review notification. |
+| `max_queue_size` | Integer | `1000` | Maximum number of items in the queue before oldest items are auto-denied. |
+
+## [server]
+
+Configure the API and dashboard server.
+
+<ConfigExample title="Server configuration" code={`[server]
+listen_addr = "127.0.0.1"
+port = 3141
+cors_origins = ["http://localhost:3000"]
+
+[server.tls]
+cert_path = "/path/to/cert.pem"
+key_path = "/path/to/key.pem"
+
+[server.rate_limit]
+requests_per_minute = 120
+burst = 20`} />
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `listen_addr` | Address | `"127.0.0.1"` | Address the server binds to. |
+| `port` | Integer | `3141` | Port for the API and dashboard. |
+| `cors_origins` | Array | `[]` | Allowed CORS origins. |
+
+### [server.tls]
+
+| Key | Type | Description |
+|---|---|---|
+| `cert_path` | Path | Path to the TLS certificate file. |
+| `key_path` | Path | Path to the TLS private key file. |
+
+### [server.rate_limit]
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `requests_per_minute` | Integer | `120` | Maximum requests per minute per client. |
+| `burst` | Integer | `20` | Burst allowance above the per-minute rate. |
+
+<Callout type="warning" title="Bind address">
+The server defaults to `127.0.0.1` (localhost only). If you need remote access, see the [Reverse Proxy guide](/docs/guides/reverse-proxy) rather than binding to `0.0.0.0` directly.
+</Callout>
+
+## [supervisor]
+
+Configure the syscall-level supervisor for `grith exec`.
+
+<ConfigExample title="Supervisor configuration" code={`[supervisor]
+default_profile = "generic"
+
+[supervisor.platform.linux]
+ptrace_mode = "seccomp-bpf"
+
+[supervisor.noise_reduction]
+ignore_patterns = [
+  "futex",
+  "clock_gettime",
+  "epoll_wait",
+]`} />
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `default_profile` | String | `"generic"` | Supervisor profile applied when `--profile` is not specified. |
+
+### [supervisor.platform.linux]
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `ptrace_mode` | Enum | `"seccomp-bpf"` | Syscall interception mode. `seccomp-bpf` is recommended for performance. |
+
+### [supervisor.noise_reduction]
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `ignore_patterns` | Array | See default config | Syscall names to ignore for noise reduction. High-frequency harmless syscalls like `futex` and `clock_gettime` are filtered by default. |
+
+See [Supervisor Profiles](/docs/reference/supervisor-profiles) for profile configuration.
+
+## [notifications]
+
+Configure notification channels for security alerts. Supports multiple channels with severity-based routing.
+
+<ConfigExample title="Notifications overview" code={`[notifications]
+enabled = true
+default_channel = "desktop"
+
+[notifications.desktop]
+enabled = true
+
+[notifications.slack]
+enabled = true
+webhook_url_env = "GRITH_SLACK_WEBHOOK"
+channel = "#security-alerts"
+
+[notifications.email]
+enabled = true
+smtp_host = "smtp.example.com"
+smtp_port = 587
+from = "grith@example.com"
+to = ["security-team@example.com"]
+username_env = "SMTP_USER"
+password_env = "SMTP_PASS"`} />
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | Boolean | `true` | Master switch for all notifications. |
+| `default_channel` | String | `"desktop"` | Channel used when no routing rule matches. |
+
+### Channel blocks
+
+Each channel is configured as a sub-block under `[notifications]`. Available channels:
+
+| Channel | Key fields |
+|---|---|
+| `desktop` | `enabled` |
+| `email` | `enabled`, `smtp_host`, `smtp_port`, `from`, `to`, `username_env`, `password_env` |
+| `slack` | `enabled`, `webhook_url_env`, `channel` |
+| `telegram` | `enabled`, `bot_token_env`, `chat_id` |
+| `discord` | `enabled`, `webhook_url_env` |
+| `whatsapp` | `enabled`, `api_key_env`, `phone_number` |
+| `teams` | `enabled`, `webhook_url_env` |
+| `pagerduty` | `enabled`, `routing_key_env`, `severity_map` |
+| `opsgenie` | `enabled`, `api_key_env`, `team` |
+| `webhook` | `enabled`, `url_env`, `headers`, `method` |
+
+### [notifications.routing]
+
+Route notifications to different channels based on severity.
+
+<ConfigExample title="Severity-based routing" code={`[notifications.routing]
+critical = ["pagerduty", "slack", "email"]
+high = ["slack", "email"]
+medium = ["slack"]
+low = ["desktop"]`} />
+
+### [notifications.rate_limits]
+
+<ConfigExample title="Rate limits" code={`[notifications.rate_limits]
+max_per_minute = 10
+max_per_hour = 100
+cooldown = "30s"`} />
+
+### [notifications.escalation]
+
+<ConfigExample title="Escalation chain" code={`[notifications.escalation]
+enabled = true
+timeout = "15m"
+chain = ["slack", "email", "pagerduty"]`} />
+
+When a critical notification is not acknowledged within the timeout, grith escalates to the next channel in the chain.
+
+See [Notifications](/docs/reference/notifications) for a detailed guide on setting up each channel.
+
+## Full example
+
+A complete configuration file with all sections:
+
+<ConfigExample title="~/.config/grith/config.toml" code={`[general]
+project = "my-project"
+log_level = "info"
+data_dir = "~/.local/share/grith"
+
+[llm]
+default_provider = "ollama"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+model = "llama3.2"
+
+[proxy]
+listen_addr = "127.0.0.1:3142"
+auto_allow_threshold = 3.0
+auto_deny_threshold = 8.0
+cold_start_calls = 200
+
+[adaptive]
+enabled = true
+learning_rate = 0.01
+feedback_window = "7d"
+
+[digest]
+mode = "cli"
+batch_interval = "5m"
+max_queue_size = 1000
+
+[server]
+listen_addr = "127.0.0.1"
+port = 3141
+
+[server.rate_limit]
+requests_per_minute = 120
+burst = 20
+
+[supervisor]
+default_profile = "generic"
+
+[notifications]
+enabled = true
+default_channel = "desktop"
+
+[notifications.desktop]
+enabled = true`} />

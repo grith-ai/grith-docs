@@ -1,0 +1,236 @@
+---
+title: "LLM Providers"
+description: "Connect grith to Ollama, OpenAI, Anthropic, Google, or any OpenAI-compatible API"
+section: "getting-started"
+order: 4
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## How providers work
+
+grith's built-in agent needs an LLM to reason about tasks. You configure one or more providers in your `config.toml` and tell grith which one to use by default. The provider handles inference; grith handles security.
+
+<Callout type="info" title="BYOK model">
+grith never stores API keys. It reads them from environment variables at runtime. Your keys stay in your shell session or secrets manager — never on disk, never in logs.
+</Callout>
+
+Set the default provider with:
+
+<Terminal command="grith config set llm.default_provider ollama" />
+
+Or override it per invocation:
+
+<Terminal command='grith run --provider openai "summarise this codebase"' />
+
+## Ollama (default)
+
+Ollama runs models locally on your machine. No API keys, no network calls, no data leaving your hardware. This is the default provider.
+
+### Setup
+
+Install Ollama from [ollama.com](https://ollama.com) and pull a model:
+
+<Terminal command="ollama pull llama3.1:8b" />
+
+### Configuration
+
+<ConfigExample
+  title="Ollama provider"
+  code={`[llm]
+default_provider = "ollama"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+model = "llama3.1:8b"`}
+/>
+
+### Recommended models
+
+| Model | Parameters | Use case |
+|---|---|---|
+| `llama3.1:8b` | 8B | Fast general-purpose tasks, good for most workflows |
+| `llama3.1:70b` | 70B | Complex reasoning, larger codebases |
+| `codellama:34b` | 34B | Code-focused tasks |
+| `deepseek-coder-v2:16b` | 16B | Code generation and analysis |
+
+<Callout type="tip" title="GPU acceleration">
+Ollama automatically uses GPU acceleration when available. For the 70B model, you need at least 48GB VRAM. The 8B model runs comfortably on 8GB VRAM or Apple Silicon with 16GB unified memory.
+</Callout>
+
+## OpenAI
+
+Connect to OpenAI's API or any OpenAI-compatible endpoint.
+
+### Setup
+
+Set your API key as an environment variable. Add this to your shell profile (`.bashrc`, `.zshrc`, etc.) so it persists across sessions:
+
+<Terminal command="export OPENAI_API_KEY=sk-..." />
+
+Then configure grith:
+
+<Terminal command="grith config set llm.default_provider openai" />
+
+### Configuration
+
+<ConfigExample
+  title="OpenAI provider"
+  code={`[llm]
+default_provider = "openai"
+
+[llm.openai]
+api_key_env = "OPENAI_API_KEY"
+model = "gpt-4o"
+base_url = "https://api.openai.com/v1"   # default, can be omitted
+max_tokens = 4096
+temperature = 0.0`}
+/>
+
+<Callout type="warning" title="API key security">
+Never put your API key directly in `config.toml`. Use the `api_key_env` field to reference an environment variable. grith reads the variable at runtime and never writes it to disk.
+</Callout>
+
+### Compatible APIs
+
+Any API that implements the OpenAI chat completions format works with the OpenAI provider. Point `base_url` at your endpoint:
+
+<ConfigExample
+  title="OpenAI-compatible endpoint"
+  code={`[llm.openai]
+api_key_env = "CUSTOM_API_KEY"
+model = "your-model-name"
+base_url = "https://your-api.example.com/v1"`}
+/>
+
+This works with providers like Azure OpenAI, Together AI, Anyscale, Fireworks, and self-hosted vLLM or TGI instances.
+
+## Anthropic
+
+Connect to Anthropic's Claude API.
+
+### Setup
+
+<Terminal command="export ANTHROPIC_API_KEY=sk-ant-..." />
+
+<Terminal command="grith config set llm.default_provider anthropic" />
+
+### Configuration
+
+<ConfigExample
+  title="Anthropic provider"
+  code={`[llm]
+default_provider = "anthropic"
+
+[llm.anthropic]
+api_key_env = "ANTHROPIC_API_KEY"
+model = "claude-sonnet-4-20250514"
+max_tokens = 4096
+temperature = 0.0`}
+/>
+
+### Available models
+
+| Model | Identifier | Notes |
+|---|---|---|
+| Claude Sonnet 4 | `claude-sonnet-4-20250514` | Balanced speed and capability |
+| Claude Opus 4 | `claude-opus-4-20250514` | Highest capability |
+| Claude Haiku 3.5 | `claude-3-5-haiku-20241022` | Fastest, lowest cost |
+
+## Google (Gemini)
+
+Connect to Google's Gemini API.
+
+### Setup
+
+<Terminal command="export GOOGLE_API_KEY=AIza..." />
+
+<Terminal command="grith config set llm.default_provider google" />
+
+### Configuration
+
+<ConfigExample
+  title="Google Gemini provider"
+  code={`[llm]
+default_provider = "google"
+
+[llm.google]
+api_key_env = "GOOGLE_API_KEY"
+model = "gemini-2.0-flash"
+max_tokens = 4096
+temperature = 0.0`}
+/>
+
+### Available models
+
+| Model | Identifier | Notes |
+|---|---|---|
+| Gemini 2.0 Flash | `gemini-2.0-flash` | Fast, good for most tasks |
+| Gemini 2.0 Pro | `gemini-2.0-pro` | Higher capability |
+
+## Multiple providers
+
+You can configure several providers and switch between them. Only one is active at a time.
+
+<ConfigExample
+  title="Multiple providers"
+  code={`[llm]
+default_provider = "ollama"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+model = "llama3.1:8b"
+
+[llm.openai]
+api_key_env = "OPENAI_API_KEY"
+model = "gpt-4o"
+
+[llm.anthropic]
+api_key_env = "ANTHROPIC_API_KEY"
+model = "claude-sonnet-4-20250514"
+
+[llm.google]
+api_key_env = "GOOGLE_API_KEY"
+model = "gemini-2.0-flash"`}
+/>
+
+Switch at runtime without editing config:
+
+<Terminal command='grith run --provider anthropic "review this PR for security issues"' />
+
+Or change the default:
+
+<Terminal command="grith config set llm.default_provider anthropic" />
+
+## Bring your own key (BYOK)
+
+grith follows a strict BYOK model. Here is what that means in practice:
+
+- **Keys are read from environment variables** — the `api_key_env` field names the variable, grith reads it at runtime
+- **Keys are never written to disk** — not in config files, not in logs, not in the digest database
+- **Keys are never transmitted** — grith calls the provider API directly from your machine; no intermediate server
+- **Keys are never cached** — each invocation reads the environment variable fresh
+
+This means you manage your keys with whatever tooling you already use: shell profiles, direnv, 1Password CLI, AWS Secrets Manager, or your CI system's secret store.
+
+<Callout type="danger" title="Do not hardcode keys">
+If you put a raw API key in `config.toml` instead of using `api_key_env`, grith will refuse to start and print a warning. This is intentional.
+</Callout>
+
+## Provider selection logic
+
+When grith starts a session, it selects a provider in this order:
+
+1. `--provider` flag on the command line (highest priority)
+2. `GRITH_LLM_DEFAULT_PROVIDER` environment variable
+3. `llm.default_provider` in per-project config (`.grith/config.toml`)
+4. `llm.default_provider` in global config (`~/.config/grith/config.toml`)
+5. Falls back to `ollama` if nothing is set
+
+If the selected provider's API key environment variable is not set (for providers that require one), grith exits with a clear error message telling you which variable to set.
+
+## Next steps
+
+- [Quickstart](/docs/getting-started/quickstart) — Run your first secure task with a configured provider
+- [Configuration](/docs/getting-started/configuration) — Full configuration reference
+- [Filter Reference](/docs/reference/filters) — How grith evaluates tool calls regardless of provider

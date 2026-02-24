@@ -1,0 +1,280 @@
+---
+title: "Supervisor Profiles"
+description: "Create and customise supervisor profiles to control what external tools can do"
+section: "guides"
+order: 2
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+When you wrap an external CLI tool with `grith exec`, the supervisor intercepts every syscall that tool makes and routes it through the security proxy. Supervisor profiles define per-tool security policies: which paths the tool can access, which commands it can run, what network access it gets, and what noise to filter out.
+
+grith ships with pre-built profiles for popular AI tools and supports fully custom profiles for anything else.
+
+## Pre-built profiles
+
+grith includes profiles for the most common AI coding tools:
+
+| Profile | Tool | Optimised for |
+|---|---|---|
+| `claude-code` | Claude Code (Anthropic) | File edits, shell commands, search operations |
+| `codex` | Codex CLI (OpenAI) | Container-style sandboxed execution |
+| `aider` | Aider | Git operations, file edits, test runs |
+| `generic` | Any CLI tool | Conservative defaults, broad compatibility |
+
+Use a pre-built profile with the `--profile` flag:
+
+<Terminal command='grith exec --profile claude-code -- claude-code "fix the bug in src/main.rs"' />
+
+<Terminal command='grith exec --profile aider -- aider --model ollama/llama3.1' />
+
+If you omit `--profile`, grith uses the `generic` profile.
+
+## Profile fields
+
+Profiles are defined in TOML. Each profile is a section in `~/.config/grith/supervisor/profiles.toml` (or in the system-wide config at `/etc/grith/supervisor/profiles.toml`).
+
+Here is the full schema with all available fields:
+
+<ConfigExample
+  title="~/.config/grith/supervisor/profiles.toml"
+  code={`[my-profile]
+description = "Custom profile for my-tool"
+
+# Filesystem access control
+allowed_paths = [
+    "~/projects/",        # Recursive access to projects directory
+    "/tmp/",              # Temp directory access
+]
+denied_paths = [
+    "~/.ssh/",            # Block SSH key access
+    "~/.gnupg/",          # Block GPG key access
+    "~/.aws/",            # Block AWS credentials
+    "/etc/shadow",        # Block shadow password file
+]
+
+# Command execution control
+allowed_commands = [
+    "git",
+    "npm",
+    "node",
+    "python",
+    "pytest",
+    "cargo",
+    "make",
+]
+
+# Network policy
+# Options: "allow", "deny", "project-only", "score"
+network_policy = "score"
+
+# Noise reduction: suppress known-safe repeated syscalls
+[my-profile.noise_reduction]
+enabled = true
+deduplicate_reads = true           # Collapse repeated reads to same path
+suppress_stat_calls = true         # Suppress high-frequency stat/lstat
+suppress_cwd_lookups = true        # Suppress getcwd() noise
+max_events_per_path_per_second = 5 # Rate-limit events per path`}
+/>
+
+### Field reference
+
+#### allowed_paths
+
+A list of filesystem paths the tool is permitted to access. Paths ending with `/` grant recursive access to the directory and all children. Paths support `~` expansion for the home directory.
+
+If `allowed_paths` is set, any file access outside these paths triggers the `allowlist` filter with a score of `DENY` (hard block, not just elevated score).
+
+#### denied_paths
+
+A list of filesystem paths the tool is explicitly blocked from accessing. Denied paths take precedence over allowed paths. Use this to carve out exclusions within an allowed directory.
+
+#### allowed_commands
+
+A list of command names the tool is permitted to execute. If set, any `process.exec` call for a command not in this list triggers the `allowlist` filter with a hard deny.
+
+Command names are matched against the base name of the executable, not the full path. Arguments are not matched — use other filters for argument inspection.
+
+#### network_policy
+
+Controls how network operations are handled:
+
+| Value | Effect |
+|---|---|
+| `"allow"` | All network access permitted (still logged) |
+| `"deny"` | All network access blocked |
+| `"project-only"` | Only connections to configured project endpoints allowed |
+| `"score"` | Network calls pass through the full filter chain (default) |
+
+#### noise_reduction
+
+The supervisor intercepts syscalls at a very low level. A single `ls` command can generate dozens of `stat` calls. Noise reduction collapses these into a smaller set of meaningful events.
+
+<Callout type="tip" title="Noise reduction does not reduce security">
+Noise reduction affects event reporting and dashboard display, not security evaluation. Every syscall is still evaluated by the proxy. Noise reduction only deduplicates the audit trail and dashboard feed.
+</Callout>
+
+## Creating a custom profile
+
+Create a new profile by adding a section to your profiles file:
+
+<ConfigExample
+  title="~/.config/grith/supervisor/profiles.toml"
+  code={`[data-science]
+description = "Profile for data science notebooks and scripts"
+
+allowed_paths = [
+    "~/data/",
+    "~/notebooks/",
+    "/tmp/",
+]
+denied_paths = [
+    "~/.ssh/",
+    "~/.aws/",
+    "~/data/production/",    # Block access to production data
+]
+
+allowed_commands = [
+    "python",
+    "pip",
+    "jupyter",
+    "conda",
+    "git",
+]
+
+network_policy = "score"
+
+[data-science.noise_reduction]
+enabled = true
+deduplicate_reads = true
+suppress_stat_calls = true`}
+/>
+
+Then use it:
+
+<Terminal command='grith exec --profile data-science -- jupyter notebook' />
+
+## Examining pre-built profiles
+
+To see the full configuration of a pre-built profile, inspect the shipped profiles file:
+
+<Terminal command="grith config --show-profiles" />
+
+<CodeBlock
+  code={`[claude-code]
+description = "Profile for Anthropic Claude Code"
+allowed_paths = [
+    ".",            # Current working directory (project root)
+    "/tmp/",
+]
+denied_paths = [
+    "~/.ssh/",
+    "~/.gnupg/",
+    "~/.aws/",
+    "~/.config/grith/",    # Prevent tool from modifying grith config
+]
+allowed_commands = [
+    "git", "npm", "npx", "node", "python", "python3",
+    "pip", "cargo", "rustc", "make", "cmake",
+    "grep", "find", "sed", "awk", "cat", "ls", "head", "tail",
+    "curl", "wget",
+    "docker", "docker-compose",
+]
+network_policy = "score"
+
+[claude-code.noise_reduction]
+enabled = true
+deduplicate_reads = true
+suppress_stat_calls = true
+suppress_cwd_lookups = true
+max_events_per_path_per_second = 10`}
+  language="toml"
+/>
+
+## Overriding pre-built profiles
+
+You can override fields in a pre-built profile by redefining the section in your user config. User config values take precedence over shipped defaults.
+
+For example, to restrict Claude Code's network access:
+
+<ConfigExample
+  title="~/.config/grith/supervisor/profiles.toml"
+  code={`[claude-code]
+# Override only the network policy; all other fields inherit from the default
+network_policy = "deny"`}
+/>
+
+## Profile inheritance
+
+If you want a custom profile that extends an existing one, use the `extends` field:
+
+<ConfigExample
+  title="~/.config/grith/supervisor/profiles.toml"
+  code={`[claude-code-strict]
+extends = "claude-code"
+description = "Claude Code with stricter filesystem controls"
+
+# Additional denied paths (merged with parent)
+denied_paths = [
+    "~/.env",
+    "~/.npmrc",
+    ".env",
+    ".env.local",
+]
+
+network_policy = "deny"`}
+/>
+
+<Terminal command='grith exec --profile claude-code-strict -- claude-code "refactor the auth module"' />
+
+## Attaching to a running process
+
+If an AI tool is already running, you can attach grith supervision to it by PID instead of spawning it:
+
+<Terminal command="grith exec --profile generic --attach 12345" />
+
+<Callout type="warning" title="Linux only">
+Attaching to a running process requires ptrace permissions. On most Linux distributions this works for processes owned by the same user. On macOS, process-level attachment is limited to lifecycle events only.
+</Callout>
+
+## Managing supervisor sessions
+
+Once a tool is running under supervision, you can inspect and manage it:
+
+<Terminal command="grith supervisor list" />
+
+<CodeBlock
+  code={`Active sessions:
+
+  ID       PID    Profile       Tool          Duration   Calls
+  a1b2c3   8421   claude-code   claude-code   12m 34s    247
+  d4e5f6   9102   aider         aider         3m 12s     41`}
+  language="text"
+/>
+
+<Terminal command="grith supervisor status a1b2c3" />
+
+<CodeBlock
+  code={`Session a1b2c3:
+  Tool:       claude-code
+  PID:        8421
+  Profile:    claude-code
+  Started:    2026-02-24 14:32:01
+  Duration:   12m 34s
+  Tool calls: 247 (231 allowed, 12 queued, 4 denied)
+  Status:     active`}
+  language="text"
+/>
+
+To terminate a session and detach from the process:
+
+<Terminal command="grith supervisor kill a1b2c3" />
+
+## Next steps
+
+- [Filter Tuning](/docs/guides/filter-tuning) — Adjust filter weights and thresholds
+- [CLI Supervisor](/docs/concepts/cli-supervisor) — How syscall interception works under the hood
+- [Supervisor Profiles Reference](/docs/reference/supervisor-profiles) — Full profile schema reference
+- [Exfiltration Containment](/docs/guides/exfiltration-containment) — Network controls for supervised tools

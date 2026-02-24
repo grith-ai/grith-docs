@@ -1,0 +1,93 @@
+---
+title: "Security Advisories"
+description: "Published security advisories for grith vulnerabilities"
+section: "security"
+order: 3
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+This page lists all published security advisories for grith. Each advisory includes the vulnerability details, affected versions, severity, and remediation steps.
+
+## Current status
+
+There are no known security vulnerabilities in the current release of grith.
+
+<Callout type="tip" title="Stay informed">
+Subscribe to [GitHub Security Advisories](https://github.com/grith-ai/grith/security/advisories) for the `grith-ai/grith` repository to receive notifications when new advisories are published. You can also watch the repository with the "Security alerts" notification preference enabled.
+</Callout>
+
+## Advisory format
+
+When vulnerabilities are discovered and patched, advisories are published here and on GitHub using the following format:
+
+---
+
+### GRITH-YYYY-NNN — Title
+
+**CVE:** CVE-YYYY-NNNNN (if assigned)
+
+**Severity:** Critical / High / Medium / Low
+
+**Affected versions:** x.y.z through a.b.c
+
+**Fixed in:** a.b.d
+
+**Component:** `grith-proxy`, `grith-supervisor`, `grith-core`, or `grith-server`
+
+**Description:**
+
+A description of the vulnerability, including the attack vector, preconditions, and potential impact.
+
+**Mitigation:**
+
+Steps to mitigate the vulnerability if you cannot upgrade immediately (e.g., configuration changes, disabling specific filters).
+
+**Resolution:**
+
+Upgrade to the fixed version:
+
+<Terminal command="brew upgrade grith" />
+
+Or download the latest release from [GitHub Releases](https://github.com/grith-ai/grith/releases).
+
+**Credit:**
+
+Reported by [Researcher Name](https://example.com) via [responsible disclosure](/docs/security/responsible-disclosure).
+
+---
+
+## Severity classification
+
+grith uses CVSS v3.1 base scores to classify severity, with adjustments for the AI agent security context:
+
+| Severity | CVSS range | Description |
+|---|---|---|
+| Critical | 9.0 – 10.0 | Filter bypass allowing arbitrary code execution without quarantine |
+| High | 7.0 – 8.9 | Filter bypass allowing data exfiltration or privilege escalation |
+| Medium | 4.0 – 6.9 | Partial filter bypass, information disclosure, or denial of service |
+| Low | 0.1 – 3.9 | Minor information leakage, non-exploitable without significant preconditions |
+
+<Callout type="info" title="AI-specific severity factors">
+Standard CVSS scoring may underestimate the impact of filter bypasses. A vulnerability that allows an AI agent to execute an unscored tool call is effectively a full sandbox escape, even if the CVSS "attack complexity" appears high. We adjust severity upward when the vulnerability undermines the core security guarantee.
+</Callout>
+
+## Disclosure process
+
+1. Vulnerability reported via [security@grith.ai](/docs/security/responsible-disclosure)
+2. Acknowledged within 24 hours, triaged within 72 hours
+3. Fix developed and tested
+4. New release published with the fix
+5. Advisory published here and on [GitHub Security Advisories](https://github.com/grith-ai/grith/security/advisories)
+6. CVE requested if applicable
+
+See [Responsible Disclosure](/docs/security/responsible-disclosure) for the full reporting process.
+
+## Archive
+
+No advisories have been published yet. This section will be updated as advisories are issued.
+
+## Next steps
+
+- [Responsible Disclosure](/docs/security/responsible-disclosure) — Report a vulnerability
+- [Threat Model](/docs/security/threat-model) — Understand what grith defends against

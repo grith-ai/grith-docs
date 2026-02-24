@@ -1,0 +1,90 @@
+---
+title: "Responsible Disclosure"
+description: "How to report security vulnerabilities in grith"
+section: "security"
+order: 2
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+grith is a security product. Vulnerabilities in grith can have direct consequences for the safety of AI agent operations. We take every report seriously and commit to transparent, timely resolution.
+
+## Reporting a vulnerability
+
+Send vulnerability reports to **security@grith.ai**. Include as much detail as you can:
+
+- **Description** of the vulnerability and its potential impact
+- **Reproduction steps** — exact commands, configurations, or sequences that trigger the issue
+- **Affected component** — which crate, filter, or subsystem is involved
+- **Environment** — OS, architecture, grith version (`grith --version`)
+- **Proof of concept** — code, scripts, or logs that demonstrate the issue (if available)
+
+<Callout type="info" title="Encrypt your report">
+For sensitive disclosures, encrypt your email using our PGP key. The key is available at [grith.ai/.well-known/security.txt](https://grith.ai/.well-known/security.txt) and on major key servers under the fingerprint published there.
+</Callout>
+
+## What happens after you report
+
+| Timeline | Action |
+|---|---|
+| Within 24 hours | We acknowledge receipt of your report |
+| Within 72 hours | We triage and assign severity |
+| Within 14 days | We provide an initial assessment and remediation plan |
+| Within 90 days | We release a fix and publish an advisory |
+
+We follow a **90-day disclosure timeline**. If a fix is released before the 90-day window, we publish the advisory at the time of release. If the issue requires more than 90 days to resolve (rare, but possible for deeply architectural issues), we will negotiate an extended timeline with you and explain the reason publicly.
+
+## Scope
+
+The following components are in scope for security reports:
+
+| Component | Repository | Description |
+|---|---|---|
+| `grith-core` | `grith-ai/grith` | CLI entry point, configuration loading |
+| `grith-proxy` | `grith-ai/grith` | Security proxy, filter chain, scoring engine |
+| `grith-server` | `grith-ai/grith` | HTTP/WebSocket server, dashboard, API |
+| `grith-supervisor` | `grith-ai/grith` | ptrace/seccomp-BPF syscall interception |
+| `grith-docs` | `grith-ai/grith-docs` | Documentation site (XSS, injection, etc.) |
+| `grith-website` | `grith-ai/grith-website` | Marketing site |
+
+### Out of scope
+
+The following are **not** in scope:
+
+- **Third-party LLM providers** — Vulnerabilities in OpenAI, Anthropic, Ollama, or other provider APIs should be reported to those providers directly. grith does not control their behaviour.
+- **Denial of service** — Resource exhaustion attacks against a locally running grith instance are low-severity by design. grith runs on the same machine as the user; a local DoS is equivalent to the user killing the process.
+- **Social engineering** — Attacks that require tricking the user into running malicious commands outside grith are out of scope. grith protects agent-initiated tool calls, not user-initiated ones.
+- **Known limitations** — Issues documented in the [Threat Model](/docs/security/threat-model) under "Assumptions and limitations" are known constraints, not vulnerabilities.
+
+## Safe harbor
+
+We will not pursue legal action against security researchers who:
+
+- Act in good faith to discover and report vulnerabilities
+- Avoid accessing, modifying, or deleting data belonging to other users
+- Do not exploit vulnerabilities beyond what is necessary to demonstrate the issue
+- Do not publicly disclose the vulnerability before the agreed timeline expires
+- Provide us reasonable time to address the issue before any public disclosure
+
+If you follow these guidelines, we consider your research authorised. We will work with you to understand and resolve the issue, and we will credit you in the advisory (unless you prefer to remain anonymous).
+
+## Recognition
+
+We maintain a security acknowledgements page for researchers who have reported valid vulnerabilities. If you would like to be credited, let us know in your report with your preferred name and (optionally) a URL.
+
+<Callout type="tip" title="Bounties">
+grith does not currently operate a formal bug bounty programme. We do offer discretionary rewards for high-severity vulnerabilities at our judgement. This may change as the project matures.
+</Callout>
+
+## Contact
+
+- **Email:** security@grith.ai
+- **PGP key:** [grith.ai/.well-known/security.txt](https://grith.ai/.well-known/security.txt)
+- **Response time:** 24 hours for acknowledgement
+
+For non-security bugs, use [GitHub Issues](https://github.com/grith-ai/grith/issues) instead.
+
+## Next steps
+
+- [Threat Model](/docs/security/threat-model) — Understand what grith defends against
+- [Security Advisories](/docs/security/advisories) — Published advisories and patches

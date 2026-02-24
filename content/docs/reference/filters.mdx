@@ -1,0 +1,332 @@
+---
+title: "Filters Reference"
+description: "Complete reference for all 18 scoring proxy filters, their phases, parameters, and score ranges"
+section: "reference"
+order: 3
+tier: "community"
+lastUpdated: "2026-02-24"
+---
+
+## Overview
+
+Filters are the core of grith's scoring proxy. Every tool call passes through a pipeline of filters that each contribute a score based on the risk they detect. The composite score determines whether the call is allowed, queued for review, or denied.
+
+grith ships with 17 implemented filters and 1 planned filter. Filters are registered at runtime and can be individually enabled, disabled, or weight-adjusted via the `[proxy.filters.*]` configuration section.
+
+## Pipeline phases
+
+Filters execute in four ordered phases. Within each phase, filters run in parallel for performance.
+
+| Phase | Order | Description |
+|---|---|---|
+| **Static** | 1 | Fast checks against fixed rules: operation type, path lists, allowlists. No external state required. |
+| **Pattern** | 2 | Regex and pattern-based analysis: secret detection, command structure, network policy. |
+| **Context** | 3 | Stateful analysis using session history: behavioural profiling, taint tracking, rate limiting. |
+| **Aggregation** | 4 | Combines individual filter scores into a weighted composite score. |
+
+<Callout type="info" title="Early termination">
+If the running composite score exceeds the `auto_deny_threshold` at any phase boundary, remaining phases are skipped and the call is denied immediately. This keeps latency low for clearly dangerous calls.
+</Callout>
+
+## Filter summary
+
+| # | Filter | Phase | Default enabled | Score range | Description |
+|---|---|---|---|---|---|
+| 1 | `operation_risk` | Static | Yes | +1 to +5 | Evaluates operation type risk level |
+| 2 | `path_match` | Static | Yes | +2 to +5 | Aho-Corasick path matching against sensitive paths |
+| 3 | `sensitive_path` | Static | Yes | +1 to +4 | Checks against known sensitive directories |
+| 4 | `allowlist` | Static | Yes | -1 to +3 | User-defined allow/deny lists |
+| 5 | `argument` | Static | Yes | 0 to +2 | Argument length and structure analysis |
+| 6 | `capability` | Static | Yes | +1 to +3 | Checks process capabilities |
+| 7 | `secret_scan` | Pattern | Yes | +3 to +5 | Detects secrets and credentials in arguments |
+| 8 | `command` | Pattern | Yes | +2 to +4 | Command structure analysis |
+| 9 | `egress_policy` | Pattern | Yes | +1 to +4 | Outbound network destination policy |
+| 10 | `dlp_gate` | Pattern | Yes | +2 to +5 | Data loss prevention gate |
+| 11 | `canary` | Pattern | Yes | +5 (hard deny) | Canary token detection |
+| 12 | `reputation` | Pattern | Yes | -1 to +4 | Outbound destination reputation check |
+| 13 | `behavioural` | Context | Yes | +1 to +3 | Behavioural profiling based on session history |
+| 14 | `taint` | Context | Yes | +3 to +5 | Information flow taint tracking |
+| 15 | `session_containment` | Context | Yes | +2 to +4 | Session-level containment rules |
+| 16 | `rate_limit` | Context | Yes | +1 to +3 | Rate limiting and anomaly detection |
+| 17 | `egress_rate` | Context | Yes | +1 to +3 | Egress rate anomaly detection |
+| 18 | `semantic` | Context | No | -2 to +4 | Semantic context analysis (roadmap) |
+
+## Static phase filters
+
+### operation_risk
+
+Assigns a base risk score based on the type of operation being performed. Read operations score lower than write operations, and destructive operations (delete, overwrite) score highest.
+
+| Score | Operation type |
+|---|---|
+| +1 | Read file, list directory |
+| +2 | Write to non-sensitive path |
+| +3 | Execute command, network request |
+| +4 | Write to system path |
+| +5 | Delete, chmod, chown |
+
+<ConfigExample title="Configuration" code={`[proxy.filters.operation_risk]
+enabled = true
+weight = 1.0`} />
+
+### path_match
+
+Uses Aho-Corasick multi-pattern matching to check tool call paths against a configurable list of sensitive paths. This is a high-performance filter that can match thousands of patterns simultaneously.
+
+| Score | Match type |
+|---|---|
+| +2 | Matches a monitored path |
+| +3 | Matches a sensitive configuration file |
+| +4 | Matches a credential or key file |
+| +5 | Matches a system-critical path (`/etc/shadow`, `/etc/sudoers`) |
+
+<ConfigExample title="Configuration" code={`[proxy.filters.path_match]
+enabled = true
+weight = 1.0
+sensitive_paths = [
+  "/etc/shadow",
+  "/etc/passwd",
+  "/etc/sudoers",
+  "~/.ssh/",
+  "~/.aws/credentials",
+  "~/.gnupg/",
+  "~/.config/grith/config.toml",
+]`} />
+
+### sensitive_path
+
+Checks against a built-in database of known sensitive directories. Unlike `path_match`, this filter does not require user configuration and covers common sensitive locations across platforms.
+
+| Score | Path category |
+|---|---|
+| +1 | User config directories |
+| +2 | Package manager caches |
+| +3 | SSH, GPG, cloud credential directories |
+| +4 | System configuration, boot, kernel |
+
+### allowlist
+
+Evaluates tool calls against user-defined allow and deny lists. This is the primary mechanism for explicitly permitting or blocking specific operations.
+
+| Score | Match |
+|---|---|
+| -1 | Matches an allow rule (reduces total score) |
+| +3 | Matches a deny rule |
+
+<ConfigExample title="Configuration" code={`[proxy.filters.allowlist]
+enabled = true
+weight = 1.0
+allow = [
+  { tool = "read_file", path_prefix = "/home/user/project/" },
+  { tool = "write_file", path_prefix = "/home/user/project/src/" },
+]
+deny = [
+  { tool = "execute_command", command_prefix = "rm -rf" },
+  { tool = "write_file", path_prefix = "/etc/" },
+]`} />
+
+### argument
+
+Analyses the structure and length of tool call arguments. Unusually long arguments or arguments with suspicious structure (e.g., deeply nested JSON, encoded payloads) receive higher scores.
+
+| Score | Condition |
+|---|---|
+| 0 | Normal argument length and structure |
+| +1 | Above-average argument length |
+| +2 | Suspicious structure or encoding detected |
+
+### capability
+
+Checks whether the tool call requires elevated process capabilities (e.g., `CAP_NET_RAW`, `CAP_SYS_ADMIN`). Calls requiring capabilities not granted to the grith process receive higher scores.
+
+| Score | Capability level |
+|---|---|
+| +1 | Standard user capabilities |
+| +2 | Network capabilities |
+| +3 | System administration capabilities |
+
+## Pattern phase filters
+
+### secret_scan
+
+Scans tool call arguments for patterns that match known secret formats: API keys, tokens, passwords, private keys, and connection strings. Uses a library of over 200 regex patterns.
+
+| Score | Detection |
+|---|---|
+| +3 | Possible secret (low confidence) |
+| +4 | Likely secret (medium confidence) |
+| +5 | Confirmed secret format (high confidence) |
+
+<Callout type="danger" title="Hard deny recommended">
+If `secret_scan` consistently fires at +5, consider adding those patterns to your deny list. Secrets in tool call arguments almost always indicate exfiltration.
+</Callout>
+
+<ConfigExample title="Configuration" code={`[proxy.filters.secret_scan]
+enabled = true
+weight = 1.5
+custom_patterns = [
+  { name = "internal_token", pattern = "itk_[a-zA-Z0-9]{32}" },
+]`} />
+
+### command
+
+Analyses the structure of command-execution tool calls. Looks for shell injection patterns, pipe chains, background execution, and other suspicious command constructs.
+
+| Score | Pattern |
+|---|---|
+| +2 | Simple command with arguments |
+| +3 | Pipe chain or redirection |
+| +4 | Shell injection pattern, eval, or encoded command |
+
+### egress_policy
+
+Evaluates outbound network requests against a domain allow/deny policy. Supports glob patterns for domain matching.
+
+| Score | Policy result |
+|---|---|
+| +1 | Domain not in any list (unknown) |
+| +2 | Domain matches a monitored pattern |
+| +3 | Domain matches a suspicious pattern |
+| +4 | Domain matches a denied pattern |
+
+<ConfigExample title="Configuration" code={`[proxy.filters.egress_policy]
+enabled = true
+weight = 1.0
+allowed_domains = [
+  "api.openai.com",
+  "api.anthropic.com",
+  "*.github.com",
+]
+denied_domains = [
+  "*.pastebin.com",
+  "*.requestbin.com",
+  "transfer.sh",
+]`} />
+
+### dlp_gate
+
+Data loss prevention gate. Detects potential data exfiltration by analysing the content and volume of outbound data in tool calls.
+
+| Score | Detection |
+|---|---|
+| +2 | Above-normal outbound data volume |
+| +3 | Outbound data contains structured data patterns |
+| +4 | Outbound data matches sensitive data classifiers |
+| +5 | Bulk data exfiltration pattern detected |
+
+### canary
+
+Detects canary tokens in tool call arguments. Canary tokens are planted strings that act as tripwires for data exfiltration. If a canary token appears in an outbound call, it means the agent has read sensitive data and is attempting to exfiltrate it.
+
+This filter always returns +5 and triggers a hard deny. There is no configuration to lower its score.
+
+| Score | Detection |
+|---|---|
+| +5 | Canary token detected (hard deny) |
+
+<Callout type="warning" title="Always-on protection">
+The canary filter cannot be disabled or weight-adjusted. It is a last line of defence against data exfiltration. Use `grith canary add` to plant tokens in sensitive files.
+</Callout>
+
+### reputation
+
+Checks outbound network destinations against reputation databases. Known-good destinations receive a small score reduction, while destinations with poor reputation receive higher scores.
+
+| Score | Reputation |
+|---|---|
+| -1 | Known-good destination (e.g., major cloud APIs) |
+| +1 | Unknown destination |
+| +2 | Low reputation |
+| +3 | Suspicious destination |
+| +4 | Known-malicious destination |
+
+## Context phase filters
+
+### behavioural
+
+Builds a behavioural profile of the current session and scores tool calls that deviate from established patterns. A session that has been reading Python files and suddenly tries to write to `/etc/hosts` will score higher.
+
+| Score | Deviation |
+|---|---|
+| +1 | Minor deviation from session pattern |
+| +2 | Moderate deviation |
+| +3 | Major deviation from established behaviour |
+
+### taint
+
+Tracks information flow through taint propagation. When the agent reads sensitive data (tainted source), subsequent tool calls that reference or transmit that data inherit the taint and receive higher scores.
+
+| Score | Taint level |
+|---|---|
+| +3 | Low taint propagation |
+| +4 | Medium taint propagation |
+| +5 | High taint — sensitive data flowing to untrusted sink |
+
+<Callout type="info" title="How taint tracking works">
+Taint is applied when the agent reads from sensitive sources (files matching `path_match` or `sensitive_path` rules). The taint propagates through subsequent tool calls if the output of a tainted read appears in the arguments of a later call. This lets grith detect indirect exfiltration attempts where the agent reads credentials, transforms them, and then writes them to an outbound channel.
+</Callout>
+
+### session_containment
+
+Enforces session-level containment rules. Limits what a session can do based on cumulative activity: total files modified, total commands executed, total network requests made.
+
+| Score | Containment trigger |
+|---|---|
+| +2 | Approaching session limits |
+| +3 | At session limit boundary |
+| +4 | Exceeding session containment rules |
+
+### rate_limit
+
+Detects anomalous request rates within a session. A sudden burst of tool calls may indicate automated exfiltration or a prompt injection attack causing the agent to loop.
+
+| Score | Rate |
+|---|---|
+| +1 | Elevated rate |
+| +2 | High rate |
+| +3 | Anomalous burst detected |
+
+### egress_rate
+
+Monitors the rate of outbound network requests specifically, independent of total tool call rate. A session that suddenly starts making many external requests scores higher.
+
+| Score | Rate |
+|---|---|
+| +1 | Elevated egress rate |
+| +2 | High egress rate |
+| +3 | Anomalous egress burst detected |
+
+## Planned filters
+
+### semantic (roadmap)
+
+<Badge variant="community">Roadmap</Badge>
+
+Semantic context analysis using a local embedding model. This filter will analyse the semantic meaning of tool call arguments in the context of the session history, allowing grith to detect subtle attacks that pass syntactic filters.
+
+| Score | Analysis |
+|---|---|
+| -2 | Highly consistent with session context |
+| 0 | Neutral |
+| +2 | Moderately inconsistent |
+| +4 | Strongly inconsistent with session context |
+
+<Callout type="info" title="Under development">
+The semantic filter is planned for a future release. It will use a local embedding model (no cloud dependency) to compute semantic similarity between tool call arguments and the established session context.
+</Callout>
+
+## Configuring filters
+
+All filters support these common configuration keys:
+
+<ConfigExample title="Common filter configuration" code={`[proxy.filters.<filter_name>]
+enabled = true       # Enable or disable this filter
+weight = 1.0         # Multiplier applied to this filter's score`} />
+
+The weight value scales the filter's raw score before it is added to the composite. A weight of `1.5` means the filter's contribution is 50% higher than its raw score. A weight of `0.5` halves it.
+
+<Callout type="tip" title="Testing filter changes">
+Use `grith proxy test` to dry-run tool calls against your filter configuration. Combine with `--log-level debug` to see each filter's individual score contribution.
+</Callout>
+
+<Terminal command='grith proxy test --tool write_file --args &apos;{"path": "/etc/shadow"}&apos; --log-level debug' />
