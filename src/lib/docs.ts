@@ -1,42 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
+import { SECTIONS } from './types';
+import type { Doc, DocMeta } from './types';
 
 const CONTENT_DIR = path.join(process.cwd(), 'content/docs');
-
-export interface DocMeta {
-  title: string;
-  description: string;
-  section: string;
-  order: number;
-  tier?: 'community' | 'pro' | 'enterprise';
-  version?: string;
-  lastUpdated?: string;
-  editUrl?: string;
-}
-
-export interface Doc {
-  slug: string;
-  meta: DocMeta;
-  content: string;
-}
-
-export interface SectionInfo {
-  slug: string;
-  label: string;
-  order: number;
-}
-
-export const SECTIONS: SectionInfo[] = [
-  { slug: 'getting-started', label: 'Getting Started', order: 0 },
-  { slug: 'concepts', label: 'Concepts', order: 1 },
-  { slug: 'reference', label: 'Reference', order: 2 },
-  { slug: 'guides', label: 'Guides', order: 3 },
-  { slug: 'security', label: 'Security', order: 4 },
-  { slug: 'analytics', label: 'Analytics', order: 5 },
-  { slug: 'pro', label: 'Pro & Licensing', order: 6 },
-  { slug: 'enterprise', label: 'Enterprise', order: 7 },
-];
 
 function getMdxFiles(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
@@ -85,13 +53,6 @@ export function getDocsForSection(sectionSlug: string): Doc[] {
   return getAllDocs()
     .filter((d) => d.meta.section === sectionSlug)
     .sort((a, b) => (a.meta.order ?? 99) - (b.meta.order ?? 99));
-}
-
-export function getSidebarData(): { section: SectionInfo; docs: Doc[] }[] {
-  return SECTIONS.map((section) => ({
-    section,
-    docs: getDocsForSection(section.slug),
-  }));
 }
 
 export function getAdjacentDocs(currentSlug: string): { prev: Doc | null; next: Doc | null } {

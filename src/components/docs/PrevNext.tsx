@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type { Doc } from '@/lib/docs';
+import type { Doc } from '@/lib/types';
 
 export default function PrevNext({ prev, next }: { prev: Doc | null; next: Doc | null }) {
   return (

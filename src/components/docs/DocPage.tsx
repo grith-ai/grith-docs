@@ -1,12 +1,10 @@
-'use client';
-
-import { MDXRemote, MDXRemoteSerializeResult } from 'next-mdx-remote';
+import { MDXRemote } from 'next-mdx-remote/rsc';
 import { mdxComponents } from '@/components/mdx';
 import Breadcrumbs from './Breadcrumbs';
 import PrevNext from './PrevNext';
-import TableOfContents from './TableOfContents';
+import TableOfContentsWrapper from './TableOfContentsWrapper';
 import Badge from '@/components/shared/Badge';
-import type { Doc } from '@/lib/docs';
+import type { Doc } from '@/lib/types';
 
 interface TocItem {
   id: string;
@@ -16,13 +14,12 @@ interface TocItem {
 
 interface DocPageProps {
   doc: Doc;
-  mdxSource: MDXRemoteSerializeResult;
   headings: TocItem[];
   prev: Doc | null;
   next: Doc | null;
 }
 
-export default function DocPage({ doc, mdxSource, headings, prev, next }: DocPageProps) {
+export default function DocPage({ doc, headings, prev, next }: DocPageProps) {
   return (
     <div className="flex flex-1 gap-8">
       <article className="min-w-0 max-w-[720px] flex-1 px-6 py-8 lg:px-10">
@@ -42,7 +39,7 @@ export default function DocPage({ doc, mdxSource, headings, prev, next }: DocPag
         )}
 
         <div className="prose-docs mt-8">
-          <MDXRemote {...mdxSource} components={mdxComponents} />
+          <MDXRemote source={doc.content} components={mdxComponents} />
         </div>
 
         <PrevNext prev={prev} next={next} />
@@ -52,7 +49,7 @@ export default function DocPage({ doc, mdxSource, headings, prev, next }: DocPag
         )}
       </article>
 
-      <TableOfContents headings={headings} />
+      <TableOfContentsWrapper headings={headings} />
     </div>
   );
 }

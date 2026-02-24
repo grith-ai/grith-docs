@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { SECTIONS } from '@/lib/docs';
+import { SECTIONS } from '@/lib/types';
 
 export default function Breadcrumbs({ slug }: { slug: string }) {
   const parts = slug.split('/');
@@ -14,12 +14,7 @@ export default function Breadcrumbs({ slug }: { slug: string }) {
       <span>/</span>
       {section && (
         <>
-          <Link
-            href={`/docs/${sectionSlug}`}
-            className="transition-colors hover:text-text-secondary"
-          >
-            {section.label}
-          </Link>
+          <span className="transition-colors hover:text-text-secondary">{section.label}</span>
           <span>/</span>
         </>
       )}
