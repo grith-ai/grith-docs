@@ -2,22 +2,26 @@
 set -euo pipefail
 
 GRITH_ROOT="${1:-../grith}"
-DEFAULT_BIN="$GRITH_ROOT/target/release/grith"
+MANIFEST_PATH="$GRITH_ROOT/Cargo.toml"
+DEBUG_BIN="$GRITH_ROOT/target/debug/grith"
 
-if [[ -x "$DEFAULT_BIN" ]]; then
-  BIN="$DEFAULT_BIN"
-elif command -v grith >/dev/null 2>&1; then
-  BIN="$(command -v grith)"
-elif command -v cargo >/dev/null 2>&1 && [[ -f "$GRITH_ROOT/Cargo.toml" ]]; then
-  cargo build --release --manifest-path "$GRITH_ROOT/Cargo.toml" -p grith-core >/dev/null
-  if [[ -x "$DEFAULT_BIN" ]]; then
-    BIN="$DEFAULT_BIN"
+if [[ -n "${GRITH_BIN:-}" ]]; then
+  if [[ ! -x "$GRITH_BIN" ]]; then
+    echo "GRITH_BIN is not executable: $GRITH_BIN" >&2
+    exit 1
+  fi
+  BIN="$GRITH_BIN"
+elif command -v cargo >/dev/null 2>&1 && [[ -f "$MANIFEST_PATH" ]]; then
+  # Build from source to avoid stale binary help output in docs snapshots.
+  cargo build --manifest-path "$MANIFEST_PATH" -p grith-core >/dev/null
+  if [[ -x "$DEBUG_BIN" ]]; then
+    BIN="$DEBUG_BIN"
   else
-    echo "failed to build grith binary at $DEFAULT_BIN" >&2
+    echo "failed to build grith binary at $DEBUG_BIN" >&2
     exit 1
   fi
 else
-  echo "grith binary not found at $DEFAULT_BIN and not present in PATH" >&2
+  echo "missing cargo or manifest path: $MANIFEST_PATH" >&2
   exit 1
 fi
 

@@ -233,11 +233,13 @@ Manage Pro plan: login, status, sync, activate, logout
 Usage: grith pro [OPTIONS] <COMMAND>
 
 Commands:
-  login     Authenticate with dev.grith.ai using an API key
+  login     Authenticate with grith.ai (device auth by default, API key optional)
   status    Show plan status, license expiry, team info
   activate  Fetch and activate a fresh license
   logout    Remove credentials and license
   sync      Upload audit records to cloud and pull team policies
+  upgrade   Open the upgrade/pricing page in the default browser
+  billing   Show current plan and billing details; open billing portal in browser
   help      Print this message or the help of the given subcommand(s)
 
 Options:
