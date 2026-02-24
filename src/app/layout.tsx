@@ -26,20 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body
         className="min-h-screen antialiased"
-        style={{ backgroundColor: '#ffffff', color: '#0d1117' }}
+        style={{ backgroundColor: '#fafaf8', color: '#0d1117' }}
       >
-        <div className="relative isolate">
-          {/* Global page gradient — matches grith-website */}
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[700px]"
-            style={{
-              background:
-                'radial-gradient(ellipse 70% 60% at 50% 0%, rgba(0,168,90,0.18) 0%, rgba(0,168,90,0.06) 50%, transparent 80%)',
-            }}
-            aria-hidden="true"
-          />
-          {children}
-        </div>
+        {children}
       </body>
     </html>
   );

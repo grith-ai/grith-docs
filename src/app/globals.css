@@ -6,12 +6,12 @@
   --color-green-dark: #008548;
   --color-green-light: #e6f9ef;
   --color-green-border: #b4e6cc;
-  --color-bg: #ffffff;
+  --color-bg: #fafaf8;
   --color-bg-dark: #0d1117;
-  --color-surface: #f3f5f8;
-  --color-surface-2: #eaecf1;
-  --color-border: #e2e6eb;
-  --color-border-dark: #d0d5dc;
+  --color-surface: #f4f3f0;
+  --color-surface-2: #eceae6;
+  --color-border: #e2e0db;
+  --color-border-dark: #d0cec8;
   --color-text: #0d1117;
   --color-text-secondary: #57606a;
   --color-text-dim: #8b949e;
@@ -40,12 +40,12 @@
 }
 
 html {
-  background-color: #ffffff !important;
+  background-color: #fafaf8 !important;
   color-scheme: light only !important;
 }
 
 body {
-  background-color: #ffffff !important;
+  background-color: #fafaf8 !important;
   color: #0d1117 !important;
   font-family: var(--font-body);
   line-height: 1.6;

@@ -8,7 +8,7 @@ export default function Header({ onMenuToggle }: { onMenuToggle?: () => void }) 
   const [searchOpen, setSearchOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-[rgba(255,255,255,0.92)] backdrop-blur-[16px]">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-[rgba(250,250,248,0.92)] shadow-[0_1px_12px_rgba(0,168,90,0.08)] backdrop-blur-[16px]">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
         <button className="lg:hidden" onClick={onMenuToggle} aria-label="Toggle sidebar">
           <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
