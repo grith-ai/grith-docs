@@ -1,0 +1,29 @@
+name: Docs Drift Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout grith-docs
+        uses: actions/checkout@v4
+
+      - name: Checkout grith
+        uses: actions/checkout@v4
+        with:
+          repository: grith-ai/grith
+          path: grith
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run docs drift checks
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/check-docs-drift.sh ./grith
