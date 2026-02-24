@@ -23,7 +23,7 @@ export default function Terminal({ command, children, title = 'terminal', classN
 
   return (
     <div
-      className={`my-6 overflow-hidden rounded-xl border border-terminal-border bg-terminal-bg shadow-[0_4px_20px_rgba(0,0,0,0.15)] ${className}`}
+      className={`my-6 overflow-hidden rounded-xl bg-terminal-bg shadow-[0_0_0_1px_rgba(0,168,90,0.15),0_8px_32px_rgba(0,0,0,0.12)] ${className}`}
     >
       <div className="flex items-center gap-1.5 border-b border-terminal-border bg-[#161b22] px-4 py-2.5">
         <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />

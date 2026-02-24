@@ -36,7 +36,7 @@ const styles: Record<CalloutType, { border: string; bg: string; icon: string; ti
 export default function Callout({ type = 'info', title, children }: CalloutProps) {
   const s = styles[type];
   return (
-    <div className={`my-6 rounded-lg border ${s.border} ${s.bg} p-4`}>
+    <div className={`my-6 rounded-lg border ${s.border} ${s.bg} p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]`}>
       {title && (
         <p className={`mb-2 flex items-center gap-2 font-heading text-sm font-bold ${s.title}`}>
           <span>{s.icon}</span>
