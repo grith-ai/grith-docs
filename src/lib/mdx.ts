@@ -1,12 +1,8 @@
-import { serialize } from 'next-mdx-remote/serialize';
-
-export async function serializeMdx(content: string) {
-  return serialize(content, {
-    mdxOptions: {
-      remarkPlugins: [],
-      rehypePlugins: [],
-    },
-  });
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 }
 
 export interface TocItem {
@@ -23,10 +19,7 @@ export function extractHeadings(content: string): TocItem[] {
   while ((match = regex.exec(content)) !== null) {
     const text = match[1].trim();
     const level = match[0].indexOf(' ');
-    const id = text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
+    const id = slugify(text);
     headings.push({ id, text, level });
   }
 
