@@ -7,7 +7,7 @@ tier: "community"
 lastUpdated: "2026-02-24"
 ---
 
-grith's notification system delivers security alerts — denied tool calls, quarantine events, canary triggers — to channels like Slack, email, webhooks, and desktop notifications. Because these alerts contain sensitive operational data, the notification system itself must be secured.
+grith's notification system delivers security alerts — denied tool calls, quarantine events, canary triggers — to channels like Slack, email, webhooks, WebSocket, and desktop notifications. Because these alerts contain sensitive operational data, the notification system itself must be secured.
 
 ## Secret management
 
@@ -46,6 +46,7 @@ Each notification channel uses its own authentication mechanism:
 | Slack | Webhook URL (treat as secret, use `webhook_url_env`) |
 | Email (SMTP) | SMTP credentials via `smtp_password_env`, TLS required |
 | Webhook | HMAC-SHA256 signature on payload body using `secret_env` |
+| WebSocket | Token-based authentication via query parameter or header, local binding only by default |
 | Desktop | OS-level notification API, no external authentication |
 
 ### Webhook signature verification

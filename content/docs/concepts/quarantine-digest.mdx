@@ -62,19 +62,19 @@ These actions create permanent rules that bypass future scoring for matching pat
 The batch interval and queue size are configurable:
 
 <ConfigExample title="Digest configuration" code={`[digest]
-# How often to surface the digest (seconds)
-batch_interval = 300
+# How often to surface the digest during active sessions
+interval_active = "30m"
 
 # Maximum queued calls before forcing a review prompt
-max_queue_size = 50
+max_queue_size = 100
 
 # Auto-deny calls that have been queued longer than this (seconds)
-queue_timeout = 3600
+review_timeout_seconds = 300
 `} />
 
-When `max_queue_size` is reached, grith pauses the agent and surfaces the digest immediately. This prevents runaway accumulation of unreviewed calls during long-running sessions.
+When `max_queue_size` is reached (100 calls by default), grith pauses the agent and surfaces the digest immediately. This prevents runaway accumulation of unreviewed calls during long-running sessions.
 
-The `queue_timeout` ensures that calls do not sit in quarantine indefinitely. If a queued call is not reviewed within the timeout period, it is automatically denied. This fail-closed behaviour is consistent with grith's security posture.
+The `review_timeout_seconds` ensures that calls do not sit in quarantine indefinitely. If a queued call is not reviewed within 5 minutes (300 seconds), it is automatically denied. This fail-closed behaviour is consistent with grith's security posture.
 
 ## Process freezing in supervisor mode
 

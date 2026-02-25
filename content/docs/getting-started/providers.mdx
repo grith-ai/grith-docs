@@ -1,6 +1,6 @@
 ---
 title: "LLM Providers"
-description: "Connect grith to Ollama, OpenAI, Anthropic, Google, or any OpenAI-compatible API"
+description: "Connect grith to Ollama, OpenAI, Anthropic, OpenRouter, or any OpenAI-compatible API"
 section: "getting-started"
 order: 4
 tier: "community"
@@ -81,7 +81,7 @@ default_provider = "openai"
 
 [llm.openai]
 api_key_env = "OPENAI_API_KEY"
-model = "gpt-4o"
+model = "gpt-4o-mini"
 base_url = "https://api.openai.com/v1"   # default, can be omitted
 max_tokens = 4096
 temperature = 0.0`}
@@ -124,7 +124,7 @@ default_provider = "anthropic"
 
 [llm.anthropic]
 api_key_env = "ANTHROPIC_API_KEY"
-model = "claude-sonnet-4-20250514"
+model = "claude-sonnet-4-5-20250514"
 max_tokens = 4096
 temperature = 0.0`}
 />
@@ -133,40 +133,41 @@ temperature = 0.0`}
 
 | Model | Identifier | Notes |
 |---|---|---|
-| Claude Sonnet 4 | `claude-sonnet-4-20250514` | Balanced speed and capability |
+| Claude Sonnet 4 | `claude-sonnet-4-5-20250514` | Balanced speed and capability |
 | Claude Opus 4 | `claude-opus-4-20250514` | Highest capability |
 | Claude Haiku 3.5 | `claude-3-5-haiku-20241022` | Fastest, lowest cost |
 
-## Google (Gemini)
+## OpenRouter
 
-Connect to Google's Gemini API.
+Connect to OpenRouter's unified API, which provides access to models from multiple providers through a single endpoint.
 
 ### Setup
 
-<Terminal command="export GOOGLE_API_KEY=AIza..." />
+<Terminal command="export OPENROUTER_API_KEY=sk-or-..." />
 
-<Terminal command="grith config set llm.default_provider google" />
+<Terminal command="grith config set llm.default_provider openrouter" />
 
 ### Configuration
 
 <ConfigExample
-  title="Google Gemini provider"
+  title="OpenRouter provider"
   code={`[llm]
-default_provider = "google"
+default_provider = "openrouter"
 
-[llm.google]
-api_key_env = "GOOGLE_API_KEY"
-model = "gemini-2.0-flash"
+[llm.openrouter]
+api_key_env = "OPENROUTER_API_KEY"
+model = "anthropic/claude-sonnet-4-5-20250514"
 max_tokens = 4096
 temperature = 0.0`}
 />
 
-### Available models
+### Recommended models
 
 | Model | Identifier | Notes |
 |---|---|---|
-| Gemini 2.0 Flash | `gemini-2.0-flash` | Fast, good for most tasks |
-| Gemini 2.0 Pro | `gemini-2.0-pro` | Higher capability |
+| Claude Sonnet 4.5 | `anthropic/claude-sonnet-4-5-20250514` | Balanced speed and capability (default) |
+| GPT-4o Mini | `openai/gpt-4o-mini` | Fast and cost-effective |
+| Llama 3.1 70B | `meta-llama/llama-3.1-70b-instruct` | Open-weight, high capability |
 
 ## Multiple providers
 
@@ -183,15 +184,15 @@ model = "llama3.1:8b"
 
 [llm.openai]
 api_key_env = "OPENAI_API_KEY"
-model = "gpt-4o"
+model = "gpt-4o-mini"
 
 [llm.anthropic]
 api_key_env = "ANTHROPIC_API_KEY"
-model = "claude-sonnet-4-20250514"
+model = "claude-sonnet-4-5-20250514"
 
-[llm.google]
-api_key_env = "GOOGLE_API_KEY"
-model = "gemini-2.0-flash"`}
+[llm.openrouter]
+api_key_env = "OPENROUTER_API_KEY"
+model = "anthropic/claude-sonnet-4-5-20250514"`}
 />
 
 Switch at runtime without editing config:

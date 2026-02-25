@@ -149,8 +149,9 @@ The server includes built-in rate limiting to prevent abuse:
 <ConfigExample
   title="~/.config/grith/config.toml"
   code={`[server.rate_limit]
-requests_per_second = 100
-burst_size = 200`}
+general_rps = 100
+write_rps = 20
+proxy_test_rps = 10`}
 />
 
 ## CLI equivalents

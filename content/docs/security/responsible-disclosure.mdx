@@ -40,10 +40,15 @@ The following components are in scope for security reports:
 
 | Component | Repository | Description |
 |---|---|---|
-| `grith-core` | `grith-ai/grith` | CLI entry point, configuration loading |
+| `grith-core` | `grith-ai/grith` | Core daemon logic, configuration loading |
+| `grith-cli` | `grith-ai/grith` | CLI entry point and command handling |
 | `grith-proxy` | `grith-ai/grith` | Security proxy, filter chain, scoring engine |
 | `grith-server` | `grith-ai/grith` | HTTP/WebSocket server, dashboard, API |
+| `grith-llm` | `grith-ai/grith` | LLM provider integration and token management |
 | `grith-supervisor` | `grith-ai/grith` | ptrace/seccomp-BPF syscall interception |
+| `grith-audit` | `grith-ai/grith` | Audit logging, hash-chaining, export |
+| `grith-digest` | `grith-ai/grith` | Quarantine queue and digest review system |
+| `grith-notify` | `grith-ai/grith` | Notification dispatch and channel management |
 | `grith-docs` | `grith-ai/grith-docs` | Documentation site (XSS, injection, etc.) |
 | `grith-website` | `grith-ai/grith-website` | Marketing site |
 

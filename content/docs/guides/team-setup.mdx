@@ -55,7 +55,7 @@ The team admin creates shared policies on the grith.ai dashboard. Policies defin
 Policies are defined through the web dashboard at [grith.ai/dashboard/team](https://grith.ai/dashboard/team) or via the API.
 
 <Callout type="info" title="Policy enforcement model">
-Team policies set minimum security standards. Individual developers can make their local configuration stricter than the team policy, but not more permissive. If the team policy sets `auto_allow_threshold` to 2.5, a developer can lower it to 2.0 but cannot raise it to 3.0.
+Team policies set minimum security standards. Individual developers can make their local configuration stricter than the team policy, but not more permissive. If the team policy sets `auto_allow_threshold` to 3.0, a developer can lower it to 2.0 but cannot raise it to 4.0.
 </Callout>
 
 ## Step 3: Authenticate team members
@@ -132,7 +132,7 @@ Last sync:     2026-02-24 14:30:00 UTC
 License:       Valid (expires 2027-02-24)
 
 Policy overrides active:
-  proxy.auto_allow_threshold  = 2.5 (team minimum)
+  proxy.auto_allow_threshold  = 3.0 (team minimum)
   proxy.auto_deny_threshold   = 7.5 (team minimum)
   proxy.filters.secret_scan.weight = 2.0 (team enforced)
   proxy.filters.egress_policy.weight = 1.5 (team enforced)`}
@@ -177,7 +177,7 @@ Team admins can define standard supervisor profiles that sync to all members:
 
 [team/secure-coding]
 description = "Team-standard profile for AI coding tools"
-allowed_paths = ["."]
+routine_paths = ["."]
 denied_paths = [
     "~/.ssh/",
     "~/.aws/",
@@ -186,9 +186,15 @@ denied_paths = [
     ".env.local",
     ".env.production",
 ]
-allowed_commands = [
+routine_commands = [
     "git", "npm", "node", "python", "cargo", "make",
     "grep", "find", "cat", "ls",
+]
+routine_destinations = [
+    "api.openai.com",
+    "api.anthropic.com",
+    "github.com",
+    "registry.npmjs.org",
 ]
 network_policy = "score"
 

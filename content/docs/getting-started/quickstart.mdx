@@ -91,7 +91,7 @@ grith starts its agent, intercepts every system call, and evaluates each one aga
   ├─ entropy_check        0.0  PASS
   └─ aggregate score      0.0
 
-[proxy] Decision: ALLOW (score 0.0 < threshold 2.5)
+[proxy] Decision: ALLOW (score 0.0 < threshold 3.0)
 [agent] ✓ Wrote hello.py
 
 [proxy] Tool call: process.exec → python hello.py
@@ -100,7 +100,7 @@ grith starts its agent, intercepts every system call, and evaluates each one aga
   ├─ resource_limits      0.0  PASS
   └─ aggregate score      0.0
 
-[proxy] Decision: ALLOW (score 0.0 < threshold 2.5)
+[proxy] Decision: ALLOW (score 0.0 < threshold 3.0)
 [agent] ✓ Executed: Hello, world!
 
 [grith] Session complete. 2 tool calls, 2 allowed, 0 queued, 0 denied.`}
@@ -111,7 +111,7 @@ Every tool call gets a numeric score. The proxy compares that score against thre
 
 | Score range | Decision | What happens |
 |---|---|---|
-| Below `auto_allow_threshold` (default 2.5) | **ALLOW** | Executed immediately |
+| Below `auto_allow_threshold` (default 3.0) | **ALLOW** | Executed immediately |
 | Between allow and deny thresholds | **QUEUE** | Held for human review |
 | Above `auto_deny_threshold` (default 8.0) | **DENY** | Blocked outright |
 

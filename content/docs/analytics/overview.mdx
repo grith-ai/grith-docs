@@ -109,9 +109,9 @@ Metrics that indicate whether the security proxy is well-calibrated.
 
 ## Local-first storage
 
-All telemetry is stored locally in a SQLite database at `~/.grith/analytics.db`. No data leaves your machine unless you explicitly export it or opt in to team sync (Pro feature).
+All telemetry is stored locally in a SQLite audit database at `~/.local/share/grith/audit/audit.db`. No data leaves your machine unless you explicitly export it or opt in to team sync (Pro feature).
 
-<Terminal command="ls -lh ~/.grith/analytics.db" />
+<Terminal command="ls -lh ~/.local/share/grith/audit/audit.db" />
 
 The database schema is append-only and uses WAL mode for concurrent read access from the dashboard while the proxy writes new records.
 
@@ -128,7 +128,7 @@ grith includes a local web dashboard that visualises all seven metric categories
 The dashboard runs at [http://localhost:3141](http://localhost:3141) and connects to the proxy via WebSocket for live updates. See [Local Dashboard Metrics](/docs/analytics/local-dashboard-metrics) for a detailed walkthrough of every panel.
 
 <Callout type="tip" title="Dashboard is optional">
-The dashboard is a convenience layer. All data is available via the CLI (`grith audit`, `grith audit export`) and REST API (`GET /api/analytics/summary`). You can build your own dashboards or pipe data into existing observability tools.
+The dashboard is a convenience layer. All data is available via the CLI (`grith audit`, `grith audit export`) and REST API (`GET /analytics/summary`). You can build your own dashboards or pipe data into existing observability tools.
 </Callout>
 
 ## Next steps

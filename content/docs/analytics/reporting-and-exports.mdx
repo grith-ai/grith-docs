@@ -86,7 +86,7 @@ When the grith server is running, the same data is available via HTTP endpoints.
 ### Audit export endpoint
 
 <CodeBlock
-  code={`GET /api/audit/export?format=json&since=2026-02-01&until=2026-02-24
+  code={`GET /audit/export?format=json&since=2026-02-01&until=2026-02-24
 
 # Response: NDJSON stream
 # Content-Type: application/x-ndjson`}
@@ -100,7 +100,7 @@ Query parameters mirror the CLI flags: `format`, `decision`, `filter`, `session`
 A dedicated endpoint for data loss prevention reporting:
 
 <CodeBlock
-  code={`GET /api/audit/exfil-stats
+  code={`GET /audit/exfil-stats
 
 {
   "period": "2026-02-01/2026-02-24",
@@ -122,7 +122,7 @@ This endpoint aggregates all exfiltration-related filter results into a single s
 A high-level summary of all seven metric categories:
 
 <CodeBlock
-  code={`GET /api/analytics/summary?period=30d
+  code={`GET /analytics/summary?period=30d
 
 {
   "period": "30d",

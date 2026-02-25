@@ -26,6 +26,14 @@ These flags are available on every command and subcommand.
 
 ## Commands
 
+### grith
+
+Start the grith REPL and API server on `:3141`. This is the default entry point when no subcommand is given. The REPL provides an interactive session where you can issue tasks, review digest items, and inspect proxy state.
+
+<Terminal command="grith" />
+
+---
+
 ### grith run
 
 Execute a single task non-interactively. This is the primary entry point for running AI agent tasks through the grith security proxy.
@@ -60,7 +68,7 @@ Displays the fully resolved configuration, including defaults and environment va
 
 Set a specific configuration key.
 
-<Terminal command="grith config set proxy.auto_allow_threshold 2.5" />
+<Terminal command="grith config set proxy.auto_allow_threshold 3.0" />
 
 Changes are written to the config file and take effect on the next proxy restart.
 
@@ -136,7 +144,7 @@ Interact with the scoring proxy directly.
 
 Dry-run a tool call against the proxy scoring pipeline without executing it. Useful for tuning filter thresholds.
 
-<Terminal command='grith proxy test --tool write_file --args &apos;{"path": "/etc/passwd", "content": "test"}&apos;' />
+<Terminal command='grith proxy test &apos;{"tool": "write_file", "args": {"path": "/etc/passwd", "content": "test"}}&apos;' />
 
 Exit codes carry semantic meaning:
 
@@ -302,8 +310,8 @@ View audit-backed session logs.
 | Flag | Description |
 |---|---|
 | `--tail` | Stream new log entries in real time |
-| `--session <SESSION>` | Filter logs to a specific session ID |
-| `--limit <LIMIT>` | Maximum number of entries to display |
+| `--session <NAME\|UUID>` | Filter logs to a specific session by name or UUID |
+| `--limit <N>` | Maximum number of entries to display |
 
 <Terminal command="grith log --tail --session abc123" />
 
@@ -321,6 +329,6 @@ All grith commands follow a consistent exit code convention:
 
 Configuration values can also be set via environment variables. The naming convention is `GRITH_` followed by the TOML path with underscores:
 
-<Terminal command="GRITH_PROXY_AUTO_ALLOW_THRESHOLD=2.5 grith run &quot;my task&quot;" />
+<Terminal command="GRITH_PROXY_AUTO_ALLOW_THRESHOLD=3.0 grith run &quot;my task&quot;" />
 
 See [Configuration](/docs/reference/config) for the full list of configuration options.

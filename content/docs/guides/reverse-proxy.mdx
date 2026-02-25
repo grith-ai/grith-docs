@@ -120,7 +120,7 @@ Enable the site and reload nginx:
 
 ### Test the connection
 
-<Terminal command="curl -s https://grith.internal.example.com/api/health | jq" />
+<Terminal command="curl -s https://grith.internal.example.com/health | jq" />
 
 <CodeBlock
   code={`{
@@ -248,7 +248,7 @@ After configuring the reverse proxy, verify all components work:
 
 <CodeBlock
   code={`# Health check
-curl -s https://grith.internal.example.com/api/health
+curl -s https://grith.internal.example.com/health
 
 # Dashboard (open in browser)
 # https://grith.internal.example.com

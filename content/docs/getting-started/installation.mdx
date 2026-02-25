@@ -1,6 +1,6 @@
 ---
 title: "Installation"
-description: "Install grith on macOS, Linux, or Windows"
+description: "Install grith on macOS or Linux"
 section: "getting-started"
 order: 1
 tier: "community"
@@ -9,13 +9,13 @@ lastUpdated: "2026-02-24"
 
 ## System requirements
 
-grith runs on macOS (Apple Silicon and Intel), Linux (x86_64 and aarch64), and Windows (x86_64). Full syscall interception is available on Linux via ptrace and seccomp-BPF. macOS operates in process-lifecycle fallback mode. Windows support is on the roadmap.
+grith runs on macOS (Apple Silicon and Intel) and Linux (x86_64 and aarch64). Full syscall interception is available on Linux via ptrace and seccomp-BPF. macOS operates in process-lifecycle fallback mode. Windows support is planned.
 
-| Platform | Interception level | Status |
+| Platform | Status | Interception level |
 |---|---|---|
-| Linux x86_64 / aarch64 | Full syscall (ptrace + seccomp-BPF) | Supported |
-| macOS (Apple Silicon / Intel) | Process lifecycle fallback | Supported |
-| Windows x86_64 | Planned (Minifilter + ETW) | Roadmap |
+| Linux x86_64 / aarch64 | Supported | ptrace + seccomp-BPF |
+| macOS (Apple Silicon / Intel) | Supported | Process lifecycle fallback |
+| Windows x86_64 | Planned | Minifilter + ETW |
 
 ## Install via shell script
 
@@ -35,23 +35,9 @@ On macOS and Linux, grith is available as a Homebrew formula:
 
 <Terminal command="brew install grith-ai/tap/grith" />
 
-## Install on Windows
-
-### winget
-
-<Terminal command="winget install grith-ai.grith" />
-
-### Scoop
-
-<Terminal command="scoop bucket add grith https://github.com/grith-ai/scoop-bucket && scoop install grith" />
-
-### MSI installer
-
-Download the latest `.msi` from the [GitHub releases page](https://github.com/grith-ai/grith/releases).
-
 ## Build from source
 
-If you prefer to build from source, you need a Rust toolchain (1.75+):
+If you prefer to build from source, you need a Rust toolchain (1.80+):
 
 <Terminal command="git clone https://github.com/grith-ai/grith && cd grith && cargo build --release" />
 

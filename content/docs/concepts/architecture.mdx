@@ -7,18 +7,24 @@ tier: "community"
 lastUpdated: "2026-02-24"
 ---
 
-grith is a Rust monorepo that intercepts every system call from AI agents and evaluates them against 17+ security filters before execution. This page covers how the pieces fit together.
+grith is a Rust monorepo that intercepts every system call from AI agents and evaluates them against 17 security filters before execution. This page covers how the pieces fit together.
 
 ## Crate layout
 
-The core project is split into four crates, each with a single responsibility:
+The core project is split into ten crates, each with a single responsibility:
 
 | Crate | Role |
 |---|---|
-| `grith-core` | CLI entry point, configuration loading, command dispatch |
-| `grith-proxy` | Multi-filter security proxy — the scoring engine that decides ALLOW, QUEUE, or DENY |
+| `grith-core` | Configuration loading, shared types, and core domain logic |
+| `grith-cli` | CLI entry point and command dispatch |
 | `grith-server` | HTTP and WebSocket server powering the dashboard at `localhost:3141` |
+| `grith-llm` | LLM provider abstraction (Ollama, OpenAI, Anthropic, etc.) and tool call routing |
+| `grith-proxy` | Multi-filter security proxy — the scoring engine that decides ALLOW, QUEUE, or DENY |
 | `grith-supervisor` | OS-level syscall interception via ptrace, seccomp-BPF, and process lifecycle management |
+| `grith-audit` | Append-only, tamper-evident audit log |
+| `grith-digest` | Quarantine queue management and batched human review |
+| `grith-notify` | Notification dispatch (CLI alerts, dashboard WebSocket, webhooks) |
+| `grith-tests` | Integration and end-to-end test harness |
 
 <Callout type="info" title="Three-repo architecture">
 grith ships as three repositories. **grith** is the Rust daemon (the product). **grith-docs** is the documentation site at `docs.grith.ai`. **grith-website** is the marketing site at `grith.ai`. The docs site and marketing site share a design system and tech stack (Next.js, Tailwind, TypeScript) but deploy independently.
@@ -54,14 +60,14 @@ Both paths share the same filters, the same scoring thresholds, the same audit l
 
 ## Security proxy pipeline
 
-The security proxy evaluates every tool call through a four-phase filter pipeline:
+The security proxy evaluates every tool call through a three-phase filter pipeline:
 
 ```
-Static filters (parallel)
+Phase 1: Static filters (6 filters, parallel, ~0.1ms)
     ↓
-Pattern filters (parallel)
+Phase 2: Pattern filters (5 filters, parallel, 1–5ms)
     ↓
-Context filters (parallel)
+Phase 3: Context filters (6 filters, parallel, 5–10ms)
     ↓
 Score aggregation → ALLOW / QUEUE / DENY
 ```

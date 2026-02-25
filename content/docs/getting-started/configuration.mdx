@@ -28,20 +28,24 @@ To view the current configuration and where each value comes from:
   default_provider = "ollama"           # config.toml
 
 [proxy]
-  auto_allow_threshold = 2.5            # config.toml
+  auto_allow_threshold = 3.0            # config.toml
   auto_deny_threshold = 8.0             # config.toml
+  cold_start_calls = 200                # default
   filter_chain = "default"              # default
 
+[adaptive]
+
 [digest]
-  db_path = "~/.local/share/grith/digest.db"  # default
-  retention_days = 90                          # default
+  interval_active = "30m"               # default
+  interval_idle = "24h"                 # default
+  delivery = "cli"                      # default
+  max_queue_size = 100                  # default
 
 [server]
   dashboard_port = 3141                 # default
-  api_port = 3142                       # default
 
 [supervisor]
-  profile = "standard"                  # default
+  profile = "generic"                   # default
 
 [notifications]
   enabled = false                       # default`}
@@ -89,11 +93,11 @@ model = "llama3.1:8b"
 
 [llm.openai]
 api_key_env = "OPENAI_API_KEY"
-model = "gpt-4o"
+model = "gpt-4o-mini"
 
 [llm.anthropic]
 api_key_env = "ANTHROPIC_API_KEY"
-model = "claude-sonnet-4-20250514"`}
+model = "claude-sonnet-4-5-20250514"`}
 />
 
 ### [proxy]
@@ -103,8 +107,9 @@ Controls the security proxy's scoring thresholds and filter chain.
 <ConfigExample
   title="Proxy settings"
   code={`[proxy]
-auto_allow_threshold = 2.5      # below this score → ALLOW
+auto_allow_threshold = 3.0      # below this score → ALLOW
 auto_deny_threshold = 8.0       # above this score → DENY
+cold_start_calls = 200          # calls before adaptive learning kicks in
 filter_chain = "default"        # default | strict | permissive | custom
 timeout_ms = 5000               # max time per filter evaluation
 parallel_filters = true         # run independent filters concurrently`}
@@ -114,27 +119,38 @@ parallel_filters = true         # run independent filters concurrently`}
 Tool calls scoring between `auto_allow_threshold` and `auto_deny_threshold` are queued for human review. Adjust these thresholds based on your risk tolerance.
 </Callout>
 
+### [adaptive]
+
+Controls adaptive learning behaviour. grith observes patterns in tool calls over time and adjusts filter sensitivity accordingly.
+
+<ConfigExample
+  title="Adaptive settings"
+  code={`[adaptive]
+enabled = true                  # enable adaptive learning
+cold_start_calls = 200          # calls before adaptive scores are used`}
+/>
+
 ### [digest]
 
-Controls the digest database where session history, queued items, and audit logs are stored.
+Controls the digest system for periodic summaries of session activity, queued items, and review notifications.
 
 <ConfigExample
   title="Digest settings"
   code={`[digest]
-db_path = "~/.local/share/grith/digest.db"
-retention_days = 90             # auto-prune entries older than this
-export_format = "json"          # json | csv`}
+interval_active = "30m"         # digest interval during active sessions
+interval_idle = "24h"           # digest interval when idle
+delivery = "cli"                # cli | email | webhook
+max_queue_size = 100            # maximum queued items before forced review`}
 />
 
 ### [server]
 
-Dashboard and API server configuration.
+Dashboard and API server configuration. Everything runs on a single port.
 
 <ConfigExample
   title="Server settings"
   code={`[server]
-dashboard_port = 3141           # web dashboard
-api_port = 3142                 # REST API
+dashboard_port = 3141           # web dashboard and API (single port)
 bind_address = "127.0.0.1"     # localhost only by default`}
 />
 
@@ -145,7 +161,7 @@ Controls the supervisor agent that monitors the primary agent's behaviour.
 <ConfigExample
   title="Supervisor settings"
   code={`[supervisor]
-profile = "standard"            # standard | strict | permissive
+profile = "generic"             # generic | strict | permissive
 enabled = true
 review_interval_ms = 1000       # how often the supervisor checks state`}
 />
@@ -242,27 +258,31 @@ default_provider = "anthropic"
 
 [llm.anthropic]
 api_key_env = "ANTHROPIC_API_KEY"
-model = "claude-sonnet-4-20250514"
+model = "claude-sonnet-4-5-20250514"
 
 [llm.openai]
 api_key_env = "OPENAI_API_KEY"
-model = "gpt-4o"
+model = "gpt-4o-mini"
 
 [proxy]
 auto_allow_threshold = 2.0
 auto_deny_threshold = 7.0
+cold_start_calls = 200
 filter_chain = "strict"
 timeout_ms = 5000
 parallel_filters = true
 
+[adaptive]
+enabled = true
+
 [digest]
-db_path = "~/.local/share/grith/digest.db"
-retention_days = 365
-export_format = "json"
+interval_active = "30m"
+interval_idle = "24h"
+delivery = "cli"
+max_queue_size = 100
 
 [server]
 dashboard_port = 3141
-api_port = 3142
 bind_address = "127.0.0.1"
 
 [supervisor]
@@ -283,5 +303,5 @@ channel = "#grith-alerts"`}
 
 - [LLM Providers](/docs/getting-started/providers) — Detailed provider configuration
 - [Filter Reference](/docs/reference/filters) — Understand and tune individual filters
-- [Supervisor Profiles](/docs/concepts/supervisor) — Standard, strict, and permissive profiles
+- [Supervisor Profiles](/docs/concepts/supervisor) — Generic, strict, and permissive profiles
 - [Team Guide](/docs/guides/team) — Shared configuration for teams

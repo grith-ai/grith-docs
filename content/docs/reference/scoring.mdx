@@ -115,15 +115,17 @@ When adaptive learning is enabled, grith adjusts filter weights automatically ba
 4. If you approved and the score was high (false positive), the weights of the contributing filters are decreased slightly.
 5. If you denied and the score was low (false negative), the weights of the contributing filters are increased slightly.
 
-The adjustment magnitude is controlled by `learning_rate` (default: 0.01). Only feedback within the `feedback_window` (default: 7 days) is considered.
+The adjustment magnitude is controlled by `learning_rate` (default: 0.1). Adjustments only apply once `min_samples` feedback signals have been collected and the confidence level exceeds `confidence_threshold`. No single filter weight can be adjusted by more than `max_adjustment` from its baseline.
 
 <ConfigExample title="Adaptive learning configuration" code={`[adaptive]
 enabled = true
-learning_rate = 0.01
-feedback_window = "7d"`} />
+learning_rate = 0.1
+confidence_threshold = 0.7
+min_samples = 10
+max_adjustment = 2.0`} />
 
-<Callout type="tip" title="Gradual convergence">
-With the default learning rate of 0.01, it takes many consistent feedback signals to significantly shift a weight. This is intentional: the system converges gradually to avoid oscillation from inconsistent feedback.
+<Callout type="tip" title="Bounded convergence">
+With the default learning rate of 0.1 and a maximum adjustment of +/-2.0, the adaptive system converges meaningfully while preventing any single filter from being amplified or silenced beyond safe bounds. At least 10 feedback samples are required before adjustments begin.
 </Callout>
 
 ### Viewing adaptive state

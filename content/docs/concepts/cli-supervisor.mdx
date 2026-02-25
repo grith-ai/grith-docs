@@ -152,7 +152,7 @@ Syscalls matching noise patterns are not scored, not quarantined, and not logged
 
 The CLI supervisor routes every intercepted syscall through the same [scoring proxy](/docs/concepts/scoring-proxy) used by grith's built-in agent. This means:
 
-- The same 17+ filters evaluate the call
+- The same 17 filters evaluate the call
 - The same scoring thresholds apply
 - The same audit log records the decision
 - The same quarantine digest collects ambiguous calls

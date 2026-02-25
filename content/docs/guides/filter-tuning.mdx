@@ -19,7 +19,7 @@ Every tool call passes through the filter chain. Each filter produces an indepen
 
 | Threshold | Default | Effect |
 |---|---|---|
-| `auto_allow_threshold` | 2.5 | Scores below this are executed immediately |
+| `auto_allow_threshold` | 3.0 | Scores below this are executed immediately |
 | `auto_deny_threshold` | 8.0 | Scores above this are blocked outright |
 
 Anything between the two thresholds lands in the digest queue for human review.

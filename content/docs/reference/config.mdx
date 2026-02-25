@@ -76,17 +76,17 @@ grith defaults to Ollama so that your data never leaves your machine. You can co
 Configure the scoring proxy that evaluates every tool call.
 
 <ConfigExample title="Proxy configuration" code={`[proxy]
-listen_addr = "127.0.0.1:3142"
 auto_allow_threshold = 3.0
 auto_deny_threshold = 8.0
-cold_start_calls = 200`} />
+cold_start_calls = 200
+review_timeout_seconds = 300`} />
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `listen_addr` | Address | `"127.0.0.1:3142"` | Address the proxy listens on. |
 | `auto_allow_threshold` | Float | `3.0` | Tool calls scoring below this are automatically allowed. |
 | `auto_deny_threshold` | Float | `8.0` | Tool calls scoring above this are automatically denied. |
 | `cold_start_calls` | Integer | `200` | Number of initial calls during which thresholds are widened (QUEUE zone: 2.0-10.0). |
+| `review_timeout_seconds` | Integer | `300` | Seconds before a queued tool call times out if not reviewed. |
 
 ### [proxy.filters.*]
 
@@ -119,37 +119,44 @@ Control the adaptive learning system that adjusts filter weights based on your a
 
 <ConfigExample title="Adaptive learning" code={`[adaptive]
 enabled = true
-learning_rate = 0.01
-feedback_window = "7d"`} />
+learning_rate = 0.1
+confidence_threshold = 0.7
+min_samples = 10
+max_adjustment = 2.0`} />
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | Boolean | `true` | Enable adaptive weight adjustment. |
-| `learning_rate` | Float | `0.01` | How aggressively weights shift in response to feedback. Lower values are more conservative. |
-| `feedback_window` | Duration | `"7d"` | Time window of feedback to consider when computing weight adjustments. |
+| `learning_rate` | Float | `0.1` | How aggressively weights shift in response to feedback. Lower values are more conservative. |
+| `confidence_threshold` | Float | `0.7` | Minimum confidence level required before adaptive adjustments are applied. |
+| `min_samples` | Integer | `10` | Minimum number of feedback samples required before adjustments begin. |
+| `max_adjustment` | Float | `2.0` | Maximum amount a filter weight can be adjusted up or down from its baseline. |
 
 ## [digest]
 
 Configure the digest queue where QUEUE-zone tool calls are held for review.
 
 <ConfigExample title="Digest configuration" code={`[digest]
-mode = "cli"
-batch_interval = "5m"
-max_queue_size = 1000`} />
+delivery = "cli"
+interval_active = "30m"
+interval_idle = "24h"
+max_queue_size = 100`} />
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `mode` | Enum | `"cli"` | Review interface: `cli` for terminal review, `dashboard` for web UI. |
-| `batch_interval` | Duration | `"5m"` | How often to batch pending items for review notification. |
-| `max_queue_size` | Integer | `1000` | Maximum number of items in the queue before oldest items are auto-denied. |
+| `delivery` | Enum | `"cli"` | Review interface: `cli` for terminal review, `dashboard` for web UI. |
+| `interval_active` | Duration | `"30m"` | How often to batch pending items for review notification during active sessions. |
+| `interval_idle` | Duration | `"24h"` | How often to deliver digest summaries during idle periods. |
+| `max_queue_size` | Integer | `100` | Maximum number of items in the queue before oldest items are auto-denied. |
 
 ## [server]
 
 Configure the API and dashboard server.
 
 <ConfigExample title="Server configuration" code={`[server]
-listen_addr = "127.0.0.1"
+host = "127.0.0.1"
 port = 3141
+dashboard_dir = "dashboard/dist"
 cors_origins = ["http://localhost:3000"]
 
 [server.tls]
@@ -157,13 +164,15 @@ cert_path = "/path/to/cert.pem"
 key_path = "/path/to/key.pem"
 
 [server.rate_limit]
-requests_per_minute = 120
-burst = 20`} />
+general_rps = 120
+write_rps = 30
+proxy_test_rps = 10`} />
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `listen_addr` | Address | `"127.0.0.1"` | Address the server binds to. |
+| `host` | Address | `"127.0.0.1"` | Address the server binds to. |
 | `port` | Integer | `3141` | Port for the API and dashboard. |
+| `dashboard_dir` | Path | `"dashboard/dist"` | Path to the built dashboard static files, relative to grith's data directory. |
 | `cors_origins` | Array | `[]` | Allowed CORS origins. |
 
 ### [server.tls]
@@ -177,8 +186,9 @@ burst = 20`} />
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `requests_per_minute` | Integer | `120` | Maximum requests per minute per client. |
-| `burst` | Integer | `20` | Burst allowance above the per-minute rate. |
+| `general_rps` | Integer | `120` | Maximum general requests per second per client. |
+| `write_rps` | Integer | `30` | Maximum write requests per second per client. |
+| `proxy_test_rps` | Integer | `10` | Maximum proxy test requests per second per client. |
 
 <Callout type="warning" title="Bind address">
 The server defaults to `127.0.0.1` (localhost only). If you need remote access, see the [Reverse Proxy guide](/docs/guides/reverse-proxy) rather than binding to `0.0.0.0` directly.
@@ -190,6 +200,8 @@ Configure the syscall-level supervisor for `grith exec`.
 
 <ConfigExample title="Supervisor configuration" code={`[supervisor]
 default_profile = "generic"
+max_concurrent_sessions = 4
+freeze_timeout_seconds = 300
 
 [supervisor.platform.linux]
 ptrace_mode = "seccomp-bpf"
@@ -204,6 +216,8 @@ ignore_patterns = [
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `default_profile` | String | `"generic"` | Supervisor profile applied when `--profile` is not specified. |
+| `max_concurrent_sessions` | Integer | `4` | Maximum number of supervisor sessions that can run simultaneously. |
+| `freeze_timeout_seconds` | Integer | `300` | Seconds before a frozen (paused) supervised process is automatically denied and resumed. |
 
 ### [supervisor.platform.linux]
 
@@ -311,31 +325,38 @@ base_url = "http://localhost:11434"
 model = "llama3.2"
 
 [proxy]
-listen_addr = "127.0.0.1:3142"
 auto_allow_threshold = 3.0
 auto_deny_threshold = 8.0
 cold_start_calls = 200
+review_timeout_seconds = 300
 
 [adaptive]
 enabled = true
-learning_rate = 0.01
-feedback_window = "7d"
+learning_rate = 0.1
+confidence_threshold = 0.7
+min_samples = 10
+max_adjustment = 2.0
 
 [digest]
-mode = "cli"
-batch_interval = "5m"
-max_queue_size = 1000
+delivery = "cli"
+interval_active = "30m"
+interval_idle = "24h"
+max_queue_size = 100
 
 [server]
-listen_addr = "127.0.0.1"
+host = "127.0.0.1"
 port = 3141
+dashboard_dir = "dashboard/dist"
 
 [server.rate_limit]
-requests_per_minute = 120
-burst = 20
+general_rps = 120
+write_rps = 30
+proxy_test_rps = 10
 
 [supervisor]
 default_profile = "generic"
+max_concurrent_sessions = 4
+freeze_timeout_seconds = 300
 
 [notifications]
 enabled = true

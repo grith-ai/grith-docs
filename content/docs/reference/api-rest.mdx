@@ -30,7 +30,7 @@ Feature-gated endpoints (Pro or Enterprise) return HTTP 403 with code `FEATURE_G
 
 ## Health
 
-### GET /api/health
+### GET /health
 
 Returns server health status.
 
@@ -42,7 +42,7 @@ Returns server health status.
   "uptime_seconds": 3600
 }`} />
 
-### GET /api/tier
+### GET /tier
 
 Returns the active license tier and feature entitlements.
 
@@ -60,7 +60,7 @@ Returns the active license tier and feature entitlements.
 
 The digest queue holds tool calls that scored in the QUEUE zone. These endpoints let you review and act on pending items.
 
-### GET /api/digest
+### GET /digest
 
 List pending digest items.
 
@@ -94,19 +94,19 @@ List pending digest items.
   "offset": 0
 }`} />
 
-### POST /api/digest/:id/approve
+### POST /digest/:id/approve
 
 Approve a queued tool call. The call will be executed.
 
 **Response:** `{"status": "approved"}`
 
-### POST /api/digest/:id/deny
+### POST /digest/:id/deny
 
 Deny a queued tool call. The call is blocked and logged.
 
 **Response:** `{"status": "denied"}`
 
-### POST /api/digest/:id/learn
+### POST /digest/:id/learn
 
 Submit feedback for adaptive learning. Provide a signal indicating whether the score was too high (false positive) or too low (false negative).
 
@@ -120,31 +120,31 @@ Valid signals: `false_positive`, `false_negative`, `correct`.
 
 **Response:** `{"status": "learned"}`
 
-### POST /api/digest/:id/escalate
+### POST /digest/:id/escalate
 
 Escalate a digest item to a higher-severity notification channel.
 
 **Response:** `{"status": "escalated"}`
 
-### POST /api/digest/:id/unlock-egress
+### POST /digest/:id/unlock-egress
 
 Approve an outbound network request that was blocked by the egress policy filter. This is a targeted approval that allows only the specific blocked request.
 
 **Response:** `{"status": "egress_unlocked"}`
 
-### POST /api/digest/:id/deny-terminate
+### POST /digest/:id/deny-terminate
 
 Deny the tool call and terminate the session that produced it. Use this for clearly malicious activity.
 
 **Response:** `{"status": "denied_terminated"}`
 
-### POST /api/digest/:id/allow-always
+### POST /digest/:id/allow-always
 
 Approve the tool call and add a permanent allowlist rule so similar calls are auto-allowed in the future.
 
 **Response:** `{"status": "allowed_always"}`
 
-### POST /api/digest/:id/webhook-review
+### POST /digest/:id/webhook-review
 
 Send the digest item to a configured webhook for external review (e.g., a Slack approval workflow).
 
@@ -154,7 +154,7 @@ Send the digest item to a configured webhook for external review (e.g., a Slack 
 
 ## Audit
 
-### GET /api/audit
+### GET /audit
 
 Query audit log entries.
 
@@ -189,13 +189,13 @@ Query audit log entries.
   "offset": 0
 }`} />
 
-### GET /api/audit/:id
+### GET /audit/:id
 
 Get a single audit entry by ID.
 
 **Response:** Single audit entry object (same shape as above).
 
-### GET /api/audit/export
+### GET /audit/export
 
 Export audit logs in bulk.
 
@@ -209,7 +209,7 @@ Export audit logs in bulk.
 
 **Response:** JSON array or CSV file depending on format.
 
-### GET /api/audit/exfil-stats
+### GET /audit/exfil-stats
 
 Get exfiltration detection statistics.
 
@@ -227,7 +227,7 @@ Get exfiltration detection statistics.
 
 ## Proxy
 
-### GET /api/proxy/status
+### GET /proxy/status
 
 Get the current proxy status, including filter states and throughput metrics.
 
@@ -252,7 +252,7 @@ Get the current proxy status, including filter states and throughput metrics.
   }
 }`} />
 
-### POST /api/proxy/test
+### POST /proxy/test
 
 Dry-run a tool call against the scoring pipeline.
 
@@ -284,13 +284,13 @@ Dry-run a tool call against the scoring pipeline.
 
 ## Config
 
-### GET /api/config
+### GET /config
 
 Retrieve the current resolved configuration.
 
 **Response:** Full configuration object in JSON format.
 
-### PUT /api/config
+### PUT /config
 
 Update configuration values. Accepts a partial configuration object. Only provided keys are updated.
 
@@ -298,7 +298,7 @@ Update configuration values. Accepts a partial configuration object. Only provid
 
 <CodeBlock language="json" code={`{
   "proxy": {
-    "auto_allow_threshold": 2.5
+    "auto_allow_threshold": 3.0
   }
 }`} />
 
@@ -312,7 +312,7 @@ Configuration changes via the API take effect immediately without a restart. Be 
 
 ## Canaries
 
-### GET /api/canaries
+### GET /canaries
 
 List all active canary tokens.
 
@@ -331,7 +331,7 @@ List all active canary tokens.
   ]
 }`} />
 
-### POST /api/canaries
+### POST /canaries
 
 Create a new canary token.
 
@@ -343,13 +343,13 @@ Create a new canary token.
 
 **Response:** Created canary object with generated token.
 
-### DELETE /api/canaries/:id
+### DELETE /canaries/:id
 
 Remove a canary token.
 
 **Response:** `{"status": "deleted"}`
 
-### POST /api/canaries/:id/rotate
+### POST /canaries/:id/rotate
 
 Rotate a canary token, generating a new value.
 
@@ -359,7 +359,7 @@ Rotate a canary token, generating a new value.
 
 ## Notifications
 
-### GET /api/notifications/channels
+### GET /notifications/channels
 
 List configured notification channels and their status.
 
@@ -373,7 +373,7 @@ List configured notification channels and their status.
   ]
 }`} />
 
-### GET /api/notifications/status
+### GET /notifications/status
 
 Get overall notification system status.
 
@@ -387,7 +387,7 @@ Get overall notification system status.
   "rate_limit_remaining": 8
 }`} />
 
-### POST /api/notifications/test/:channel
+### POST /notifications/test/:channel
 
 Send a test notification to a specific channel.
 
@@ -397,7 +397,7 @@ Send a test notification to a specific channel.
 
 ## Adaptive
 
-### GET /api/adaptive/stats
+### GET /adaptive/stats
 
 Get adaptive learning statistics and current weight adjustments.
 
@@ -420,7 +420,7 @@ Get adaptive learning statistics and current weight adjustments.
   }
 }`} />
 
-### POST /api/adaptive/feedback
+### POST /adaptive/feedback
 
 Submit manual feedback for a past tool call.
 
@@ -437,7 +437,7 @@ Submit manual feedback for a past tool call.
 
 ## Analytics
 
-### GET /api/analytics/summary
+### GET /analytics/summary
 
 Get a summary of proxy analytics.
 
@@ -463,7 +463,7 @@ Get a summary of proxy analytics.
 
 ## Policies
 
-### GET /api/policies
+### GET /policies
 
 List all configured policies.
 
@@ -479,7 +479,7 @@ List all configured policies.
   ]
 }`} />
 
-### POST /api/policies
+### POST /policies
 
 Create a new policy.
 
@@ -496,15 +496,15 @@ Create a new policy.
 
 **Response:** Created policy object.
 
-### GET /api/policies/:name
+### GET /policies/:name
 
 Get a policy by name.
 
-### PUT /api/policies/:name
+### PUT /policies/:name
 
 Update an existing policy.
 
-### DELETE /api/policies/:name
+### DELETE /policies/:name
 
 Delete a policy.
 
@@ -514,7 +514,7 @@ Delete a policy.
 
 ## Events
 
-### POST /api/events
+### POST /events
 
 Submit external events into grith's event pipeline. Useful for integrating third-party tools that need to report activity to grith.
 
@@ -535,7 +535,7 @@ Submit external events into grith's event pipeline. Useful for integrating third
 
 ## Server
 
-### POST /api/server/shutdown
+### POST /server/shutdown
 
 Gracefully shut down the grith server. Active sessions are terminated and the digest queue is flushed to disk.
 
@@ -549,7 +549,7 @@ This endpoint terminates the server process. All active supervisor sessions will
 
 ## Supervisor
 
-### GET /api/supervisor/sessions
+### GET /supervisor/sessions
 
 List all active supervisor sessions.
 
@@ -569,7 +569,7 @@ List all active supervisor sessions.
   ]
 }`} />
 
-### POST /api/supervisor/sessions
+### POST /supervisor/sessions
 
 Create a new supervisor session programmatically.
 
@@ -583,17 +583,17 @@ Create a new supervisor session programmatically.
 
 **Response:** Created session object.
 
-### GET /api/supervisor/sessions/:id
+### GET /supervisor/sessions/:id
 
 Get detailed status for a specific supervisor session.
 
-### POST /api/supervisor/sessions/:id/kill
+### POST /supervisor/sessions/:id/kill
 
 Terminate a supervised process.
 
 **Response:** `{"status": "killed"}`
 
-### DELETE /api/supervisor/sessions/:id
+### DELETE /supervisor/sessions/:id
 
 Remove a supervisor session record (after the process has exited).
 

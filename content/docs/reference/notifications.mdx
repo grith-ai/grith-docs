@@ -11,7 +11,7 @@ lastUpdated: "2026-02-24"
 
 grith's notification system alerts you when the scoring proxy detects high-risk activity. Notifications are routed based on severity, rate-limited to prevent alert fatigue, and can escalate through a chain of channels if not acknowledged.
 
-Ten channels are supported out of the box: desktop, email, Slack, Telegram, Discord, WhatsApp, Microsoft Teams, PagerDuty, OpsGenie, and generic webhooks.
+Eleven channels are supported out of the box: desktop, email, Slack, Telegram, Discord, WhatsApp, Microsoft Teams, PagerDuty, OpsGenie, generic webhooks, and WebSocket (for live dashboard push).
 
 ## Quick setup
 
@@ -201,6 +201,15 @@ headers = { "Authorization" = "Bearer \${GRITH_WEBHOOK_TOKEN}" }`} />
 
 The webhook payload follows the same JSON format as the WebSocket `filter_trigger` event. See [WebSocket Events](/docs/reference/websocket-events) for the schema.
 
+### WebSocket
+
+Push notifications to connected WebSocket clients in real time. This powers the live dashboard notification feed.
+
+<ConfigExample title="WebSocket notifications" code={`[notifications.websocket]
+enabled = true`} />
+
+No additional configuration required. WebSocket notifications are delivered to all clients connected to `ws://localhost:3141/ws/live`. This channel is primarily used by the dashboard for real-time alert display.
+
 ## Severity-based routing
 
 Route notifications to different channels based on severity level. This lets you send critical alerts to PagerDuty while routing low-severity events to Slack.
@@ -276,7 +285,7 @@ Lists all available channels with their configuration state (configured, enabled
 
 ### API
 
-<Terminal command="curl http://localhost:3141/api/notifications/status" />
+<Terminal command="curl http://localhost:3141/notifications/status" />
 
 See the [REST API Reference](/docs/reference/api-rest#notifications) for the full response format.
 

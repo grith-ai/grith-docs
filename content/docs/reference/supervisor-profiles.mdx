@@ -25,7 +25,7 @@ When you run `grith exec --profile <name> -- <command>`, grith:
 4. Evaluates each syscall against the profile rules and the scoring pipeline.
 5. Allows, queues, or denies the syscall based on the composite score.
 
-Profile rules feed into the scoring pipeline as additional context. A syscall that matches an `allowed_paths` rule receives a score reduction. A syscall targeting a `denied_paths` entry receives a score increase. The profile does not bypass the scoring pipeline; it adjusts how the pipeline evaluates calls.
+Profile rules feed into the scoring pipeline as additional context. A syscall that matches an `routine_paths` rule receives a score reduction. A syscall targeting a `denied_paths` entry receives a score increase. The profile does not bypass the scoring pipeline; it adjusts how the pipeline evaluates calls.
 
 ## Pre-built profiles
 
@@ -36,7 +36,7 @@ Optimised for [Claude Code](https://claude.ai/code), Anthropic's CLI coding agen
 <ConfigExample title="claude-code profile" code={`[profiles.claude-code]
 description = "Anthropic Claude Code agent"
 
-allowed_paths = [
+routine_paths = [
   "$PROJECT_DIR/**",
   "$HOME/.config/claude/**",
   "/tmp/claude-*/**",
@@ -51,7 +51,7 @@ denied_paths = [
   "/etc/sudoers",
 ]
 
-allowed_commands = [
+routine_commands = [
   "git *",
   "npm *",
   "npx *",
@@ -101,7 +101,7 @@ Optimised for OpenAI Codex CLI.
 <ConfigExample title="codex profile" code={`[profiles.codex]
 description = "OpenAI Codex CLI agent"
 
-allowed_paths = [
+routine_paths = [
   "$PROJECT_DIR/**",
   "$HOME/.config/codex/**",
   "/tmp/codex-*/**",
@@ -115,7 +115,7 @@ denied_paths = [
   "/etc/sudoers",
 ]
 
-allowed_commands = [
+routine_commands = [
   "git *",
   "npm *",
   "npx *",
@@ -160,7 +160,7 @@ Optimised for [aider](https://aider.chat), the AI pair programming tool.
 <ConfigExample title="aider profile" code={`[profiles.aider]
 description = "Aider AI pair programming"
 
-allowed_paths = [
+routine_paths = [
   "$PROJECT_DIR/**",
   "$HOME/.config/aider/**",
   "$HOME/.aider*",
@@ -175,7 +175,7 @@ denied_paths = [
   "/etc/sudoers",
 ]
 
-allowed_commands = [
+routine_commands = [
   "git *",
   "python *",
   "pip *",
@@ -219,7 +219,7 @@ A conservative default profile for any tool. Use this as a starting point for cu
 <ConfigExample title="generic profile" code={`[profiles.generic]
 description = "Conservative default profile"
 
-allowed_paths = [
+routine_paths = [
   "$PROJECT_DIR/**",
   "/tmp/**",
 ]
@@ -236,7 +236,7 @@ denied_paths = [
   "/proc/kcore",
 ]
 
-allowed_commands = [
+routine_commands = [
   "ls *",
   "cat *",
   "grep *",
@@ -277,11 +277,11 @@ Path rules use glob syntax with two special variables:
 | `$PROJECT_DIR` | The current working directory when `grith exec` was invoked |
 | `$HOME` | The user's home directory |
 
-`allowed_paths` entries reduce the scoring penalty for file access syscalls. `denied_paths` entries increase it. A path not matching either list is evaluated neutrally by the profile (other filters still apply).
+`routine_paths` entries reduce the scoring penalty for file access syscalls. `denied_paths` entries increase it. A path not matching either list is evaluated neutrally by the profile (other filters still apply).
 
 ### Command rules
 
-Command rules use glob syntax. The `*` wildcard matches any arguments. Commands not in `allowed_commands` are not automatically blocked; they receive a higher score from the profile context but may still pass through the scoring pipeline.
+Command rules use glob syntax. The `*` wildcard matches any arguments. Commands not in `routine_commands` are not automatically blocked; they receive a higher score from the profile context but may still pass through the scoring pipeline.
 
 <Callout type="info" title="Profiles adjust scores, not hard blocks">
 Profile rules adjust the score that the scoring pipeline computes. A denied path adds points to the composite score, which may push it above the deny threshold. But if you have custom allowlist rules or low weights on the relevant filters, the call could still be allowed. For hard blocks, set the deny threshold low or use the allowlist filter with explicit deny rules.
@@ -305,7 +305,7 @@ Define custom profiles in your configuration file or in `config/supervisor/profi
 <ConfigExample title="Custom profile example" code={`[profiles.my-agent]
 description = "Custom profile for my internal agent"
 
-allowed_paths = [
+routine_paths = [
   "$PROJECT_DIR/**",
   "$HOME/.config/my-agent/**",
   "/var/data/my-agent/**",
@@ -317,7 +317,7 @@ denied_paths = [
   "/etc/**",
 ]
 
-allowed_commands = [
+routine_commands = [
   "git *",
   "python *",
   "pip *",

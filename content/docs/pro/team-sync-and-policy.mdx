@@ -215,18 +215,18 @@ curl -X POST -H "Authorization: Bearer $GRITH_PRO_TOKEN" \\
 
 ## Sync frequency
 
-By default, sync is manual (`grith pro sync`). For teams that need policies to propagate quickly, configure automatic sync:
+By default, grith syncs automatically every 4 hours. You can also trigger a manual sync at any time with `grith pro sync`. The automatic interval is configurable:
 
 <ConfigExample
   title="Automatic sync"
   code={`[pro.sync]
-auto_sync = true                # sync on every grith startup
-auto_sync_interval = "1h"      # also sync periodically in long sessions
+auto_sync = true                # default: true
+auto_sync_interval = "4h"      # default: 4 hours
 upload_audit = true             # include audit summary in sync`}
 />
 
 <Callout type="info" title="Sync does not block startup">
-When `auto_sync` is enabled, grith syncs in the background on startup. The security proxy starts immediately with the last-known policies. If the sync returns updated policies, they take effect on the next tool call evaluation.
+grith syncs in the background on startup. The security proxy starts immediately with the last-known policies. If the sync returns updated policies, they take effect on the next tool call evaluation.
 </Callout>
 
 ## Next steps

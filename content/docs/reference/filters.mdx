@@ -43,7 +43,7 @@ If the running composite score exceeds the `auto_deny_threshold` at any phase bo
 | 9 | `egress_policy` | Pattern | Yes | +1 to +4 | Outbound network destination policy |
 | 10 | `dlp_gate` | Pattern | Yes | +2 to +5 | Data loss prevention gate |
 | 11 | `canary` | Pattern | Yes | +5 (hard deny) | Canary token detection |
-| 12 | `reputation` | Pattern | Yes | -1 to +4 | Outbound destination reputation check |
+| 12 | `reputation` | Context | Yes | -1 to +4 | Outbound destination reputation check |
 | 13 | `behavioural` | Context | Yes | +1 to +3 | Behavioural profiling based on session history |
 | 14 | `taint` | Context | Yes | +3 to +5 | Information flow taint tracking |
 | 15 | `session_containment` | Context | Yes | +2 to +4 | Session-level containment rules |
@@ -149,7 +149,7 @@ Checks whether the tool call requires elevated process capabilities (e.g., `CAP_
 
 ### secret_scan
 
-Scans tool call arguments for patterns that match known secret formats: API keys, tokens, passwords, private keys, and connection strings. Uses a library of over 200 regex patterns.
+Scans tool call arguments for patterns that match known secret formats: API keys, tokens, passwords, private keys, and connection strings. Uses a library of over 1600 regex patterns.
 
 | Score | Detection |
 |---|---|
@@ -228,6 +228,8 @@ This filter always returns +5 and triggers a hard deny. There is no configuratio
 The canary filter cannot be disabled or weight-adjusted. It is a last line of defence against data exfiltration. Use `grith canary add` to plant tokens in sensitive files.
 </Callout>
 
+## Context phase filters
+
 ### reputation
 
 Checks outbound network destinations against reputation databases. Known-good destinations receive a small score reduction, while destinations with poor reputation receive higher scores.
@@ -239,8 +241,6 @@ Checks outbound network destinations against reputation databases. Known-good de
 | +2 | Low reputation |
 | +3 | Suspicious destination |
 | +4 | Known-malicious destination |
-
-## Context phase filters
 
 ### behavioural
 

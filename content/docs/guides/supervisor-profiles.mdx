@@ -44,7 +44,7 @@ Here is the full schema with all available fields:
 description = "Custom profile for my-tool"
 
 # Filesystem access control
-allowed_paths = [
+routine_paths = [
     "~/projects/",        # Recursive access to projects directory
     "/tmp/",              # Temp directory access
 ]
@@ -56,7 +56,7 @@ denied_paths = [
 ]
 
 # Command execution control
-allowed_commands = [
+routine_commands = [
     "git",
     "npm",
     "node",
@@ -64,6 +64,13 @@ allowed_commands = [
     "pytest",
     "cargo",
     "make",
+]
+
+# Network destinations
+routine_destinations = [
+    "api.openai.com",
+    "api.anthropic.com",
+    "registry.npmjs.org",
 ]
 
 # Network policy
@@ -81,21 +88,25 @@ max_events_per_path_per_second = 5 # Rate-limit events per path`}
 
 ### Field reference
 
-#### allowed_paths
+#### routine_paths
 
-A list of filesystem paths the tool is permitted to access. Paths ending with `/` grant recursive access to the directory and all children. Paths support `~` expansion for the home directory.
+A list of filesystem paths the tool routinely accesses. Paths ending with `/` grant recursive access to the directory and all children. Paths support `~` expansion for the home directory.
 
-If `allowed_paths` is set, any file access outside these paths triggers the `allowlist` filter with a score of `DENY` (hard block, not just elevated score).
+File access within `routine_paths` receives a score reduction. File access outside these paths is evaluated normally by the scoring pipeline. Combined with the deny threshold, this effectively controls what the tool can access.
 
 #### denied_paths
 
-A list of filesystem paths the tool is explicitly blocked from accessing. Denied paths take precedence over allowed paths. Use this to carve out exclusions within an allowed directory.
+A list of filesystem paths the tool is explicitly blocked from accessing. Denied paths take precedence over routine paths. Use this to carve out exclusions within a routine directory.
 
-#### allowed_commands
+#### routine_commands
 
-A list of command names the tool is permitted to execute. If set, any `process.exec` call for a command not in this list triggers the `allowlist` filter with a hard deny.
+A list of command names the tool routinely executes. Commands in this list receive a score reduction when evaluated by the scoring pipeline.
 
 Command names are matched against the base name of the executable, not the full path. Arguments are not matched — use other filters for argument inspection.
+
+#### routine_destinations
+
+A list of network destinations (hostnames) the tool routinely connects to. Connections to these destinations receive a score reduction. Connections to destinations not in this list are evaluated normally by the scoring pipeline.
 
 #### network_policy
 
@@ -125,7 +136,7 @@ Create a new profile by adding a section to your profiles file:
   code={`[data-science]
 description = "Profile for data science notebooks and scripts"
 
-allowed_paths = [
+routine_paths = [
     "~/data/",
     "~/notebooks/",
     "/tmp/",
@@ -136,12 +147,17 @@ denied_paths = [
     "~/data/production/",    # Block access to production data
 ]
 
-allowed_commands = [
+routine_commands = [
     "python",
     "pip",
     "jupyter",
     "conda",
     "git",
+]
+
+routine_destinations = [
+    "pypi.org",
+    "conda.anaconda.org",
 ]
 
 network_policy = "score"
@@ -165,7 +181,7 @@ To see the full configuration of a pre-built profile, inspect the shipped profil
 <CodeBlock
   code={`[claude-code]
 description = "Profile for Anthropic Claude Code"
-allowed_paths = [
+routine_paths = [
     ".",            # Current working directory (project root)
     "/tmp/",
 ]
@@ -175,12 +191,19 @@ denied_paths = [
     "~/.aws/",
     "~/.config/grith/",    # Prevent tool from modifying grith config
 ]
-allowed_commands = [
+routine_commands = [
     "git", "npm", "npx", "node", "python", "python3",
     "pip", "cargo", "rustc", "make", "cmake",
     "grep", "find", "sed", "awk", "cat", "ls", "head", "tail",
     "curl", "wget",
     "docker", "docker-compose",
+]
+routine_destinations = [
+    "api.anthropic.com",
+    "github.com",
+    "registry.npmjs.org",
+    "crates.io",
+    "pypi.org",
 ]
 network_policy = "score"
 
@@ -214,7 +237,7 @@ If you want a custom profile that extends an existing one, use the `extends` fie
   title="~/.config/grith/supervisor/profiles.toml"
   code={`[claude-code-strict]
 extends = "claude-code"
-description = "Claude Code with stricter filesystem controls"
+description = "Claude Code with stricter network and filesystem controls"
 
 # Additional denied paths (merged with parent)
 denied_paths = [
@@ -223,6 +246,9 @@ denied_paths = [
     ".env",
     ".env.local",
 ]
+
+# Override routine_destinations to empty (no score reductions for network)
+routine_destinations = []
 
 network_policy = "deny"`}
 />
