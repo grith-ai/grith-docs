@@ -19,11 +19,18 @@ function getTextContent(node: ReactNode): string {
   return '';
 }
 
+// Tracks slug usage across headings within a render pass to deduplicate
+// (e.g. two "## Setup" headings become "setup" and "setup-1").
+const slugCounts = new Map<string, number>();
+
 function createHeading(level: number) {
   const Tag = `h${level}` as 'h2' | 'h3' | 'h4';
   return function Heading({ children }: { children?: ReactNode }) {
     const text = getTextContent(children);
-    const id = slugify(text);
+    const base = slugify(text);
+    const count = slugCounts.get(base) ?? 0;
+    const id = count === 0 ? base : `${base}-${count}`;
+    slugCounts.set(base, count + 1);
     return <Tag id={id}>{children}</Tag>;
   };
 }
