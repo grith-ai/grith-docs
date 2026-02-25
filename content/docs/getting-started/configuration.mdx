@@ -92,13 +92,15 @@ base_url = "http://localhost:11434"
 model = "llama3.1:8b"
 
 [llm.openai]
-api_key_env = "OPENAI_API_KEY"
+api_key_env = "OPENAI_API_KEY"    # Or use: api_key = "sk-..."
 model = "gpt-4o-mini"
 
 [llm.anthropic]
-api_key_env = "ANTHROPIC_API_KEY"
+api_key_env = "ANTHROPIC_API_KEY"  # Or use: api_key = "sk-ant-..."
 model = "claude-sonnet-4-5-20250514"`}
 />
+
+Each cloud provider supports both `api_key` (direct value) and `api_key_env` (environment variable name). If both are set, `api_key` takes precedence. See [LLM Providers](/docs/getting-started/providers) for full details.
 
 ### [proxy]
 

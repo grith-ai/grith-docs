@@ -45,22 +45,38 @@ No additional configuration needed. grith connects to Ollama at `http://localhos
 </div>
 <div>
 
-Set your API key as an environment variable:
+Set your API key via an environment variable:
 
 <Terminal command="export OPENAI_API_KEY=sk-..." />
 
-Then update your grith config:
+Or set it directly in your config file:
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[llm.openai]
+api_key = "sk-..."`}
+/>
+
+Then set OpenAI as the default provider:
 
 <Terminal command="grith config set llm.default_provider openai" />
 
 </div>
 <div>
 
-Set your API key as an environment variable:
+Set your API key via an environment variable:
 
 <Terminal command="export ANTHROPIC_API_KEY=sk-ant-..." />
 
-Then update your grith config:
+Or set it directly in your config file:
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[llm.anthropic]
+api_key = "sk-ant-..."`}
+/>
+
+Then set Anthropic as the default provider:
 
 <Terminal command="grith config set llm.default_provider anthropic" />
 
