@@ -1,4 +1,5 @@
 import { MDXRemote } from 'next-mdx-remote/rsc';
+import remarkGfm from 'remark-gfm';
 import { mdxComponents } from '@/components/mdx';
 import Breadcrumbs from './Breadcrumbs';
 import PrevNext from './PrevNext';
@@ -39,7 +40,11 @@ export default function DocPage({ doc, headings, prev, next }: DocPageProps) {
         )}
 
         <div className="prose-docs mt-8">
-          <MDXRemote source={doc.content} components={mdxComponents} />
+          <MDXRemote
+            source={doc.content}
+            components={mdxComponents}
+            options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }}
+          />
         </div>
 
         <PrevNext prev={prev} next={next} />
