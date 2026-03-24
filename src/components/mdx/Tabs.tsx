@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 interface TabsProps {
   items: string[];
@@ -9,22 +9,24 @@ interface TabsProps {
 }
 
 export default function Tabs({ items, children, storageKey }: TabsProps) {
-  const [active, setActive] = useState(0);
-
-  useEffect(() => {
-    if (storageKey) {
-      const saved = localStorage.getItem(`tabs-${storageKey}`);
-      if (saved !== null) {
-        const idx = items.indexOf(saved);
-        if (idx !== -1) setActive(idx);
+  const [active, setActive] = useState(() => {
+    if (typeof window === 'undefined' || !storageKey) {
+      return 0;
+    }
+    const saved = window.localStorage.getItem(`tabs-${storageKey}`);
+    if (saved !== null) {
+      const idx = items.indexOf(saved);
+      if (idx !== -1) {
+        return idx;
       }
     }
-  }, [items, storageKey]);
+    return 0;
+  });
 
   const select = (idx: number) => {
     setActive(idx);
     if (storageKey) {
-      localStorage.setItem(`tabs-${storageKey}`, items[idx]);
+      window.localStorage.setItem(`tabs-${storageKey}`, items[idx]);
     }
   };
 

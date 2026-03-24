@@ -6,6 +6,9 @@ import Terminal from './Terminal';
 import CodeBlock from './CodeBlock';
 import ConfigExample from './ConfigExample';
 import Badge from '@/components/shared/Badge';
+import ScoreCalculator from './ScoreCalculator';
+import ArchitectureDiagram from './ArchitectureDiagram';
+import FilterTable from './FilterTable';
 
 function getTextContent(node: ReactNode): string {
   if (typeof node === 'string') return node;
@@ -45,4 +48,7 @@ export const mdxComponents = {
   CodeBlock,
   ConfigExample,
   Badge,
+  ScoreCalculator,
+  ArchitectureDiagram,
+  FilterTable,
 };

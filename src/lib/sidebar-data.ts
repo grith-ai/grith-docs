@@ -19,6 +19,7 @@ export const sidebarData = [
       { slug: 'concepts/quarantine-digest', title: 'Quarantine Digest' },
       { slug: 'concepts/syscall-interception', title: 'Syscall Interception' },
       { slug: 'concepts/cli-supervisor', title: 'CLI Supervisor' },
+      { slug: 'concepts/adaptive-reputation', title: 'Adaptive Reputation' },
     ],
   },
   {
@@ -41,10 +42,16 @@ export const sidebarData = [
     docs: [
       { slug: 'guides/filter-tuning', title: 'Filter Tuning' },
       { slug: 'guides/supervisor-profiles', title: 'Supervisor Profiles' },
+      { slug: 'guides/build-supervisor-profile', title: 'Build Your First Supervisor Profile' },
+      { slug: 'guides/forensic-tracing', title: 'Forensic Syscall Tracing' },
+      { slug: 'guides/canary-tokens', title: 'Canary Token Traps' },
+      { slug: 'guides/cost-tracking', title: 'Cost Tracking', tier: 'pro' },
       { slug: 'guides/team-setup', title: 'Team Setup', tier: 'pro' },
+      { slug: 'guides/team-onboarding', title: 'Team Onboarding', tier: 'pro' },
       { slug: 'guides/air-gapped', title: 'Air-Gapped Deployment', tier: 'enterprise' },
       { slug: 'guides/reverse-proxy', title: 'Reverse Proxy & TLS' },
       { slug: 'guides/exfiltration-containment', title: 'Exfiltration Containment' },
+      { slug: 'guides/exfiltration-walkthrough', title: 'Exfiltration Detection Walkthrough' },
       { slug: 'guides/dashboard-operations', title: 'Dashboard Operations' },
       { slug: 'guides/troubleshooting', title: 'Troubleshooting' },
     ],
@@ -77,6 +84,7 @@ export const sidebarData = [
       { slug: 'pro/authentication', title: 'Authentication', tier: 'pro' },
       { slug: 'pro/license-lifecycle', title: 'License Lifecycle', tier: 'pro' },
       { slug: 'pro/team-sync-and-policy', title: 'Team Sync & Policy', tier: 'pro' },
+      { slug: 'pro/encrypted-key-management', title: 'Encrypted Key Management', tier: 'pro' },
     ],
   },
   {
