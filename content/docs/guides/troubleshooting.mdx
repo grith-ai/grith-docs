@@ -168,8 +168,8 @@ Check your platform:
 | Platform | Interception level | Notes |
 |---|---|---|
 | Linux | Full syscall (ptrace + seccomp-BPF) | Requires kernel 3.5+ (virtually all modern distros) |
-| macOS | Process lifecycle only | Spawn, attach, freeze, thaw — no individual syscall visibility |
-| Windows | Not yet supported | Planned for v2.0 |
+| macOS | Not part of the current launch | Support coming very soon |
+| Windows | Not part of the current launch | Support coming very soon |
 
 On Linux, verify ptrace is allowed:
 
@@ -214,15 +214,9 @@ Or in Docker Compose:
   language="yaml"
 />
 
-### macOS limitations
+### macOS and Windows availability
 
-On macOS, grith operates in process-lifecycle fallback mode. This means:
-
-- Process spawn and exit events are captured
-- File and network operations within the process are not individually intercepted
-- The security proxy evaluates process-level events, not per-syscall events
-
-Full macOS syscall interception via Endpoint Security is planned for v2.0.
+macOS and Windows are not supported in the current launch. If you need full supervised `grith exec` behavior today, use Linux. Platform-specific troubleshooting for macOS and Windows will be added when those releases land.
 
 ## Dashboard not loading
 

@@ -1,43 +1,47 @@
 ---
 title: "Installation"
-description: "Install grith on macOS or Linux"
+description: "Install grith on Linux today. macOS and Windows support is coming very soon"
 section: "getting-started"
 order: 1
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 ## System requirements
 
-grith runs on macOS (Apple Silicon and Intel) and Linux (x86_64 and aarch64). Full syscall interception is available on Linux via ptrace and seccomp-BPF. macOS operates in process-lifecycle fallback mode. Windows support is planned.
+grith is supported for production use on Linux today. macOS and Windows support is coming very soon.
 
 | Platform | Status | Interception level |
 |---|---|---|
-| Linux x86_64 / aarch64 | Supported | ptrace + seccomp-BPF |
-| macOS (Apple Silicon / Intel) | Supported | Process lifecycle fallback |
-| Windows x86_64 | Planned | Minifilter + ETW |
+| Linux x86_64 / aarch64 | Supported today | ptrace + seccomp-BPF |
+| macOS (Apple Silicon / Intel) | Coming very soon | Planned platform release |
+| Windows x86_64 | Coming very soon | Planned platform release |
+
+<Callout type="info" title="Current launch scope">
+The current launch targets Linux only. This page will gain macOS and Windows install instructions as soon as those builds ship.
+</Callout>
 
 ## Install via shell script
 
-The fastest way to install grith on macOS or Linux:
+The fastest way to install grith on Linux:
 
 <Terminal command="curl -fsSL https://grith.ai/install | sh" />
 
-The installer detects your platform and architecture, downloads the appropriate binary, and places it in `/usr/local/bin`.
+The installer detects your Linux architecture, downloads the appropriate binary, and places it in `/usr/local/bin`.
 
 After installation, verify it works:
 
 <Terminal command="grith --version" />
 
-## Install via Homebrew
+## Install via Homebrew on Linux
 
-On macOS and Linux, grith is available as a Homebrew formula:
+If you already use Homebrew or Linuxbrew on Linux, grith is also available as a formula:
 
 <Terminal command="brew install grith-ai/tap/grith" />
 
 ## Build from source
 
-If you prefer to build from source, you need a Rust toolchain (1.80+):
+If you prefer to build from source on Linux, you need a Rust toolchain (1.80+):
 
 <Terminal command="git clone https://github.com/grith-ai/grith && cd grith && cargo build --release" />
 
@@ -50,6 +54,10 @@ After installing, initialise your configuration:
 <Terminal command="grith init" />
 
 This creates a default configuration file at `~/.config/grith/config.toml`. See [Configuration](/docs/getting-started/configuration) for details on customising it.
+
+<Callout type="tip" title="macOS and Windows">
+If you are waiting on macOS or Windows support, check back here soon. The docs and install flows will be updated as part of those platform launches.
+</Callout>
 
 ## Next steps
 

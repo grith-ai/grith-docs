@@ -4,7 +4,7 @@ description: "Complete reference for all grith CLI commands, subcommands, and gl
 section: "reference"
 order: 1
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 ## Overview
@@ -174,7 +174,7 @@ Supervise an external CLI tool with OS-level syscall interception. This is grith
 Everything after `--` is the command to supervise. The supervised process runs in a sandboxed environment where file access, network calls, and process creation are evaluated against the active profile.
 
 <Callout type="warning" title="Linux only">
-Full syscall interception requires Linux with ptrace and seccomp-BPF support. On macOS, grith falls back to process-lifecycle monitoring, which provides less granular control.
+`grith exec` is supported on Linux for the current launch. macOS and Windows support is coming very soon.
 </Callout>
 
 ---

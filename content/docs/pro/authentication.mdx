@@ -72,13 +72,11 @@ API keys grant full access to your Pro license. Treat them like passwords. Use e
 
 ## Token storage
 
-grith stores authentication tokens in the OS keychain using platform-native APIs:
+For the current launch, grith stores authentication tokens on Linux using the local keychain or encrypted fallback storage. macOS and Windows storage backends are coming very soon.
 
 | Platform | Storage backend |
 |---|---|
-| macOS | Keychain (via Security framework) |
 | Linux | Secret Service API (GNOME Keyring, KDE Wallet, or compatible) |
-| Windows | Windows Credential Manager |
 
 Tokens are stored under the service name `grith-pro` with your email as the account identifier.
 

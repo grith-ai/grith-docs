@@ -4,7 +4,7 @@ description: "Configure notification channels, severity routing, rate limiting, 
 section: "reference"
 order: 8
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 ## Overview
@@ -48,7 +48,7 @@ Native desktop notifications via the operating system's notification centre.
 <ConfigExample title="Desktop notifications" code={`[notifications.desktop]
 enabled = true`} />
 
-No additional configuration required. Works on Linux (via `notify-send` or D-Bus), macOS (via `osascript`), and Windows (via PowerShell toast).
+No additional configuration required. For the current launch, desktop notifications are supported on Linux (via `notify-send` or D-Bus). macOS and Windows notification notes will be published with those platform releases.
 
 ### Email
 

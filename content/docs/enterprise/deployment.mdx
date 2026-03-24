@@ -4,7 +4,7 @@ description: "On-premise deployment, air-gapped environments, fleet management, 
 section: "enterprise"
 order: 5
 tier: "enterprise"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 grith runs as a local daemon on each developer's machine. In enterprise environments, you need to ensure consistent configuration across a fleet of installations, manage updates without disrupting work, and connect everything back to your security operations infrastructure. This page covers the deployment patterns that make that possible.
@@ -52,14 +52,18 @@ grith is a single static binary with no external dependencies. It does not requi
 | CPU | 2 cores | 4 cores |
 | RAM | 512 MB | 2 GB |
 | Disk | 100 MB (binary + config) | 1 GB (with audit log retention) |
-| OS | Linux x86_64/aarch64, macOS | Linux x86_64 (full syscall support) |
+| OS | Linux x86_64/aarch64 | Linux x86_64 or aarch64 |
 | Network | None (local operation) | Outbound to LLM provider, SIEM |
+
+<Callout type="info" title="Current launch scope">
+Enterprise deployment for the current launch is Linux only. macOS and Windows support is coming very soon.
+</Callout>
 
 ### Installation from local package
 
-For environments without internet access during installation, grith provides platform-specific packages:
+For environments without internet access during installation, grith provides Linux packages today:
 
-<Tabs items={["Debian/Ubuntu", "RHEL/CentOS", "macOS"]} storageKey="os-pkg">
+<Tabs items={["Debian/Ubuntu", "RHEL/CentOS"]} storageKey="os-pkg">
 <div>
 
 <Terminal command="dpkg -i grith_1.0.0_amd64.deb" />
@@ -68,11 +72,6 @@ For environments without internet access during installation, grith provides pla
 <div>
 
 <Terminal command="rpm -i grith-1.0.0.x86_64.rpm" />
-
-</div>
-<div>
-
-<Terminal command="installer -pkg grith-1.0.0.pkg -target /" />
 
 </div>
 </Tabs>
