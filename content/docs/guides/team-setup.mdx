@@ -4,7 +4,7 @@ description: "Configure grith for teams with shared policies, centralised dashbo
 section: "guides"
 order: 3
 tier: "pro"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 ## Overview
@@ -25,18 +25,11 @@ This guide walks through setting up grith for a team from scratch.
 
 Every team member installs grith locally. The security proxy runs on each developer's machine — no central server required for core functionality.
 
-<Tabs items={["macOS / Linux", "Windows"]} storageKey="team-os">
-<div>
-
 <Terminal command="curl -fsSL https://grith.ai/install | sh" />
 
-</div>
-<div>
-
-<Terminal command="winget install grith-ai.grith" />
-
-</div>
-</Tabs>
+<Callout type="info" title="Current launch scope">
+Team deployment is Linux-only for the current launch. macOS and Windows team install flows are coming very soon.
+</Callout>
 
 Verify the installation:
 
@@ -94,9 +87,9 @@ After authentication, pull the team's shared policies:
 <CodeBlock
   code={`[grith] Syncing with grith.ai...
 [grith] ✓ Downloaded team policy: acme-engineering-v3
-[grith] ✓ Applied filter configuration (14 filters configured)
+[grith] ✓ Applied filter configuration (17 filters configured)
 [grith] ✓ Applied threshold standards
-[grith] ✓ Applied supervisor profiles (3 profiles)
+[grith] ✓ Applied supervisor profiles (11 profiles)
 [grith] ✓ Uploaded local audit records (127 events)
 [grith] Sync complete.`}
   language="text"
@@ -175,33 +168,36 @@ Team admins can define standard supervisor profiles that sync to all members:
 <CodeBlock
   code={`# Defined in team dashboard, synced via grith pro sync
 
-[team/secure-coding]
-description = "Team-standard profile for AI coding tools"
-routine_paths = ["."]
-denied_paths = [
-    "~/.ssh/",
-    "~/.aws/",
-    "~/.config/grith/",
-    ".env",
-    ".env.local",
-    ".env.production",
+[[profiles]]
+name = "team/secure-coding"
+display_name = "Team Secure Coding"
+extends = "generic"
+rationale = "Team-standard profile for approved AI coding tools."
+
+routine_paths = [
+    "\${PROJECT_DIR}/**",
 ]
+
 routine_commands = [
-    "git", "npm", "node", "python", "cargo", "make",
-    "grep", "find", "cat", "ls",
+    "node", "npm",
+    "python", "python3",
+    "cargo", "make",
 ]
+
 routine_destinations = [
     "api.openai.com",
     "api.anthropic.com",
     "github.com",
     "registry.npmjs.org",
 ]
-network_policy = "score"
 
-[team/secure-coding.noise_reduction]
-enabled = true
-deduplicate_reads = true
-suppress_stat_calls = true`}
+readonly_paths = [
+    "\${HOME}/.ssh/config",
+    "\${HOME}/.gitconfig",
+]
+
+routine_exec_roots = []
+routine_listen_addresses = []`}
   language="toml"
 />
 

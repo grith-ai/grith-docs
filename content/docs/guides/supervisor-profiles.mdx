@@ -1,306 +1,237 @@
 ---
 title: "Supervisor Profiles"
-description: "Create and customise supervisor profiles to control what external tools can do"
+description: "Choose, customize, and test supervisor profiles for grith exec"
 section: "guides"
 order: 2
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 ## Overview
 
-When you wrap an external CLI tool with `grith exec`, the supervisor intercepts every syscall that tool makes and routes it through the security proxy. Supervisor profiles define per-tool security policies: which paths the tool can access, which commands it can run, what network access it gets, and what noise to filter out.
+When you run `grith exec`, the supervisor intercepts the tool's file, process, and network operations and evaluates them through the proxy. Supervisor profiles tell grith which of those operations are routine for a given tool.
 
-grith ships with pre-built profiles for popular AI tools and supports fully custom profiles for anything else.
+Profiles are allowlist-shaped trust hints, not a second policy engine. Matching operations get low-score fast paths. Unusual operations still go through the full filter pipeline.
 
-## Pre-built profiles
+<Callout type="tip" title="New to profiles?">
+If you want a step-by-step custom example, start with [Build Your First Supervisor Profile](/docs/guides/build-supervisor-profile).
+</Callout>
 
-grith includes profiles for the most common AI coding tools:
+## Where profiles live
 
-| Profile | Tool | Optimised for |
-|---|---|---|
-| `claude-code` | Claude Code (Anthropic) | File edits, shell commands, search operations |
-| `codex` | Codex CLI (OpenAI) | Container-style sandboxed execution |
-| `aider` | Aider | Git operations, file edits, test runs |
-| `generic` | Any CLI tool | Conservative defaults, broad compatibility |
+The shipped profiles are currently loaded from:
 
-Use a pre-built profile with the `--profile` flag:
+<CodeBlock code={`config/supervisor/profiles.toml`} language="text" />
 
-<Terminal command='grith exec --profile claude-code -- claude-code "fix the bug in src/main.rs"' />
+That file contains `[defaults]`, all built-in `[[profiles]]`, and the runtime overlay definitions. If you want to add or tune profiles in the current build, edit that file.
 
-<Terminal command='grith exec --profile aider -- aider --model ollama/llama3.1' />
+## Which profile to use
 
-If you omit `--profile`, grith uses the `generic` profile.
+grith ships with 11 built-in profiles:
 
-## Profile fields
-
-Profiles are defined in TOML. Each profile is a section in `~/.config/grith/supervisor/profiles.toml` (or in the system-wide config at `/etc/grith/supervisor/profiles.toml`).
-
-Here is the full schema with all available fields:
-
-<ConfigExample
-  title="~/.config/grith/supervisor/profiles.toml"
-  code={`[my-profile]
-description = "Custom profile for my-tool"
-
-# Filesystem access control
-routine_paths = [
-    "~/projects/",        # Recursive access to projects directory
-    "/tmp/",              # Temp directory access
-]
-denied_paths = [
-    "~/.ssh/",            # Block SSH key access
-    "~/.gnupg/",          # Block GPG key access
-    "~/.aws/",            # Block AWS credentials
-    "/etc/shadow",        # Block shadow password file
-]
-
-# Command execution control
-routine_commands = [
-    "git",
-    "npm",
-    "node",
-    "python",
-    "pytest",
-    "cargo",
-    "make",
-]
-
-# Network destinations
-routine_destinations = [
-    "api.openai.com",
-    "api.anthropic.com",
-    "registry.npmjs.org",
-]
-
-# Network policy
-# Options: "allow", "deny", "project-only", "score"
-network_policy = "score"
-
-# Noise reduction: suppress known-safe repeated syscalls
-[my-profile.noise_reduction]
-enabled = true
-deduplicate_reads = true           # Collapse repeated reads to same path
-suppress_stat_calls = true         # Suppress high-frequency stat/lstat
-suppress_cwd_lookups = true        # Suppress getcwd() noise
-max_events_per_path_per_second = 5 # Rate-limit events per path`}
-/>
-
-### Field reference
-
-#### routine_paths
-
-A list of filesystem paths the tool routinely accesses. Paths ending with `/` grant recursive access to the directory and all children. Paths support `~` expansion for the home directory.
-
-File access within `routine_paths` receives a score reduction. File access outside these paths is evaluated normally by the scoring pipeline. Combined with the deny threshold, this effectively controls what the tool can access.
-
-#### denied_paths
-
-A list of filesystem paths the tool is explicitly blocked from accessing. Denied paths take precedence over routine paths. Use this to carve out exclusions within a routine directory.
-
-#### routine_commands
-
-A list of command names the tool routinely executes. Commands in this list receive a score reduction when evaluated by the scoring pipeline.
-
-Command names are matched against the base name of the executable, not the full path. Arguments are not matched — use other filters for argument inspection.
-
-#### routine_destinations
-
-A list of network destinations (hostnames) the tool routinely connects to. Connections to these destinations receive a score reduction. Connections to destinations not in this list are evaluated normally by the scoring pipeline.
-
-#### network_policy
-
-Controls how network operations are handled:
-
-| Value | Effect |
+| Profile | Use it for |
 |---|---|
-| `"allow"` | All network access permitted (still logged) |
-| `"deny"` | All network access blocked |
-| `"project-only"` | Only connections to configured project endpoints allowed |
-| `"score"` | Network calls pass through the full filter chain (default) |
+| `generic` | Unknown or unclassified tools; strict fallback |
+| `generic-cli` | Manual opt-in for generic developer CLIs that need GitHub / VS Code infrastructure |
+| `grith-repl` | grith's built-in agent and REPL sessions |
+| `claude-code` | Claude Code |
+| `codex` | OpenAI Codex CLI |
+| `aider` | Aider |
+| `goose` | Goose |
+| `copilot` | GitHub Copilot CLI |
+| `cursor` | Cursor CLI |
+| `cline` | Cline |
+| `openclaw` | OpenClaw |
 
-#### noise_reduction
+Use a built-in profile explicitly:
 
-The supervisor intercepts syscalls at a very low level. A single `ls` command can generate dozens of `stat` calls. Noise reduction collapses these into a smaller set of meaningful events.
+<Terminal command='grith exec --profile claude-code -- claude "fix the auth bug"' />
 
-<Callout type="tip" title="Noise reduction does not reduce security">
-Noise reduction affects event reporting and dashboard display, not security evaluation. Every syscall is still evaluated by the proxy. Noise reduction only deduplicates the audit trail and dashboard feed.
+If you omit `--profile`, grith tries to auto-detect the tool from the command name and falls back to `supervisor.default_profile` if there is no known match.
+
+## How a profile is resolved
+
+Each session resolves to an effective policy:
+
+1. `[defaults]` contributes universal local-only trust
+2. the selected static profile resolves through `extends`
+3. a provider overlay may apply for `grith-repl`
+4. a launcher overlay may apply if the session was launched from a known IDE terminal
+
+Launcher overlays are automatic. There is no `--launcher` flag on `grith exec`.
+
+## Writing a custom profile
+
+Profiles use the `[[profiles]]` TOML schema:
+
+<ConfigExample
+  title="config/supervisor/profiles.toml"
+  code={`[[profiles]]
+name = "my-tool"
+display_name = "My Tool"
+extends = "generic"
+rationale = "My Tool edits project files, runs Python checks, and calls its API."
+
+routine_paths = [
+    "\${PROJECT_DIR}/**",
+    "\${HOME}/.config/my-tool/**",
+    "\${HOME}/.cache/my-tool/**",
+    "/tmp/my-tool-*",
+]
+
+routine_commands = [
+    "python", "python3", "pytest",
+    "curl",
+]
+
+routine_destinations = [
+    "api.my-tool.com",
+    "pypi.org",
+]
+
+readonly_paths = [
+    "\${HOME}/.config/my-tool/credentials.json",
+]
+
+readonly_path_patterns = []
+routine_exec_roots = []
+routine_listen_addresses = []`}
+/>
+
+## Picking a base
+
+Most custom profiles should extend `generic`:
+
+- `generic` is the strict fallback profile
+- it trusts project-local paths only
+- it inherits shared local defaults such as `git`, `bash`, `/proc`, and read-only SSH config access from `[defaults]`
+
+Use `generic-cli` only when you are supervising a generic developer tool that truly needs the shared GitHub / VS Code network layer and does not already have a dedicated named profile.
+
+## Field guide
+
+### `routine_paths`
+
+Add the directories and files the tool routinely reads and writes. Use `${PROJECT_DIR}` and `${HOME}` so the profile stays portable.
+
+<Callout type="warning" title="Be conservative with routine_paths">
+`routine_paths` trusts writes as well as reads. Do not use it for secrets or user config that should never be modified. If a path should be trusted for reads only, use `readonly_paths` or `readonly_path_patterns` instead.
 </Callout>
 
-## Creating a custom profile
+### `routine_commands`
 
-Create a new profile by adding a section to your profiles file:
+Add the executable basenames the tool normally spawns. Commands already covered by `[defaults]` do not need to be repeated.
 
-<ConfigExample
-  title="~/.config/grith/supervisor/profiles.toml"
-  code={`[data-science]
-description = "Profile for data science notebooks and scripts"
+### `routine_destinations`
 
-routine_paths = [
-    "~/data/",
-    "~/notebooks/",
-    "/tmp/",
-]
-denied_paths = [
-    "~/.ssh/",
-    "~/.aws/",
-    "~/data/production/",    # Block access to production data
-]
+Add hostnames the tool normally contacts. Matching is subdomain-aware, so `example.com` also covers `api.example.com`.
 
-routine_commands = [
-    "python",
-    "pip",
-    "jupyter",
-    "conda",
-    "git",
-]
+### `readonly_paths`
 
-routine_destinations = [
-    "pypi.org",
-    "conda.anaconda.org",
-]
+Use exact-match read-only trust for individual files such as config, known_hosts, or credentials that a tool may need to inspect but should never modify.
 
-network_policy = "score"
+### `readonly_path_patterns`
 
-[data-science.noise_reduction]
-enabled = true
-deduplicate_reads = true
-suppress_stat_calls = true`}
-/>
+Use narrow wildcard read-only trust for variable filenames such as `${HOME}/.ssh/*.pub`.
 
-Then use it:
+### `routine_exec_roots`
 
-<Terminal command='grith exec --profile data-science -- jupyter notebook' />
+Use this only for trusted executable directories where the tool routinely spawns binaries outside normal `PATH` resolution.
 
-## Examining pre-built profiles
+### `routine_listen_addresses`
 
-To see the full configuration of a pre-built profile, inspect the shipped profiles file:
+Use this for tools that are expected to bind local listener sockets, usually loopback addresses only.
 
-<Terminal command="grith config --show-profiles" />
+### `launch_contract`
 
-<CodeBlock
-  code={`[claude-code]
-description = "Profile for Anthropic Claude Code"
-routine_paths = [
-    ".",            # Current working directory (project root)
-    "/tmp/",
-]
-denied_paths = [
-    "~/.ssh/",
-    "~/.gnupg/",
-    "~/.aws/",
-    "~/.config/grith/",    # Prevent tool from modifying grith config
-]
-routine_commands = [
-    "git", "npm", "npx", "node", "python", "python3",
-    "pip", "cargo", "rustc", "make", "cmake",
-    "grep", "find", "sed", "awk", "cat", "ls", "head", "tail",
-    "curl", "wget",
-    "docker", "docker-compose",
-]
-routine_destinations = [
-    "api.anthropic.com",
-    "github.com",
-    "registry.npmjs.org",
-    "crates.io",
-    "pypi.org",
-]
-network_policy = "score"
-
-[claude-code.noise_reduction]
-enabled = true
-deduplicate_reads = true
-suppress_stat_calls = true
-suppress_cwd_lookups = true
-max_events_per_path_per_second = 10`}
-  language="toml"
-/>
-
-## Overriding pre-built profiles
-
-You can override fields in a pre-built profile by redefining the section in your user config. User config values take precedence over shipped defaults.
-
-For example, to restrict Claude Code's network access:
+Some tools require specific launch arguments when supervised. Example:
 
 <ConfigExample
-  title="~/.config/grith/supervisor/profiles.toml"
-  code={`[claude-code]
-# Override only the network policy; all other fields inherit from the default
-network_policy = "deny"`}
+  title="Launch contract"
+  code={`launch_contract = { required_args = ["--sandbox", "disabled"] }`}
 />
 
-## Profile inheritance
+grith enforces these contracts before launch.
 
-If you want a custom profile that extends an existing one, use the `extends` field:
+## Launcher overlays
+
+Launcher overlays add small amounts of context-specific trust when a session starts inside a known IDE terminal.
+
+| Overlay | Detection | Current additions |
+|---|---|---|
+| `vscode-terminal` | Parent process is `code`, `code-insiders`, or `codium`; or `TERM_PROGRAM=vscode` | Adds `code` to routine commands |
+| `cursor-terminal` | Parent process is `cursor` | No-op placeholder today |
+
+They are defined under `[[launcher_overlays]]` and apply automatically. They do not replace the base profile.
+
+## Provider overlays
+
+Provider overlays add network destinations for `grith-repl` sessions:
+
+| Overlay | Destinations |
+|---|---|
+| `openai` | OpenAI platform and auth endpoints |
+| `anthropic` | Anthropic and Claude endpoints |
+| `openrouter` | OpenRouter API |
+
+Named external-tool profiles such as `claude-code` or `codex` already include their own provider destinations, so provider overlays are mainly for grith's built-in agent flows.
+
+## Testing a profile
+
+Run the tool under supervision and watch for queued or denied operations:
+
+<Terminal command='grith exec --profile my-tool -- my-tool "run the task"' />
+
+Then inspect the session logs:
+
+<Terminal command="grith log --last-session" />
+
+If a legitimate operation was queued:
+
+- add the missing path to `routine_paths` or `readonly_paths`
+- add the missing executable to `routine_commands`
+- add the missing hostname to `routine_destinations`
+
+If an operation feels too broad, remove it from the profile and let the normal filters handle it.
+
+## Session allowlist debugging
+
+The resolved effective policy becomes a flat session allowlist:
+
+- `routine_paths` become recursive path allowlist entries
+- `routine_commands` resolve to absolute executable paths
+- `routine_destinations` become `net:` entries
+- `readonly_paths` become `ro:` entries
+- `routine_exec_roots` become `exec-prefix:` entries
+
+That is why a small profile change can materially change live session behavior.
+
+## Example: stricter clone instead of in-place override
+
+Because profile names must be unique, the safest way to tighten a shipped profile is to create a new one that extends it:
 
 <ConfigExample
-  title="~/.config/grith/supervisor/profiles.toml"
-  code={`[claude-code-strict]
+  title="Derived stricter profile"
+  code={`[[profiles]]
+name = "claude-code-strict"
+display_name = "Claude Code (Strict)"
 extends = "claude-code"
-description = "Claude Code with stricter network and filesystem controls"
+rationale = "Claude Code with a reduced destination set for locked-down environments."
 
-# Additional denied paths (merged with parent)
-denied_paths = [
-    "~/.env",
-    "~/.npmrc",
-    ".env",
-    ".env.local",
-]
-
-# Override routine_destinations to empty (no score reductions for network)
-routine_destinations = []
-
-network_policy = "deny"`}
+routine_paths = []
+routine_commands = []
+routine_destinations = [
+    "anthropic.com",
+    "api.anthropic.com",
+]`}
 />
 
-<Terminal command='grith exec --profile claude-code-strict -- claude-code "refactor the auth module"' />
+Use it with:
 
-## Attaching to a running process
-
-If an AI tool is already running, you can attach grith supervision to it by PID instead of spawning it:
-
-<Terminal command="grith exec --profile generic --attach 12345" />
-
-<Callout type="warning" title="Linux only">
-Attaching to a running process requires ptrace permissions. On most Linux distributions this works for processes owned by the same user. On macOS, process-level attachment is limited to lifecycle events only.
-</Callout>
-
-## Managing supervisor sessions
-
-Once a tool is running under supervision, you can inspect and manage it:
-
-<Terminal command="grith supervisor list" />
-
-<CodeBlock
-  code={`Active sessions:
-
-  ID       PID    Profile       Tool          Duration   Calls
-  a1b2c3   8421   claude-code   claude-code   12m 34s    247
-  d4e5f6   9102   aider         aider         3m 12s     41`}
-  language="text"
-/>
-
-<Terminal command="grith supervisor status a1b2c3" />
-
-<CodeBlock
-  code={`Session a1b2c3:
-  Tool:       claude-code
-  PID:        8421
-  Profile:    claude-code
-  Started:    2026-02-24 14:32:01
-  Duration:   12m 34s
-  Tool calls: 247 (231 allowed, 12 queued, 4 denied)
-  Status:     active`}
-  language="text"
-/>
-
-To terminate a session and detach from the process:
-
-<Terminal command="grith supervisor kill a1b2c3" />
+<Terminal command='grith exec --profile claude-code-strict -- claude "review src/auth.rs"' />
 
 ## Next steps
 
-- [Filter Tuning](/docs/guides/filter-tuning) — Adjust filter weights and thresholds
-- [CLI Supervisor](/docs/concepts/cli-supervisor) — How syscall interception works under the hood
-- [Supervisor Profiles Reference](/docs/reference/supervisor-profiles) — Full profile schema reference
-- [Exfiltration Containment](/docs/guides/exfiltration-containment) — Network controls for supervised tools
+- [Supervisor Profiles Reference](/docs/reference/supervisor-profiles) — Full schema and shipped profile list
+- [Build Your First Supervisor Profile](/docs/guides/build-supervisor-profile) — Hands-on custom profile walkthrough
+- [CLI Supervisor](/docs/concepts/cli-supervisor) — Runtime mechanics behind `grith exec`

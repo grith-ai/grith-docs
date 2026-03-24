@@ -1,0 +1,152 @@
+---
+title: "Adaptive Reputation"
+description: "How grith learns to trust repeated operations using Bayesian scoring"
+section: "concepts"
+order: 7
+tier: "community"
+version: "1.5"
+lastUpdated: "2026-03-24"
+---
+
+## Overview
+
+Every time grith evaluates a tool call, it records the outcome. Over time, patterns emerge: `git status` in the project directory is always allowed, `npm install` always passes, reading `package.json` never triggers a deny. The adaptive reputation system uses these observations to build a Bayesian trust model for each distinct operation, enabling auto-allow decisions for operations that have been consistently safe.
+
+This reduces friction for developers without weakening security. Operations that have never been denied accumulate trust. Operations that have been denied — even once — see their trust erode.
+
+## Bayesian trust model
+
+Each distinct operation (identified by the combination of tool call type, target path or destination, and profile) maintains two parameters:
+
+| Parameter | Meaning |
+|---|---|
+| `alpha` | Count of positive outcomes (allow decisions) |
+| `beta` | Count of negative outcomes (deny or queue decisions) |
+
+The trust score is computed as:
+
+<CodeBlock
+  code={`trust_score = alpha / (alpha + beta)`}
+  language="text"
+/>
+
+A new, unseen operation starts with `alpha = 1, beta = 1` (uniform prior), giving a trust score of 0.5. As the operation is repeatedly allowed, `alpha` increases and the trust score approaches 1.0. A single deny causes `beta` to increase, pulling the trust score down.
+
+### Example: trust evolution
+
+| Observation | alpha | beta | trust_score |
+|---|---|---|---|
+| Prior (no data) | 1 | 1 | 0.500 |
+| Allowed | 2 | 1 | 0.667 |
+| Allowed | 3 | 1 | 0.750 |
+| Allowed | 4 | 1 | 0.800 |
+| Allowed | 5 | 1 | 0.833 |
+| Allowed | 6 | 1 | 0.857 |
+| Allowed | 7 | 1 | 0.875 |
+| Allowed | 8 | 1 | 0.889 |
+| Allowed | 9 | 1 | 0.900 |
+| Allowed | 10 | 1 | **0.909** |
+| Allowed | 11 | 1 | **0.917** |
+
+After 10 allow observations (11 total with the prior), the trust score crosses 0.92 and the operation becomes eligible for auto-allow.
+
+## Auto-allow threshold
+
+An operation is auto-allowed when both conditions are met:
+
+1. **Trust score >= 0.92** — the operation has a strong track record of safe outcomes
+2. **Observation count >= 8** — enough data points exist for the trust score to be meaningful
+
+When both conditions hold, the operation bypasses the full scoring pipeline and is allowed immediately. This is logged in the audit trail with the decision source `reputation_auto_allow`.
+
+<Callout type="info" title="Auto-allow is not permanent">
+A single deny observation resets the auto-allow status. If `beta` increases, the trust score drops below 0.92 and the operation returns to full proxy evaluation. Trust must be re-earned through subsequent allow observations.
+</Callout>
+
+## Temporal decay
+
+Older observations matter less than recent ones. grith applies an exponential decay with lambda = 0.98 to all observations. Each evaluation cycle, existing alpha and beta values are multiplied by the decay factor:
+
+<CodeBlock
+  code={`alpha = alpha * 0.98
+beta  = beta  * 0.98`}
+  language="text"
+/>
+
+This means an operation that was trusted six months ago but has not been seen since will gradually lose its auto-allow status. An operation must continue to be observed (and allowed) to maintain trust. The decay rate of 0.98 per evaluation means observations have a half-life of approximately 34 evaluation cycles.
+
+## Per-profile scoping
+
+Reputation data is scoped by profile name. An operation trusted under the `claude-code` profile does not inherit trust under the `codex` profile or the `generic` profile. This prevents a permissive profile from contaminating the trust model of a more restrictive one.
+
+<CodeBlock
+  code={`# These are tracked independently:
+# Profile: claude-code, Operation: fs.read → /home/user/project/src/main.rs
+# Profile: codex,       Operation: fs.read → /home/user/project/src/main.rs`}
+  language="text"
+/>
+
+## CLI commands
+
+### View reputation data
+
+<Terminal command="grith reputation show" />
+
+<CodeBlock
+  code={`Reputation entries (claude-code profile):
+
+  Operation                                    Alpha    Beta    Trust    Auto-allow
+  fs.read → $PROJECT_DIR/**                    142.3    1.0     0.993   yes
+  fs.write → $PROJECT_DIR/src/**               87.1     1.0     0.989   yes
+  net.connect → api.anthropic.com              56.8     1.0     0.983   yes
+  exec → git *                                 201.4    1.0     0.995   yes
+  fs.read → ~/.ssh/config                      3.0      1.0     0.750   no
+  net.connect → unknown-api.example.com        2.0      2.0     0.500   no`}
+  language="text"
+/>
+
+### Reset reputation
+
+Reset all reputation data for a profile, or reset a specific operation:
+
+<Terminal command="grith reputation reset --profile claude-code" />
+
+<CodeBlock
+  code={`[grith] Reset 847 reputation entries for profile "claude-code".`}
+  language="text"
+/>
+
+To reset a single operation:
+
+<Terminal command='grith reputation reset --profile claude-code --operation "fs.read → ~/.ssh/config"' />
+
+## Cloud sync
+
+<Badge variant="pro">Pro</Badge>
+
+Reputation data is included in the `grith pro sync` upload when audit sync is enabled. This powers the team dashboard's reputation analytics, showing which operations are trusted across the team and which are frequently denied.
+
+Reputation data is uploaded as aggregated statistics, not individual observations. The cloud receives trust scores and observation counts per operation, not the raw alpha/beta parameters or the specific file paths involved.
+
+<ConfigExample
+  title="Enable reputation sync"
+  code={`[pro.sync]
+upload_audit = true         # reputation data included in audit summary
+upload_frequency = "daily"  # sync reputation snapshots daily`}
+/>
+
+## Relationship to other systems
+
+| System | Interaction |
+|---|---|
+| Scoring pipeline | Reputation provides a score reduction (-1.0 to -2.0) for trusted operations, or bypasses the pipeline entirely for auto-allowed operations |
+| Session allowlist | Session allowlist entries bypass reputation entirely (they are allowed before reputation is consulted) |
+| Noise reduction | Noise-filtered syscalls are never observed by reputation (they are filtered before the reputation check) |
+| Forensic tracing | Auto-allowed operations appear in forensic traces with `stage: reputation_auto_allow` |
+
+## Next steps
+
+- [Scoring Proxy](/docs/concepts/scoring-proxy) — How the multi-filter pipeline works
+- [Filter Tuning](/docs/guides/filter-tuning) — Adjust filter weights and thresholds
+- [Supervisor Profiles](/docs/reference/supervisor-profiles) — Profile-scoped security policies
+- [Forensic Tracing](/docs/guides/forensic-tracing) — Capture raw syscall traces for analysis

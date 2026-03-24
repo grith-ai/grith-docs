@@ -4,7 +4,7 @@ description: "SpamAssassin-inspired multi-filter scoring, three-phase pipeline, 
 section: "concepts"
 order: 3
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 The scoring proxy is the core of grith's security model. Inspired by SpamAssassin's approach to email classification, it evaluates every tool call against 17 independent filters across three phases, aggregates weighted scores, and routes the call to one of three decision zones: ALLOW, QUEUE, or DENY.
@@ -32,6 +32,8 @@ cold_start_calls = 200
 cold_start_allow = 2.0
 cold_start_deny = 10.0
 `} />
+
+<ScoreCalculator />
 
 ## Filter pipeline
 

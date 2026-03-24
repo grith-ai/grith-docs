@@ -4,10 +4,12 @@ description: "System architecture, crate layout, and dual execution paths with e
 section: "concepts"
 order: 1
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 grith is a Rust monorepo that intercepts every system call from AI agents and evaluates them against 17 security filters before execution. This page covers how the pieces fit together.
+
+<ArchitectureDiagram />
 
 ## Crate layout
 
@@ -52,7 +54,7 @@ When you wrap an external tool with `grith exec`, syscall interception takes ove
 grith exec → spawn tool → syscall interception → convert to ToolCallType → Security Proxy
 ```
 
-The supervisor spawns the target process under ptrace (Linux) or process lifecycle monitoring (macOS), intercepts every file, network, and process syscall, converts each into the same `ToolCallType` used by the built-in agent, and routes it through the security proxy.
+The supervisor currently spawns the target process under ptrace on Linux, intercepts every file, network, and process syscall, converts each into the same `ToolCallType` used by the built-in agent, and routes it through the security proxy. macOS and Windows support is coming very soon.
 
 <Callout type="tip" title="Enforcement convergence">
 Both paths share the same filters, the same scoring thresholds, the same audit log, the same digest system, and the same adaptive learning. This is what we call enforcement convergence — there is exactly one security boundary, regardless of how a tool call originates.

@@ -4,7 +4,7 @@ description: "Connect grith to Ollama, OpenAI, Anthropic, OpenRouter, or any Ope
 section: "getting-started"
 order: 4
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 ## How providers work
@@ -19,9 +19,9 @@ Set the default provider with:
 
 <Terminal command="grith config set llm.default_provider ollama" />
 
-Or override it per invocation:
+Or override it for a single invocation with the environment:
 
-<Terminal command='grith run --provider openai "summarise this codebase"' />
+<Terminal command='GRITH_LLM_PROVIDER=openai grith run "summarise this codebase"' />
 
 ## Ollama (default)
 
@@ -195,7 +195,7 @@ model = "anthropic/claude-sonnet-4-5-20250514"`}
 
 Switch at runtime without editing config:
 
-<Terminal command='grith run --provider anthropic "review this PR for security issues"' />
+<Terminal command='GRITH_LLM_PROVIDER=anthropic grith run "review this PR for security issues"' />
 
 Or change the default:
 
@@ -220,11 +220,9 @@ If you set `api_key` directly in `config.toml`, make sure the file has appropria
 
 When grith starts a session, it selects a provider in this order:
 
-1. `--provider` flag on the command line (highest priority)
-2. `GRITH_LLM_PROVIDER` environment variable
-3. `llm.default_provider` in per-project config (`.grith/config.toml`)
-4. `llm.default_provider` in global config (`~/.config/grith/config.toml`)
-5. Falls back to `ollama` if nothing is set
+1. `GRITH_LLM_PROVIDER` environment variable
+2. `llm.default_provider` in config
+3. Falls back to `ollama` if nothing is set
 
 If the selected provider's API key environment variable is not set (for providers that require one), grith exits with a clear error message telling you which variable to set.
 

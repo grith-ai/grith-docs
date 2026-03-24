@@ -1,0 +1,154 @@
+---
+title: "Encrypted Key Management"
+description: "Team provider key distribution with AES-256-GCM encryption at rest"
+section: "pro"
+order: 5
+tier: "pro"
+version: "1.6"
+lastUpdated: "2026-03-24"
+---
+
+<Badge variant="pro">Pro</Badge>
+
+## Overview
+
+grith Pro enables team admins to distribute LLM provider API keys to team members without exposing the keys in plaintext. Keys are encrypted with AES-256-GCM in the cloud database and on the local filesystem. Developers receive keys through `grith pro sync` and never need to copy API keys manually or store them in `.env` files.
+
+## Architecture
+
+### Cloud storage
+
+When a team admin adds a provider key on the grith.ai dashboard, the key is encrypted with AES-256-GCM before being stored in Postgres. The encryption key is derived from the team's master key, which is itself managed by the cloud infrastructure's KMS. The plaintext key value never touches disk in the cloud environment.
+
+### Local storage
+
+When a developer runs `grith pro sync`, provider keys are pulled from the cloud and written to the local provider-keys directory (`~/.config/grith/provider-keys/`). Each key file is encrypted at rest using a key derived via HKDF from the developer's personal grith API key. The plaintext key exists only in memory during API calls.
+
+<CodeBlock
+  code={`~/.config/grith/provider-keys/
+  anthropic.key.enc       # AES-256-GCM encrypted
+  openai.key.enc          # AES-256-GCM encrypted
+  openrouter.key.enc      # AES-256-GCM encrypted`}
+  language="text"
+/>
+
+### Key derivation
+
+The local encryption key is derived from the developer's API key using HKDF-SHA256:
+
+<CodeBlock
+  code={`local_key = HKDF-SHA256(
+  ikm  = developer_api_key,
+  salt = machine_id,
+  info = "grith-provider-keys-v1"
+)`}
+  language="text"
+/>
+
+The `machine_id` is a stable identifier derived from the system's hardware characteristics. This ensures that encrypted key files are bound to the specific machine and cannot be copied to a different workstation.
+
+## Key precedence
+
+When grith needs a provider API key, it checks sources in this order:
+
+| Priority | Source | Example |
+|---|---|---|
+| 1 (highest) | `config.toml` | `[llm.anthropic] api_key = "sk-..."` |
+| 2 | Environment variable | `ANTHROPIC_API_KEY=sk-...` |
+| 3 (lowest) | Synced provider key | `~/.config/grith/provider-keys/anthropic.key.enc` |
+
+If a key is found in `config.toml` or an environment variable, the synced key is not used. This allows developers to override team keys with personal keys for specific providers.
+
+<Callout type="info" title="Local keys take priority">
+If you set a provider key in your local `config.toml`, it takes precedence over the team-synced key. This is intentional: it allows developers to use personal API keys for experimentation while falling back to team keys for shared resources.
+</Callout>
+
+## Sync flow
+
+<Terminal command="grith pro sync" />
+
+<CodeBlock
+  code={`[grith] Connecting to grith.ai...
+[grith] Downloading provider keys... done (3 keys updated)
+[grith] Keys encrypted at rest in ~/.config/grith/provider-keys/
+[grith] Sync complete.`}
+  language="text"
+/>
+
+The sync performs a full reconciliation: keys present on the server are downloaded and encrypted locally. Keys that have been revoked on the server are deleted from the local filesystem.
+
+## Revocation
+
+When a team admin revokes a provider key on the grith.ai dashboard, the key is marked as revoked in the cloud database. On the next `grith pro sync`, the revoked key is:
+
+1. Identified by comparing the local key inventory against the server's active key list
+2. Deleted from the local `provider-keys/` directory
+3. Removed from the in-memory key cache
+
+If the daemon is running, the revoked key is cleared from memory immediately after sync. Any subsequent LLM calls that require the revoked provider will fail with a clear error message.
+
+<CodeBlock
+  code={`[grith] Provider key revoked: openai
+[grith] Removed: ~/.config/grith/provider-keys/openai.key.enc
+[grith] LLM calls to openai will fail until a new key is provisioned.`}
+  language="text"
+/>
+
+## Rotation detection
+
+The grith daemon monitors the `provider-keys/` directory for changes:
+
+- **File mtime check:** The daemon checks the directory's modification time on each LLM call. If a file has been updated (by a sync), the daemon re-reads and decrypts the new key.
+- **Background auto-refresh:** Every 24 hours, the daemon performs a silent sync of provider keys only (no audit upload, no policy download). This ensures keys stay fresh even if the developer does not run `grith pro sync` manually.
+
+<ConfigExample
+  title="Auto-refresh interval"
+  code={`[pro.sync]
+key_refresh_interval = "24h"    # default: 24 hours`}
+/>
+
+## Security model
+
+| Property | Implementation |
+|---|---|
+| Encryption at rest (cloud) | AES-256-GCM, key managed by KMS |
+| Encryption at rest (local) | AES-256-GCM, HKDF-derived from developer API key |
+| Key in memory | Decrypted only when making an API call, zeroed after use |
+| No environment dump | grith never logs or exports the full process environment; keys are not leaked through debug output or audit records |
+| Machine binding | HKDF salt includes `machine_id`, preventing key file portability |
+| Revocation propagation | Full reconciliation on every sync; local keys not on server are deleted |
+
+<Callout type="danger" title="Protect your grith API key">
+Your local provider keys are derived from your grith API key. If your API key is compromised, an attacker with access to your `provider-keys/` directory could decrypt the stored provider keys. Treat your grith API key with the same care as any other credential.
+</Callout>
+
+## Team admin workflow
+
+### Adding a provider key
+
+Team admins add keys through the grith.ai dashboard:
+
+1. Navigate to **Settings > Provider Keys**
+2. Select the provider (Anthropic, OpenAI, OpenRouter, etc.)
+3. Enter the API key
+4. Click **Encrypt and Save**
+
+The key is encrypted and stored. Team members receive it on their next sync.
+
+### Revoking a key
+
+1. Navigate to **Settings > Provider Keys**
+2. Click **Revoke** next to the key
+3. The key is marked as revoked and will be cleaned up on team members' next sync
+
+### Rotating a key
+
+1. Revoke the old key
+2. Add the new key
+3. Team members pick up the new key automatically on next sync or within 24 hours via auto-refresh
+
+## Next steps
+
+- [Team Sync and Policy](/docs/pro/team-sync-and-policy) — How sync works for policies and audit data
+- [Authentication](/docs/pro/authentication) — How developer authentication works
+- [Pro Overview](/docs/pro/overview) — Full feature list and tier comparison

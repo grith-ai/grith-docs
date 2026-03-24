@@ -4,7 +4,7 @@ description: "Complete reference for the grith REST API at localhost:3141"
 section: "reference"
 order: 5
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 ## Overview
@@ -26,7 +26,15 @@ All error responses follow a consistent shape:
   "code": "ERROR_CODE"
 }`} />
 
-Feature-gated endpoints (Pro or Enterprise) return HTTP 403 with code `FEATURE_GATED` when the required plan is not active.
+Feature-gated endpoints (Pro or Enterprise) return HTTP 403 with code `FEATURE_GATED` when the required plan is not active:
+
+<CodeBlock language="json" code={`{
+  "error": "This feature requires a Pro subscription",
+  "code": "FEATURE_GATED",
+  "current_tier": "community",
+  "required_tier": "pro",
+  "upgrade_url": "https://grith.ai/pricing"
+}`} />
 
 ## Health
 
@@ -457,6 +465,163 @@ Get a summary of proxy analytics.
   ],
   "avg_score": 2.1,
   "avg_latency_ms": 12
+}`} />
+
+### GET /analytics/cost
+
+<Badge variant="pro">Pro</Badge>
+
+Get LLM API cost breakdown by provider and model.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `period` | String | `"30d"` | Time period: `7d`, `30d`, `90d` |
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "period": "30d",
+  "total_cost_usd": 47.82,
+  "by_provider": [
+    {
+      "provider": "anthropic",
+      "total_cost_usd": 32.15,
+      "models": [
+        {"model": "claude-sonnet-4-20250514", "prompt_tokens": 1248000, "completion_tokens": 312000, "cost_usd": 28.40},
+        {"model": "claude-haiku-4-20250514", "prompt_tokens": 520000, "completion_tokens": 98000, "cost_usd": 3.75}
+      ]
+    }
+  ]
+}`} />
+
+### GET /analytics/activity
+
+<Badge variant="pro">Pro</Badge>
+
+Get daily activity counts for the last 30 days.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "days": [
+    {
+      "date": "2026-03-24",
+      "total_calls": 142,
+      "decisions": {"allow": 118, "queue": 19, "deny": 5},
+      "cost_usd": 2.34
+    }
+  ]
+}`} />
+
+### GET /analytics/compliance
+
+<Badge variant="pro">Pro</Badge>
+
+Get score zone distribution for compliance reporting. Shows how tool calls are distributed across the allow, queue, and deny zones over time.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `period` | String | `"30d"` | Time period: `7d`, `30d`, `90d` |
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "period": "30d",
+  "total_calls": 4250,
+  "zones": {
+    "allow": {"count": 3400, "percent": 80.0, "avg_score": 1.2},
+    "queue": {"count": 720, "percent": 16.9, "avg_score": 5.1},
+    "deny": {"count": 130, "percent": 3.1, "avg_score": 9.8}
+  },
+  "score_histogram": [
+    {"bucket": "0-1", "count": 1800},
+    {"bucket": "1-2", "count": 1200},
+    {"bucket": "2-3", "count": 400},
+    {"bucket": "3-5", "count": 480},
+    {"bucket": "5-8", "count": 240},
+    {"bucket": "8+", "count": 130}
+  ]
+}`} />
+
+---
+
+## Sync
+
+### GET /sync/status
+
+<Badge variant="pro">Pro</Badge>
+
+Get the last sync time and artifact counts.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "last_sync": "2026-03-24T12:00:00Z",
+  "next_scheduled": "2026-03-24T16:00:00Z",
+  "artifacts": {
+    "policies_synced": 3,
+    "provider_keys_synced": 2,
+    "configs_synced": 1
+  },
+  "upload": {
+    "audit_uploaded": true,
+    "sessions_uploaded": 142,
+    "calls_uploaded": 8934
+  }
+}`} />
+
+### GET /sync/configs
+
+<Badge variant="pro">Pro</Badge>
+
+List synced shared configurations from the team dashboard.
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "configs": [
+    {
+      "name": "team-baseline",
+      "description": "Team security baseline",
+      "last_updated": "2026-03-20T09:00:00Z",
+      "applied": true
+    },
+    {
+      "name": "frontend-policy",
+      "description": "React/Next.js project policy",
+      "last_updated": "2026-03-18T14:30:00Z",
+      "applied": false
+    }
+  ]
+}`} />
+
+### POST /sync/apply
+
+<Badge variant="pro">Pro</Badge>
+
+Merge a synced shared config into the local `team-config.toml`. This is the API equivalent of running `grith pro sync` followed by applying a specific shared configuration.
+
+**Request body:**
+
+<CodeBlock language="json" code={`{
+  "config_name": "team-baseline"
+}`} />
+
+**Response:**
+
+<CodeBlock language="json" code={`{
+  "status": "applied",
+  "config_name": "team-baseline",
+  "merged_to": "~/.config/grith/team-config.toml",
+  "changes": {
+    "keys_added": 4,
+    "keys_updated": 2,
+    "keys_removed": 0
+  }
 }`} />
 
 ---

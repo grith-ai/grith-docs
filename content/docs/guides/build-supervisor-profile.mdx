@@ -1,0 +1,212 @@
+---
+title: "Build Your First Supervisor Profile"
+description: "Create a custom TOML supervisor profile for any CLI tool"
+section: "guides"
+order: 2
+tier: "community"
+version: "1.6"
+lastUpdated: "2026-03-24"
+---
+
+## Overview
+
+Supervisor profiles tell grith what a given CLI tool does under normal operation: which files it reads and writes, which commands it spawns, and which network endpoints it contacts. Operations that match the profile pass through the proxy with a low score. Everything else gets the full filter pipeline.
+
+This guide walks you through building a custom profile from scratch for a hypothetical tool called `my-tool`.
+
+## Start from the generic profile
+
+Every named profile extends the `generic` base. The generic profile is intentionally narrow — it allows project-local file access and nothing else. Your custom profile adds tool-specific trust on top.
+
+<CodeBlock
+  code={`[[profiles]]
+name = "generic"
+display_name = "Generic Tool"
+
+routine_paths = [
+    "\${PROJECT_DIR}/**",
+]
+
+routine_commands = []
+routine_destinations = []
+routine_listen_addresses = []`}
+  language="toml"
+/>
+
+The `[defaults]` section is merged into every profile automatically. It includes common shell commands (`bash`, `sh`, `git`, `grep`, `ls`, etc.), system introspection paths (`/proc`, `/etc/profile.d`), and read-only trust for SSH config and known_hosts files. You do not need to repeat these in your profile.
+
+## Profile TOML structure
+
+The current build loads profiles from `config/supervisor/profiles.toml`. Each profile is a `[[profiles]]` entry with the following fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `name` | string | Machine-readable identifier, used with `--profile` |
+| `display_name` | string | Human-readable name for logs and dashboard |
+| `extends` | string | Parent profile to inherit from (usually `"generic"`) |
+| `rationale` | string | Explanation of why this profile exists |
+| `routine_paths` | list | Filesystem paths the tool routinely accesses |
+| `routine_commands` | list | Commands the tool routinely spawns |
+| `routine_destinations` | list | Network hostnames the tool routinely contacts |
+| `routine_exec_roots` | list | Directories containing trusted executables |
+| `readonly_paths` | list | Paths trusted for reads only (exact match) |
+| `routine_listen_addresses` | list | Addresses the tool may bind without prompting |
+
+## Step 1: Name your profile
+
+Pick a short, kebab-case name that matches how you will reference the profile on the command line.
+
+<ConfigExample
+  title="config/supervisor/profiles.toml"
+  code={`[[profiles]]
+name = "my-tool"
+display_name = "My Tool"
+extends = "generic"
+rationale = "My Tool reads project files, runs Python tests, and contacts its API."`}
+/>
+
+## Step 2: Add paths your tool writes to
+
+List the directories and files your tool needs to read and write during normal operation. Paths ending in `/**` grant recursive access. Use `${HOME}` and `${PROJECT_DIR}` for portability — these are expanded at runtime.
+
+<ConfigExample
+  title="config/supervisor/profiles.toml"
+  code={`routine_paths = [
+    "\${PROJECT_DIR}/**",
+    "\${HOME}/.config/my-tool/**",
+    "\${HOME}/.cache/my-tool/**",
+    "/tmp/my-tool-*",
+]`}
+/>
+
+`${PROJECT_DIR}` resolves to the directory where you run `grith exec`. If your tool writes to a fixed location in the home directory (config, cache, state), add those paths here.
+
+<Callout type="warning" title="Never add ~/.ssh to routine_paths">
+Adding `~/.ssh/` to `routine_paths` would auto-allow writes to your SSH private keys, bypassing the proxy entirely. If your tool needs to read SSH config for git operations, use `readonly_paths` instead — that is already handled by the `[defaults]` section.
+</Callout>
+
+## Step 3: Add commands your tool runs
+
+List the base names (not full paths) of executables your tool spawns. These receive a score reduction in the proxy. Commands inherited from `[defaults]` (like `git`, `bash`, `grep`) do not need to be repeated.
+
+<ConfigExample
+  title="config/supervisor/profiles.toml"
+  code={`routine_commands = [
+    "python", "python3", "pip", "pip3",
+    "pytest",
+    "cargo", "rustc",
+    "curl",
+]`}
+/>
+
+Commands are matched against the base name of the executable, not the full path. Arguments are not part of the match — use other filters for argument inspection.
+
+## Step 4: Add network destinations
+
+List the hostnames your tool contacts during normal operation. grith uses subdomain matching: adding `example.com` also matches `api.example.com`, `cdn.example.com`, and so on.
+
+<ConfigExample
+  title="config/supervisor/profiles.toml"
+  code={`routine_destinations = [
+    "api.my-tool.com",
+    "pypi.org",
+    "files.pythonhosted.org",
+]`}
+/>
+
+Connections to destinations not in this list go through the full filter pipeline and may be queued or denied depending on their score.
+
+## Step 5: Add read-only paths for config files
+
+If your tool reads config files that should never be written to, add them to `readonly_paths`. These use exact match only (no globs, no prefix matching) to prevent accidental trust widening.
+
+<ConfigExample
+  title="config/supervisor/profiles.toml"
+  code={`readonly_paths = [
+    "\${HOME}/.config/my-tool/credentials.json",
+]`}
+/>
+
+Read-only paths generate `ro:` prefixed entries in the session allowlist. Writes to these paths still go through the full proxy.
+
+## Step 6: Test your profile
+
+Run your tool under supervision with the new profile:
+
+<Terminal command='grith exec --profile my-tool -- my-tool "test task"' />
+
+Watch the terminal output. Routine operations should flow through without interruption. If grith queues or denies operations you expected to be routine, the profile needs adjustment.
+
+## Step 7: Check the audit log
+
+After the session, review what happened:
+
+<Terminal command="grith log --last-session" />
+
+Look for operations with a `QUEUED` or `DENIED` status. These are operations that did not match your profile and scored above the queue or deny threshold. If they are legitimate, add the relevant paths, commands, or destinations to your profile.
+
+<CodeBlock
+  code={`Session log (last session, my-tool):
+
+  Time       Action         Target                          Score   Decision
+  14:32:01   FileWrite      ~/.config/my-tool/cache.db      0.2     ALLOW
+  14:32:03   ProcessSpawn   pytest                          0.1     ALLOW
+  14:32:05   NetConnect     api.my-tool.com:443             0.0     ALLOW
+  14:32:08   FileRead       ~/.local/share/my-tool/db       4.1     QUEUED
+  14:32:12   NetConnect     telemetry.my-tool.com:443       3.8     QUEUED`}
+  language="text"
+/>
+
+In this example, two operations were queued because they were not in the profile. Adding `${HOME}/.local/share/my-tool/**` to `routine_paths` and `telemetry.my-tool.com` to `routine_destinations` would fix this.
+
+## Complete example
+
+Here is the full profile after iterating on test results:
+
+<ConfigExample
+  title="config/supervisor/profiles.toml"
+  code={`[[profiles]]
+name = "my-tool"
+display_name = "My Tool"
+extends = "generic"
+rationale = "My Tool reads project files, runs Python tests, and contacts its API and telemetry endpoints."
+
+routine_paths = [
+    "\${PROJECT_DIR}/**",
+    "\${HOME}/.config/my-tool/**",
+    "\${HOME}/.cache/my-tool/**",
+    "\${HOME}/.local/share/my-tool/**",
+    "/tmp/my-tool-*",
+]
+
+routine_commands = [
+    "python", "python3", "pip", "pip3",
+    "pytest",
+    "cargo", "rustc",
+    "curl",
+]
+
+routine_destinations = [
+    "my-tool.com",
+    "pypi.org",
+    "files.pythonhosted.org",
+]
+
+readonly_paths = [
+    "\${HOME}/.config/my-tool/credentials.json",
+]
+
+routine_listen_addresses = []
+routine_exec_roots = []`}
+/>
+
+Use it:
+
+<Terminal command='grith exec --profile my-tool -- my-tool "build the feature"' />
+
+## Next steps
+
+- [Supervisor Profiles](/docs/guides/supervisor-profiles) — Profile selection, overlays, and session allowlist construction
+- [Filter Tuning](/docs/guides/filter-tuning) — Adjust filter weights and thresholds
+- [CLI Supervisor](/docs/concepts/cli-supervisor) — How syscall interception works under the hood
+- [Exfiltration Containment](/docs/guides/exfiltration-containment) — Network controls for supervised tools

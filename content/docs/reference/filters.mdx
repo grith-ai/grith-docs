@@ -1,10 +1,10 @@
 ---
 title: "Filters Reference"
-description: "Complete reference for all 18 scoring proxy filters, their phases, parameters, and score ranges"
+description: "Complete reference for all 17 scoring proxy filters, their phases, parameters, and score ranges"
 section: "reference"
 order: 3
 tier: "community"
-lastUpdated: "2026-02-24"
+lastUpdated: "2026-03-24"
 ---
 
 ## Overview
@@ -12,6 +12,8 @@ lastUpdated: "2026-02-24"
 Filters are the core of grith's scoring proxy. Every tool call passes through a pipeline of filters that each contribute a score based on the risk they detect. The composite score determines whether the call is allowed, queued for review, or denied.
 
 grith ships with 17 implemented filters and 1 planned filter. Filters are registered at runtime and can be individually enabled, disabled, or weight-adjusted via the `[proxy.filters.*]` configuration section.
+
+<FilterTable />
 
 ## Pipeline phases
 
@@ -149,7 +151,7 @@ Checks whether the tool call requires elevated process capabilities (e.g., `CAP_
 
 ### secret_scan
 
-Scans tool call arguments for patterns that match known secret formats: API keys, tokens, passwords, private keys, and connection strings. Uses a library of 800+ regex patterns.
+Scans tool call arguments for patterns that match known secret formats: API keys, tokens, passwords, private keys, and connection strings. Uses a library of 1,600+ regex patterns.
 
 | Score | Detection |
 |---|---|

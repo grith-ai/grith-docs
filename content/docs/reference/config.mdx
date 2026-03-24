@@ -203,15 +203,19 @@ default_profile = "generic"
 max_concurrent_sessions = 4
 freeze_timeout_seconds = 300
 
-[supervisor.platform.linux]
-ptrace_mode = "seccomp-bpf"
+[supervisor.platform]
+linux_mechanism = "ptrace"
+macos_mechanism = "endpoint-security"
+seccomp_pre_filter = false
 
 [supervisor.noise_reduction]
-ignore_patterns = [
-  "futex",
-  "clock_gettime",
-  "epoll_wait",
-]`} />
+ignore_read_only = true
+batch_rapid_reads = true
+batch_window_ms = 50`} />
+
+<Callout type="info" title="Launch scope">
+The current launch supports Linux only. The platform backend fields below are part of the config surface because macOS and Windows support is coming very soon.
+</Callout>
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -219,17 +223,21 @@ ignore_patterns = [
 | `max_concurrent_sessions` | Integer | `4` | Maximum number of supervisor sessions that can run simultaneously. |
 | `freeze_timeout_seconds` | Integer | `300` | Seconds before a frozen (paused) supervised process is automatically denied and resumed. |
 
-### [supervisor.platform.linux]
+### [supervisor.platform]
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `ptrace_mode` | Enum | `"seccomp-bpf"` | Syscall interception mode. `seccomp-bpf` is recommended for performance. |
+| `linux_mechanism` | Enum | `"ptrace"` | Linux interception mode. |
+| `macos_mechanism` | Enum | `"endpoint-security"` | macOS supervision backend. |
+| `seccomp_pre_filter` | Boolean | `false` | Experimental seccomp pre-filter switch. |
 
 ### [supervisor.noise_reduction]
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `ignore_patterns` | Array | See default config | Syscall names to ignore for noise reduction. High-frequency harmless syscalls like `futex` and `clock_gettime` are filtered by default. |
+| `ignore_read_only` | Boolean | `true` | Allow pure read-only opens to bypass the proxy unless they hit sensitive-path protections. |
+| `batch_rapid_reads` | Boolean | `true` | Coalesce repeated reads to the same file descriptor into a single proxy evaluation. |
+| `batch_window_ms` | Integer | `50` | Millisecond window used when batching rapid reads. |
 
 See [Supervisor Profiles](/docs/reference/supervisor-profiles) for profile configuration.
 
