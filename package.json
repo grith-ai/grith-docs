@@ -8,7 +8,7 @@
     "start": "npx serve out -l 3001",
     "lint": "eslint .",
     "format-check": "prettier --check .",
-    "type-check": "next typegen && cp node_modules/next/dist/server/use-cache/cache-life.d.ts .next/types/cache-life.d.ts && tsc --noEmit",
+    "type-check": "next typegen && tsc --noEmit -p tsconfig.typecheck.json",
     "format": "prettier --write ."
   },
   "dependencies": {

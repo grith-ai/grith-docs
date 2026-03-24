@@ -59,6 +59,9 @@ export default function Home() {
               Documentation for grith — the security-first local AI agent platform. Everything you
               need to install, configure, and operate zero-trust security for AI agents.
             </p>
+            <div className="mx-auto mt-5 max-w-2xl rounded-lg border border-green-border bg-green-light px-4 py-3 text-sm text-green-dark">
+              Linux is supported for the current launch. macOS and Windows support is coming very soon.
+            </div>
             <div className="mt-8 flex items-center justify-center gap-4">
               <Button href="/docs/getting-started/installation" size="lg">
                 Get Started
@@ -82,7 +85,7 @@ export default function Home() {
           </div>
 
           <div className="mt-16 rounded-xl border border-border bg-surface p-8 text-center shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-            <h2 className="font-heading text-xl font-bold text-text">Quick install</h2>
+            <h2 className="font-heading text-xl font-bold text-text">Quick install (Linux)</h2>
             <div className="mx-auto mt-4 max-w-md overflow-hidden rounded-lg bg-terminal-bg shadow-[0_0_0_1px_rgba(0,168,90,0.15),0_8px_32px_rgba(0,0,0,0.12)]">
               <div className="flex items-center gap-1.5 border-b border-terminal-border bg-[#161b22] px-4 py-2">
                 <span className="h-2 w-2 rounded-full bg-[#ff5f57]" />
@@ -95,6 +98,9 @@ export default function Home() {
                 </code>
               </div>
             </div>
+            <p className="mt-3 text-sm text-text-secondary">
+              macOS and Windows install instructions will land here as soon as those builds ship.
+            </p>
           </div>
         </div>
       </main>
