@@ -1,0 +1,55 @@
+---
+title: "API overview"
+description: "REST endpoints exposed by the grith daemon, organised by surface area."
+section: "api"
+order: 0
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/overview.mdx"
+---
+
+The grith daemon (started by [`grith daemon start`](/docs/cli/daemon)) binds on
+`127.0.0.1:3141` by default and exposes a REST API plus a WebSocket event stream.
+
+## Base URL & TLS
+
+```
+http://127.0.0.1:3141
+```
+
+By default grith binds to loopback only — there is no remote attack surface. To expose
+the API beyond loopback, either:
+
+- Configure [`[server.tls]`](/docs/config/server) with cert + key files, or
+- Front grith with a reverse proxy that terminates TLS — see
+  [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
+
+## Authentication
+
+For v0.1, the public endpoints accept any local caller. The IPC-only endpoints
+(`/ipc/*`) reject non-loopback connections at the listener.
+
+When a Pro license is active, certain endpoints additionally require a valid
+plan-gate check; the call returns `403 PLAN_REQUIRED` if the tier doesn't match.
+
+## Rate limits
+
+`[server.rate_limit]` controls per-endpoint pacing:
+
+- General endpoints: 100 req/s
+- Write endpoints: 10 req/s
+- Proxy test: 20 req/s
+- IPC endpoints: uncapped (loopback only)
+
+Exceeding the rate returns `429 RATE_LIMITED` with a `Retry-After` header.
+
+## Endpoint groups
+
+<ApiRouteTable />
+
+## See also
+
+- [WebSocket /events](/docs/api/websocket) — real-time event stream
+- [Notifications](/docs/api/notifications) — channel configuration
+- [`grith daemon`](/docs/cli/daemon) — running the API server

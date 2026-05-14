@@ -1,0 +1,121 @@
+---
+title: "grith pro"
+description: "Pro plan: log in, sync team policies, refresh license, manage billing."
+section: "cli"
+order: 15
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/pro.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+```
+grith pro [login | status | activate | refresh | logout | sync | upgrade | billing]
+```
+
+The `pro` subcommand group is the local CLI surface for everything to do with the
+Pro plan: authenticating this device, syncing centralised team policies, and
+managing the license lifecycle.
+
+## Subcommands
+
+### `grith pro login`
+
+Authenticate this device. Two flows:
+
+```
+grith pro login                       # device-auth flow (browser)
+grith pro login --api-key <KEY>       # paste an API key from the dashboard
+```
+
+The device-auth flow prints a code, opens your browser to grith.ai, and waits for
+you to approve the device. The API-key flow is useful for headless servers.
+
+### `grith pro status`
+
+```
+$ grith pro status
+Logged in as:    dan@example.com
+Team:            acme-eng
+Plan:            pro (annual)
+Seats:           24 / 25
+License expires: 2026-12-12 (212 days)
+Last refresh:    8m ago
+Last sync:       3m ago (2 policies, 5 channels)
+```
+
+### `grith pro activate`
+
+Apply a license file directly. Used in air-gapped or offline-first installs.
+
+```
+grith pro activate /path/to/license.signed
+```
+
+### `grith pro refresh`
+
+Force a license refresh now (normally automatic on a 6-hour cycle).
+
+```
+grith pro refresh
+```
+
+### `grith pro logout`
+
+Remove the local license cache and authentication state.
+
+```
+grith pro logout
+```
+
+Sessions in flight continue; new ones start on the community tier.
+
+### `grith pro sync`
+
+Pull (or push) team policies and shared filter configs.
+
+```
+grith pro sync                  # pull latest from dashboard
+grith pro sync --push           # push local profile changes to dashboard
+grith pro sync --dry-run        # show what would change without applying
+```
+
+Synced artefacts: supervisor profiles, scoring thresholds (`[proxy]`), filter config
+files (`config/filters/*.toml`), notification channel configs, canary registry.
+
+### `grith pro upgrade`
+
+Walk through an in-place upgrade from community to pro (or pro to enterprise).
+Opens a browser to the dashboard checkout.
+
+### `grith pro billing`
+
+Open the billing portal in your browser. The link is single-use and signed.
+
+## License storage
+
+License files live in `~/.config/grith/licenses/` with perms `0600`. They're
+Ed25519-signed by the grith.ai service; tampered or expired licenses fail validation
+and revert to community-tier behaviour silently (no functional loss for community
+features, but Pro features lock out).
+
+## When this matters
+
+Day-to-day, you don't need `grith pro`. The license refreshes itself, sync runs in
+the background, and Pro features are accessible whenever the local license is valid.
+
+Reach for `grith pro` when:
+
+- Provisioning a new device or new team member.
+- Diagnosing why a Pro feature isn't available (`grith pro status`).
+- Doing an air-gapped install.
+- A team policy change needs to be pulled urgently before the next sync window.
+
+## See also
+
+- [What's in Pro](/docs/pro/whats-in-pro)
+- [Authentication](/docs/pro/authentication)
+- [License lifecycle](/docs/pro/license-lifecycle)
+- [Team sync](/docs/pro/team-sync)

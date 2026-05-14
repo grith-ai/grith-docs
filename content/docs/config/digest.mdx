@@ -1,0 +1,47 @@
+---
+title: "[digest]"
+description: "Queue behaviour — review intervals, delivery channel, queue size cap."
+section: "config"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/digest.mdx"
+---
+
+The `[digest]` section controls how the quarantine queue surfaces to a reviewer —
+how often the CLI digest reminds you, where queue items are delivered, and the
+maximum queue size.
+
+<ConfigKeyTable section="digest" />
+
+## Notes
+
+- **`interval_active`** — when there are items in the queue *and* a session is
+  actively running, how often the terminal-based digest prompt reminds you to
+  review (default 30 minutes).
+- **`interval_idle`** — when no active session is running, the longer reminder
+  cadence (default 24 hours).
+- **`delivery`** — `cli` (default) prints reminders to the terminal. `none`
+  disables auto-reminders entirely; reviews happen via `grith digest review`
+  manually. With the daemon running, the dashboard always shows the queue
+  regardless of this setting.
+- **`max_queue_size`** — once the queue holds this many items, the oldest queued
+  items auto-resolve to DENY. Default 100 items.
+
+## Notification channel delivery (Pro)
+
+To deliver queue items to Slack / Telegram / etc., configure
+`[notifications.channels.*]` rather than the `delivery` field. The two are
+orthogonal:
+
+- `[digest] delivery` controls terminal reminder behaviour.
+- `[notifications.channels.*]` controls remote routing.
+
+See [`grith notifications`](/docs/cli/notifications) and per-channel guides.
+
+## See also
+
+- [The quarantine digest](/docs/concepts/quarantine-digest)
+- [Reviewing the digest](/docs/start/reviewing-the-digest)
+- [`grith digest`](/docs/cli/digest)

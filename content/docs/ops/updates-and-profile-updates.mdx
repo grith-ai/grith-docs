@@ -1,0 +1,105 @@
+---
+title: "Updates & profile updates"
+description: "How grith updates itself and how shipping profiles get refreshed."
+section: "ops"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/updates-and-profile-updates.mdx"
+---
+
+Two things can update: the grith binary itself and the bundled supervisor
+profiles (which evolve as agents evolve).
+
+## Binary updates
+
+grith checks for new releases daily by default. Update check process:
+
+1. Hits `https://grith.ai/releases.json` once per day.
+2. Compares the latest version to the installed version.
+3. If newer, prints a one-line notice at REPL/daemon start.
+
+Configure:
+
+```toml
+[general]
+update_check = true              # daily check (default)
+# update_check = false           # disable
+```
+
+The check is metadata only — grith never auto-downloads or auto-updates the
+binary. You're in control of when an update gets applied.
+
+To update:
+
+```
+curl -fsSL https://grith.ai/install | sh
+```
+
+Or use your package manager if available (Homebrew tap, AUR, etc.). Restart
+the daemon after replacing the binary:
+
+```
+grith daemon stop
+grith daemon start
+```
+
+## Profile updates
+
+The shipping supervisor profiles change as agents change (new versions of
+Claude Code add cache directories, new tool integrations introduce new
+network destinations). grith checks for profile updates on a slower cadence:
+
+```toml
+[general]
+profile_update_check = true       # weekly check (default)
+```
+
+Profile updates are signed and verified locally before applying. The user's
+custom profiles in `~/.config/grith/profiles/` are never overwritten by the
+update mechanism.
+
+Force a check:
+
+```
+grith config profile-update
+```
+
+Will list available updates; apply with `--apply`:
+
+```
+grith config profile-update --apply
+```
+
+## Disabling all phone-home
+
+For air-gapped or maximally-private deployments:
+
+```toml
+[general]
+update_check = false
+profile_update_check = false
+audit_sync = false
+```
+
+In this config, the daemon never contacts grith.ai except for explicit
+license-refresh calls on Pro. For full disconnection see
+[Air-gapped deployment](/docs/guides/air-gapped-deployment).
+
+## Pro: managed updates
+
+Pro teams can centrally manage which version is rolled out:
+
+- The dashboard pins a "team-supported" version.
+- Devices on different versions see a notice ("you're on 0.1.2; team is on
+  0.1.3 — please update").
+
+This makes coordinated updates easier in larger teams.
+
+## See also
+
+- [Release process](/docs/ops/release-process)
+- [Air-gapped deployment](/docs/guides/air-gapped-deployment)
+- [`[general]` config](/docs/config/general)
+- [Profile audit](/docs/profiles/profile-audit)

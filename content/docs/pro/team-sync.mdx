@@ -1,0 +1,109 @@
+---
+title: "Team sync"
+description: "Centrally-managed policies pulled to every device on schedule."
+section: "pro"
+order: 4
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/team-sync.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+Team sync distributes a single set of policies, profiles, and channel configs
+to every team device. Author once in the dashboard, sync everywhere.
+
+## What gets synced
+
+- **Supervisor profiles** — including team-specific custom profiles.
+- **Filter configs** — paths, egress, secrets, dlp, containment, capability,
+  commands, domains.
+- **Threshold overrides** — `proxy.auto_allow_threshold`, etc.
+- **Notification channels** — webhook URLs, severity maps (channel secrets
+  are encrypted; see below).
+- **Canary registry** — team-shared canary tokens.
+- **Encrypted API keys** — provider keys for shared usage.
+
+What's **not** synced (stays per-device):
+
+- Reputation tables (per-device by default; can opt in).
+- Audit log (always local).
+- Personal profile extensions in `~/.config/grith/profiles/`.
+
+## Sync schedule
+
+The daemon syncs every 30 minutes by default. Tunable:
+
+```toml
+[general]
+sync_interval_minutes = 15
+```
+
+Force a sync immediately:
+
+```
+grith pro sync
+```
+
+`--dry-run` shows what would change without applying.
+
+## Signed bundles
+
+Sync bundles are signed by the dashboard with a per-team Ed25519 key. The
+device verifies the signature before applying any changes; a tampered bundle
+is rejected and logged.
+
+The team key is generated when the team is created. If the team admin needs
+to rotate (laptop lost, admin departure):
+
+1. Generate a new team key in the dashboard.
+2. The dashboard re-signs all current bundles with the new key.
+3. Every device gets the new public key on next sync and trust pivots
+   atomically.
+
+## Encrypted secrets in sync
+
+API keys and channel webhook URLs are sensitive. They're stored encrypted in
+the dashboard:
+
+- **At rest on grith.ai** — encrypted with a team-held key.
+- **In transit** — TLS.
+- **At rest on device** — perms `0600`, in the user config dir.
+
+The team-held key never leaves admin browsers and (in encrypted form, decryptable
+only by the developer's device key) developer machines. grith.ai never has access
+to plaintext.
+
+See [Encrypted key management](/docs/pro/encrypted-key-management) for the
+full crypto.
+
+## Conflict resolution
+
+A device that's been edited locally before a sync:
+
+- Local non-conflicting changes are preserved (e.g. adding a personal profile
+  in `~/.config/grith/profiles/` doesn't get overwritten).
+- Locally-edited team files (the synced versions in
+  `~/.config/grith/team-managed/`) are overwritten on sync. Don't edit those.
+
+## Inspecting state
+
+```
+grith pro status
+```
+
+Shows the last successful sync. For details:
+
+```
+grith pro sync --dry-run --verbose
+```
+
+Lists every synced artifact and its checksum.
+
+## See also
+
+- [Team setup](/docs/guides/team-setup)
+- [Centralised policies](/docs/pro/centralised-policies)
+- [Encrypted key management](/docs/pro/encrypted-key-management)
+- [`grith pro sync`](/docs/cli/pro)

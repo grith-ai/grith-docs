@@ -1,0 +1,128 @@
+---
+title: "Notification security model"
+description: "HMAC-signed callbacks, replay protection, and the threat model around remote approvals."
+section: "security"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/notification-security.mdx"
+---
+
+Routing digest items to Slack / Telegram / webhooks lets reviewers approve
+calls from a distance — convenient, but with a fresh threat model. This page
+documents how grith protects the approve/deny path against tampering and
+replay.
+
+## The threat
+
+Without protections, the path looks like:
+
+```
+grith daemon  ──webhook──▶  external channel  ──button──▶  grith daemon
+```
+
+What can go wrong:
+
+1. **Tampered approval** — an attacker injects a `decision: approve` POST.
+2. **Replayed approval** — an attacker captures a legitimate approval and
+   replays it for a different item.
+3. **Channel impersonation** — an attacker fakes being the channel.
+4. **Eavesdropped notification** — an attacker reads the digest item without
+   authorisation (privacy).
+
+## HMAC signing
+
+Every outbound message includes an HMAC-SHA256 signature:
+
+```
+X-Grith-Signature: sha256=<hex>
+```
+
+The HMAC is over the body bytes, using a per-channel shared secret. Channels
+that callback to grith (Slack, Telegram, webhook) sign the callback body the
+same way, using the same shared secret.
+
+The daemon verifies:
+
+- Signature matches: reject 403 if not.
+- Timestamp in the body is within `notifications.replay_window_seconds`
+  (default 300s): reject if expired.
+- Item ID has not already been decided: reject if so.
+
+## Per-channel secrets
+
+Each channel has its own secret, generated at channel creation:
+
+```toml
+[notifications.channels.slack]
+hmac_secret = "<32 byte random hex>"
+```
+
+Secrets never appear in dashboard UI or audit logs after creation — only in
+the local config file (perms `0600`).
+
+A leaked channel secret only compromises that channel. Rotate via the dashboard
+or by regenerating in the config.
+
+## Replay protection
+
+The `replay_window_seconds` field (default 300s) bounds how stale an approval
+can be. After the window, approvals are rejected.
+
+Each item ID can be decided exactly once. Subsequent attempts return
+`409 ALREADY_RESOLVED`. This bounds replay-after-decision.
+
+For higher-assurance setups, set `replay_window_seconds = 60` (shorter window)
+or require a per-decision nonce that the callback must echo.
+
+## Channel impersonation
+
+In Slack/Discord/Teams, the workspace's webhook auth (Slack's signing secret,
+Discord's webhook URL itself acting as a bearer) prevents impersonation at the
+network layer. Combined with grith's HMAC verification on the callback path,
+an attacker needs **both** to forge a decision.
+
+For pure webhook channels, the shared secret IS the only auth — protect it
+accordingly (rotate periodically, store in secret management).
+
+## Eavesdropping
+
+What's in a digest notification:
+
+- Operation type and target (path, URL, command).
+- Filter contributions and scores.
+- Session ID, profile, originating command.
+- Approve/deny URLs (signed).
+
+What's not in a notification (by default):
+
+- The full content of file reads.
+- Outbound payload bytes.
+- Credentials.
+
+You can `notifications.channels.<name>.include_payload_bytes = true` to include
+the bytes — useful for debugging, dangerous for sensitive payloads. Off by
+default.
+
+For channels carrying high-sensitivity targets, the dashboard can configure
+**redacted notifications** that ship only the operation type and a link back
+to the dashboard, with the rest visible only after dashboard login.
+
+## Inbound channel auth
+
+For two-way channels (Telegram, custom webhook):
+
+- The bot's API token authenticates outbound.
+- The shared HMAC secret authenticates inbound.
+
+Compromise the bot token → can impersonate grith outbound (annoying, not
+dangerous). Compromise the HMAC secret → can forge approvals (dangerous).
+Keep the HMAC secret more carefully than the bot token.
+
+## See also
+
+- [Threat model](/docs/security/threat-model)
+- [Notifications: Webhook](/docs/guides/notifications-webhook)
+- [Notifications: Slack](/docs/guides/notifications-slack)
+- [Notifications: Telegram](/docs/guides/notifications-telegram)

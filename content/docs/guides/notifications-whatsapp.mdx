@@ -1,0 +1,70 @@
+---
+title: "Notifications: WhatsApp"
+description: "Route grith events to WhatsApp via a provider API."
+section: "guides"
+order: 12
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-whatsapp.mdx"
+---
+
+Deliver grith events to WhatsApp. Requires a WhatsApp Business API provider —
+grith doesn't talk to consumer WhatsApp directly.
+
+## Supported providers
+
+- Twilio WhatsApp Business API
+- Meta's WhatsApp Business Cloud API (direct)
+- Custom WhatsApp business gateway (BYO)
+
+## Configure (Twilio example)
+
+```toml
+[notifications.channels.whatsapp]
+enabled = true
+provider = "twilio"
+account_sid = "AC..."
+auth_token = "..."                   # or TWILIO_AUTH_TOKEN env
+from = "whatsapp:+14155238886"       # Twilio sandbox or your number
+to   = ["whatsapp:+44712345678"]
+events = ["canary", "capability_deny"]
+severity_map = { canary = "critical" }
+```
+
+## Configure (Meta Cloud API)
+
+```toml
+[notifications.channels.whatsapp]
+enabled = true
+provider = "meta-cloud"
+phone_number_id = "..."
+access_token = "..."
+to = ["+44712345678"]
+events = ["canary", "capability_deny"]
+```
+
+## Test
+
+```
+grith notifications test whatsapp
+```
+
+## Format
+
+WhatsApp messages are plain text with a short subject line. The dashboard link
+is included for full context.
+
+## Caveats
+
+- Cost: WhatsApp Business messages are paid per conversation. Use for
+  high-severity events only, not chatty queues.
+- Template approval: some providers require message templates to be
+  pre-approved. Use grith's default templates, which are calibrated for approval.
+- Inbound: v0.1 doesn't support inbound WhatsApp replies for approval. Use the
+  dashboard link in the message instead.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)

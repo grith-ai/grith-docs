@@ -1,0 +1,62 @@
+---
+title: "Aider"
+description: "Supervisor profile for the Aider git-aware coding assistant."
+section: "profiles"
+order: 5
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/aider.mdx"
+---
+
+```
+grith exec --profile aider -- aider
+```
+
+The `aider` profile fits the Aider editing assistant. Aider is git-heavy — it
+makes many small commits as the conversation progresses — so the profile leans
+into routine git operations.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.aider/**`, `${HOME}/.cache/aider/**`,
+  `/tmp/aider-**`.
+- **Commands** — `git status`, `git diff`, `git add`, `git commit`,
+  `git restore`, `git log`, `git show`, `git config get`, plus the language
+  toolchains (`python`, `node`, `cargo`, `go`).
+- **Destinations** — provider APIs as configured (`api.anthropic.com`,
+  `api.openai.com`, `api.openrouter.ai`, `*.deepinfra.com`, etc.). Aider can be
+  pointed at any provider — the profile is generous with provider hosts.
+- **Exec roots** — standard system + version manager paths.
+
+## Capability set
+
+- `read_project`, `write_project` — for the active repo.
+- `read_home`, `write_home` — for the aider cache + config.
+- `shell` — for git, build tools, tests.
+- `network` — for the configured provider.
+
+Notably, `exec` is **not** in the default set — Aider doesn't typically spawn
+arbitrary subprocesses. Add `capabilities += ["exec"]` if your usage pattern
+needs it.
+
+## Tuning
+
+If you use Aider with a self-hosted model (e.g. local llama.cpp server):
+
+```toml
+[profiles.my-aider]
+extends = "aider"
+routine_destinations = ["localhost:8080", "127.0.0.1:8080"]
+```
+
+If you also run a non-default git remote:
+
+```toml
+routine_destinations += ["git.internal.acme.com"]
+```
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)

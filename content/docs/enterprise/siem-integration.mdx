@@ -1,273 +1,121 @@
 ---
-title: "SIEM Integration"
-description: "Export grith security events to Splunk, Elastic, Sentinel, and QRadar via CEF, LEEF, JSON, and OpenTelemetry"
+title: "SIEM integration"
+description: "Stream grith audit events to Splunk, Elastic, Sentinel, Datadog, or a generic HTTP target."
 section: "enterprise"
-order: 4
+order: 5
 tier: "enterprise"
-lastUpdated: "2026-02-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/enterprise/siem-integration.mdx"
 ---
 
-<Callout type="info" title="Roadmap">
-SIEM and SOAR integration is planned for grith v2.0. This page describes the planned export formats, platform integrations, and configuration model.
-</Callout>
+<PlanBadge tier="enterprise" />
 
-grith evaluates every tool call from AI agents against 17 security filters and records every decision in a tamper-evident audit log. SIEM integration lets you stream those events into your existing security operations platform so that AI agent activity appears alongside your other security telemetry — same dashboards, same alerting rules, same incident workflows.
+Stream grith's audit events to your SIEM in real time. Each device pushes to
+the SIEM directly (no central aggregator), with consistent shapes and signed
+metadata.
 
-## Supported platforms
+## Supported SIEMs (native)
 
-| Platform | Export format | Transport | Status |
-|---|---|---|---|
-| Splunk | CEF, JSON | HTTP Event Collector (HEC) | <Badge variant="roadmap">Planned</Badge> |
-| Elastic SIEM | JSON, ECS-compatible | Elasticsearch API, Logstash | <Badge variant="roadmap">Planned</Badge> |
-| Microsoft Sentinel | CEF, JSON | Log Analytics API | <Badge variant="roadmap">Planned</Badge> |
-| IBM QRadar | LEEF, CEF | Syslog (TCP/UDP/TLS) | <Badge variant="roadmap">Planned</Badge> |
-| CrowdStrike Falcon LogScale | JSON | HEC-compatible API | <Badge variant="roadmap">Planned</Badge> |
-| Generic syslog | CEF, LEEF, JSON | Syslog (TCP/UDP/TLS) | <Badge variant="roadmap">Planned</Badge> |
-| OpenTelemetry | OTLP | gRPC, HTTP | <Badge variant="roadmap">Planned</Badge> |
-| Custom webhook | JSON | HTTPS POST | <Badge variant="roadmap">Planned</Badge> |
+- **Splunk** — via HEC (HTTP Event Collector).
+- **Elastic** — via the standard ECS schema, Elasticsearch direct or via Logstash.
+- **Microsoft Sentinel** — via the Log Ingestion API or a Logic App.
+- **Datadog** — via the Logs API.
+- **Sumo Logic** — via HTTP source.
+- **Generic webhook** — any HTTP endpoint that accepts JSON.
 
-## Export formats
+## Splunk example
 
-### CEF (Common Event Format)
-
-CEF is the most widely supported SIEM ingestion format. grith maps its event fields to CEF as follows:
-
-```
-CEF:0|grith|grith-proxy|1.0|tool_call_denied|Tool Call Denied|8|
-  src=127.0.0.1 suser=alice@example.com
-  cs1Label=tool cs1=write_file
-  cs2Label=score cs2=8.7
-  cs3Label=decision cs3=DENY
-  cs4Label=filters cs4=path_traversal,sensitive_path,write_outside_project
-  cs5Label=session cs5=abc123
-  rt=Feb 24 2026 14:30:00
+```toml
+[siem.splunk]
+enabled = true
+hec_url = "https://splunk.acme.com:8088/services/collector"
+hec_token = "..."
+index = "grith"
+sourcetype = "grith:audit"
+batch_size = 100
+batch_window_seconds = 5
 ```
 
-### LEEF (Log Event Extended Format)
+Each event becomes a Splunk event with the audit record as `_raw` plus
+indexed fields.
 
-For IBM QRadar environments:
+## Elastic example
 
+```toml
+[siem.elastic]
+enabled = true
+endpoint = "https://elastic.acme.com:9200"
+index = "grith-audit-{YYYY.MM}"
+api_key = "..."
+ecs_compliant = true
 ```
-LEEF:2.0|grith|grith-proxy|1.0|tool_call_denied|
-  src=127.0.0.1 usrName=alice@example.com
-  tool=write_file score=8.7 decision=DENY
-  filters=path_traversal,sensitive_path,write_outside_project
-  sessionId=abc123
-```
 
-### JSON
+`ecs_compliant = true` reshapes the events to Elastic Common Schema (`@timestamp`,
+`event.*`, `user.*`, etc.) for compatibility with built-in Kibana dashboards.
 
-Structured JSON events suitable for Elastic, Splunk, and any platform that ingests structured logs:
+## Generic webhook
 
-<CodeBlock code={`{
-  "timestamp": "2026-02-24T14:30:00.000Z",
-  "event_type": "tool_call_evaluated",
-  "version": "1.0",
-  "source": {
-    "product": "grith",
-    "component": "proxy",
-    "version": "1.0.0"
-  },
-  "user": {
-    "email": "alice@example.com",
-    "role": "developer"
-  },
-  "tool_call": {
-    "tool": "write_file",
-    "args": {
-      "path": "/etc/passwd",
-      "content": "..."
-    }
-  },
-  "evaluation": {
-    "score": 8.7,
-    "decision": "DENY",
-    "threshold_allow": 3.0,
-    "threshold_deny": 8.0,
-    "filters_fired": [
-      {"name": "path_traversal", "score": 4.0, "phase": "pattern"},
-      {"name": "sensitive_path", "score": 3.5, "phase": "static"},
-      {"name": "write_outside_project", "score": 1.2, "phase": "context"}
-    ]
-  },
-  "session": {
-    "id": "abc123",
-    "supervisor_profile": "claude-code"
-  }
-}`} language="json" />
+For any HTTP target:
 
-## Platform configuration
-
-### Splunk
-
-<ConfigExample code={`[enterprise.siem]
+```toml
+[siem.generic]
 enabled = true
-platform = "splunk"
-format = "json"
-
-[enterprise.siem.splunk]
-hec_url = "https://splunk.internal.example.com:8088"
-hec_token_env = "GRITH_SPLUNK_HEC_TOKEN"
-index = "grith_security"
-source = "grith-proxy"
-sourcetype = "grith:event"
-verify_tls = true
-`} title="Splunk HEC configuration" />
-
-### Elastic SIEM
-
-<ConfigExample code={`[enterprise.siem]
-enabled = true
-platform = "elastic"
-format = "json"
-
-[enterprise.siem.elastic]
-hosts = ["https://elastic.internal.example.com:9200"]
-index_pattern = "grith-events-%Y.%m"
-api_key_env = "GRITH_ELASTIC_API_KEY"
-ecs_compatible = true
-verify_tls = true
-`} title="Elastic SIEM configuration" />
-
-### Microsoft Sentinel
-
-<ConfigExample code={`[enterprise.siem]
-enabled = true
-platform = "sentinel"
-format = "cef"
-
-[enterprise.siem.sentinel]
-workspace_id = "your-workspace-id"
-shared_key_env = "GRITH_SENTINEL_SHARED_KEY"
-log_type = "GrithSecurityEvent"
-`} title="Microsoft Sentinel configuration" />
-
-### IBM QRadar
-
-<ConfigExample code={`[enterprise.siem]
-enabled = true
-platform = "qradar"
-format = "leef"
-
-[enterprise.siem.qradar]
-syslog_host = "qradar.internal.example.com"
-syslog_port = 514
-syslog_protocol = "tls"
-tls_cert_path = "/etc/grith/siem/qradar-cert.pem"
-`} title="IBM QRadar syslog configuration" />
-
-### Generic syslog
-
-For any SIEM that accepts syslog input:
-
-<ConfigExample code={`[enterprise.siem]
-enabled = true
-platform = "syslog"
-format = "cef"
-
-[enterprise.siem.syslog]
-host = "syslog.internal.example.com"
-port = 6514
-protocol = "tls"                  # tcp, udp, tls
-facility = "local0"
-severity_mapping = true           # Map DENY → alert, QUEUE → warning, ALLOW → info
-`} title="Generic syslog configuration" />
-
-## OpenTelemetry export
-
-For organizations using observability platforms (Datadog, Grafana, Honeycomb, New Relic), grith will export events and metrics via the OpenTelemetry protocol:
-
-<ConfigExample code={`[enterprise.otel]
-enabled = true
-
-[enterprise.otel.traces]
-endpoint = "https://otel-collector.internal.example.com:4317"
-protocol = "grpc"                 # grpc or http
-
-[enterprise.otel.metrics]
-endpoint = "https://otel-collector.internal.example.com:4317"
-protocol = "grpc"
-export_interval = "30s"
-
-[enterprise.otel.resource]
-service_name = "grith-proxy"
-environment = "production"
-`} title="OpenTelemetry configuration" />
-
-### Exported metrics
-
-| Metric | Type | Description |
-|---|---|---|
-| `grith.proxy.evaluations.total` | Counter | Total tool calls evaluated |
-| `grith.proxy.decisions.allow` | Counter | Tool calls auto-allowed |
-| `grith.proxy.decisions.queue` | Counter | Tool calls quarantined |
-| `grith.proxy.decisions.deny` | Counter | Tool calls blocked |
-| `grith.proxy.score.histogram` | Histogram | Distribution of composite scores |
-| `grith.proxy.evaluation.duration` | Histogram | Time to evaluate a tool call (ms) |
-| `grith.supervisor.sessions.active` | Gauge | Currently active supervisor sessions |
-| `grith.canary.triggers.total` | Counter | Canary token trigger events |
-
-## Webhook-based forwarding
-
-For custom integrations or platforms not listed above, grith will support HTTPS webhook delivery:
-
-<ConfigExample code={`[enterprise.siem]
-enabled = true
-platform = "webhook"
-format = "json"
-
-[enterprise.siem.webhook]
-url = "https://your-endpoint.example.com/grith/events"
-auth_header_env = "GRITH_WEBHOOK_AUTH_HEADER"
+url = "https://siem.acme.com/ingest"
+method = "POST"
+headers = { "Authorization" = "Bearer ..." }
 batch_size = 50
-flush_interval = "10s"
-retry_attempts = 3
-retry_backoff = "exponential"
-`} title="Webhook configuration" />
-
-Webhook payloads are delivered as JSON arrays of events, batched for efficiency. Each delivery includes an HMAC-SHA256 signature in the `X-Grith-Signature` header for verification.
-
-## Real-time event streaming
-
-For use cases that require sub-second event delivery, grith will support WebSocket streaming:
-
-<ConfigExample code={`[enterprise.siem.streaming]
-enabled = true
-bind_address = "127.0.0.1:3142"
-auth_required = true
-max_connections = 10
-`} title="WebSocket streaming configuration" />
-
-Connect to the stream:
-
-```
-ws://127.0.0.1:3142/events?token=<session_token>
+hmac_secret = "..."          # signs each batch with X-Grith-Signature
 ```
 
-Events are delivered as individual JSON objects over the WebSocket connection. This is useful for building custom dashboards, real-time alerting pipelines, or integration with SOAR platforms.
+## Event shape (default)
 
-## Event filtering
+```json
+{
+  "id": "uuid-...",
+  "ts": "2026-05-14T09:14:23Z",
+  "session": "abc12345-...",
+  "host": "devmachine-42",
+  "user": "alice@acme.com",
+  "team": "acme-eng",
+  "operation": "file_read",
+  "target": "/home/alice/.ssh/config",
+  "decision": "queue",
+  "resolved": "deny",
+  "composite_score": 4.2,
+  "filters": [...],
+  "profile": "claude-code",
+  "pid": 17421,
+  "command": "claude"
+}
+```
 
-Not every event needs to reach your SIEM. You can filter which events are exported based on decision, score, or event type:
+For SIEMs that prefer specific schemas (CEF, LEEF, ECS), the `format = "cef" | "leef" | "ecs"` option transforms before send.
 
-<ConfigExample code={`[enterprise.siem.filters]
-min_score = 3.0                   # Only export events scoring 3.0+
-decisions = ["QUEUE", "DENY"]     # Only export quarantined and blocked calls
-event_types = [                   # Specific event types to export
-  "tool_call_evaluated",
-  "canary_triggered",
-  "rbac_access_denied",
-  "policy_changed",
-  "audit_chain_broken",
-]
-`} title="Event filtering" />
+## Retry & buffering
 
-<Callout type="tip" title="Cost management">
-SIEM ingestion costs scale with volume. Filtering to QUEUE and DENY events only can reduce ingestion volume by 80-90% while still capturing the events that matter most to your security operations team.
-</Callout>
+If the SIEM is unreachable:
 
-## Next steps
+- Events buffer locally up to `siem.buffer_max_bytes` (default 100MB).
+- Buffer flushes on reconnect.
+- On overflow, the oldest events are dropped (configurable: `on_overflow = "drop-oldest" | "drop-newest" | "fail-open" | "fail-closed"`).
 
-- [Compliance](/docs/enterprise/compliance) — Regulatory compliance reporting
-- [Deployment](/docs/enterprise/deployment) — Network architecture for SIEM connectivity
-- [RBAC](/docs/enterprise/rbac) — Access control for SIEM configuration
+`fail-closed` means grith stops accepting agent operations if it can't deliver
+to the SIEM. Use only when the SIEM availability is part of your control
+posture.
+
+## Per-event filtering
+
+Reduce SIEM volume by filtering before send:
+
+```toml
+[siem.splunk]
+include_events = ["queue", "deny"]    # drop auto-allow events
+exclude_filters = ["behavioural"]      # don't send behavioural-only quarantines
+```
+
+## See also
+
+- [Audit API](/docs/api/audit)
+- [Compliance reporting](/docs/enterprise/compliance-reporting)
+- [`grith audit export`](/docs/cli/audit)

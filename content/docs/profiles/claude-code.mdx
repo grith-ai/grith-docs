@@ -1,0 +1,78 @@
+---
+title: "Claude Code"
+description: "Supervisor profile for Anthropic's Claude Code CLI."
+section: "profiles"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/claude-code.mdx"
+---
+
+```
+grith exec --profile claude-code -- claude
+```
+
+The `claude-code` profile is calibrated for Anthropic's Claude Code CLI as
+shipped through April 2026. It grants read/write across the home directory, the
+shell capability for the tooling Claude Code spawns, network for the Anthropic
+API and common package registries, and exec for spawning helpers.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.cache/claude/**`,
+  `${HOME}/.config/claude/**`, `/tmp/claude-**`.
+- **Commands** — `git ...`, `npm ...`, `pnpm ...`, `yarn ...`, `cargo ...`,
+  `python -m venv`, `pip install`, `uv ...`, `node ...`, `deno ...`, `go ...`,
+  `make ...`, `kubectl ...` (with restrictions), GitHub CLI `gh ...`.
+- **Destinations** — `api.anthropic.com`, `registry.npmjs.org`, `pypi.org`,
+  `crates.io`, `github.com`, `*.githubusercontent.com`, `objects.githubusercontent.com`,
+  the standard `cdn.*` shape for the package registries above.
+- **Exec roots** — `/usr/bin`, `/usr/local/bin`, `${HOME}/.local/bin`,
+  `${HOME}/.cargo/bin`, `${HOME}/.npm-global/bin`, common version-manager bin dirs
+  (`asdf`, `pyenv`, `nvm`).
+- **Readonly** — `/etc/resolv.conf`, `/etc/ssl/certs`, `/etc/hosts`.
+
+## What still goes to scoring
+
+Anything outside the routine sets goes through normal scoring:
+
+- File reads outside the project that aren't in `.cache/claude/`, `.config/claude/`,
+  or system readonly paths.
+- Shell commands outside the routine list (e.g. `sudo`, `nc`, `chmod 777`).
+- Network calls to anything not in the routine destination set.
+- Reads of sensitive files (`.env`, `id_rsa`, `~/.aws/credentials`) — these still
+  go through Phase 1 sensitive-path detection.
+
+That last is important: the profile doesn't *whitelist* sensitive paths just
+because they're under `${HOME}`. The sensitive-path heuristic still fires.
+
+## Tuning
+
+Common adjustments:
+
+- **Add internal package registry** — extend with `routine_destinations += ["acme-npm.internal"]`
+- **Add company-internal toolchain** — `routine_exec_roots += ["/opt/acme/bin"]`
+- **Tighten** — extend the profile with reduced capabilities or fewer routine paths.
+
+```toml
+# ~/.config/grith/profiles/strict-claude.toml
+[profiles.strict-claude]
+extends = "claude-code"
+capabilities = ["read_project", "write_project", "network"]
+# explicit shell removed; agent can't shell out
+```
+
+## Known peculiarities
+
+- Claude Code occasionally probes `${HOME}/.config/claude-code/*` and
+  `${HOME}/.cache/claude-code/*` — both variants are in the routine set.
+- The MCP server discovery process scans the local filesystem for MCP definitions.
+  Some of those scans land in the digest if MCP servers live outside the project.
+  Add their location to `routine_paths` if you use MCP heavily.
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)
+- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)

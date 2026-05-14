@@ -1,0 +1,74 @@
+---
+title: "grith log"
+description: "Tail the audit-backed session log, like a live feed of decisions."
+section: "cli"
+order: 6
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/log.mdx"
+---
+
+```
+grith log [--tail] [--session <ID|NAME>] [--limit <N>]
+```
+
+A live feed of decisions, formatted for humans, backed by the audit database. Useful
+during development when you want to see what an agent is doing in near real time.
+
+## Options
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--tail` | off | Follow the log; stays running and prints new events as they happen. |
+| `--session <ID\|NAME>` | all | Filter to a single session by id (UUID) or human-readable name. |
+| `--limit <N>` | 100 | Max events to print (in non-tail mode). |
+| `--since <DURATION>` | — | Only events newer than DURATION (e.g. `5m`, `1h`). |
+| `--decision <ZONE>` | all | Filter to `allow` / `queue` / `deny`. |
+
+## Examples
+
+Tail everything:
+
+```
+grith log --tail
+```
+
+Tail one session:
+
+```
+grith log --tail --session abc12345-...
+```
+
+Last 20 denies in the past hour:
+
+```
+grith log --since 1h --decision deny --limit 20
+```
+
+## Output format
+
+```
+[09:14:01] abc1234 | claude-code | file_read /proj/README.md          → allow  (0.4)
+[09:14:01] abc1234 | claude-code | file_read /proj/package.json       → allow  (0.4)
+[09:14:23] abc1234 | claude-code | file_read ~/.ssh/config            → queue  (4.2)
+[09:14:34] abc1234 | claude-code | (decision: deny by review)
+```
+
+Columns are: timestamp, abbreviated session id, profile, operation + target,
+decision, and composite score.
+
+## Use cases
+
+- **Development** — start an agent, run `grith log --tail` in a side terminal,
+  understand the call shape it's actually making.
+- **Tuning** — see in real time whether your threshold changes are landing.
+- **Triage** — `--decision queue --tail` shows only quarantines as they happen.
+
+For structured/programmatic use, use [`grith audit export`](/docs/cli/audit) — it's
+the same data, in JSON.
+
+## See also
+
+- [`grith audit`](/docs/cli/audit) — full audit reference
+- [Audit API](/docs/api/audit)

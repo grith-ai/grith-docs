@@ -1,0 +1,54 @@
+---
+title: "Codex"
+description: "Supervisor profile for OpenAI's Codex CLI."
+section: "profiles"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/codex.mdx"
+---
+
+```
+grith exec --profile codex -- codex
+```
+
+The `codex` profile fits OpenAI's Codex CLI. Similar surface area to
+[`claude-code`](/docs/profiles/claude-code) — full home access, shell, network,
+exec — but with codex-specific routine paths and destinations.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.cache/codex/**`,
+  `${HOME}/.config/codex/**`, `${HOME}/.openai/**`, `/tmp/codex-**`.
+- **Commands** — same toolchain set as Claude Code (`git`, `npm`, `cargo`,
+  `python`, `gh`, etc.) plus `codex` itself when nested.
+- **Destinations** — `api.openai.com`, `chatcompletions.openai.com`, package
+  registries (`registry.npmjs.org`, `pypi.org`, `crates.io`), `github.com`,
+  `*.githubusercontent.com`.
+- **Exec roots** — same baseline as Claude Code.
+
+## Differences from claude-code
+
+The main differences are the cache/config locations and the API host. Otherwise
+the two profiles are structurally similar.
+
+For agents that wrap both providers (multi-model), use `claude-code` if the
+underlying tool is Claude Code with Codex as a fallback, or vice versa — they're
+close enough.
+
+## Tuning
+
+Same patterns as Claude Code:
+
+```toml
+[profiles.my-codex]
+extends = "codex"
+routine_destinations = ["acme-openai-proxy.internal"]
+```
+
+## See also
+
+- [Claude Code profile](/docs/profiles/claude-code) — close cousin
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)

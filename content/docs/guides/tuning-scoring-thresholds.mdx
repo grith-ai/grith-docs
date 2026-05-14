@@ -1,0 +1,98 @@
+---
+title: "Tuning scoring thresholds"
+description: "When and how to move auto_allow_threshold and auto_deny_threshold."
+section: "guides"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/tuning-scoring-thresholds.mdx"
+---
+
+The most common knobs you'll touch in grith are `proxy.auto_allow_threshold` and
+`proxy.auto_deny_threshold`. Defaults are `3.0` and `8.0`. This page walks through
+when to move them and how to verify the change is doing what you want.
+
+## Symptoms
+
+| Symptom | Likely cause | Knob |
+| --- | --- | --- |
+| Digest is constantly full of trivial-looking quarantines | `auto_allow_threshold` too low | raise to 3.5 or 4.0 |
+| Things you'd want to review are auto-allowing | `auto_allow_threshold` too high | lower to 2.5 or 2.0 |
+| Calls auto-denying that you'd have approved | `auto_deny_threshold` too low | raise to 9.0 or 10.0 |
+| Definitively-bad calls landing in the queue instead of denying | `auto_deny_threshold` too high | lower to 7.0 or 6.5 |
+
+## Measure before you move
+
+Don't tune blind. Look at the audit log:
+
+```
+grith audit --limit 200 | grep queue | head
+```
+
+Open a few sample items:
+
+```
+grith digest show <id>
+```
+
+If the filter contributions look reasonable for "yes, this needs review", the
+threshold is right. If they look like routine work that shouldn't have queued,
+the threshold is too tight (or your profile is missing routine entries — that's
+often the better fix).
+
+## Make the change
+
+```
+grith config set proxy.auto_allow_threshold 3.5
+```
+
+Or edit `~/.config/grith/config.toml`:
+
+```toml
+[proxy]
+auto_allow_threshold = 3.5
+auto_deny_threshold  = 8.0
+```
+
+The change applies to the next call. No restart needed.
+
+## Re-measure
+
+Run for a day or two. Then:
+
+```
+grith audit --limit 500 | awk '{print $5}' | sort | uniq -c
+```
+
+Look at the decision distribution. A well-tuned setup has roughly:
+
+- 85–95% auto-allow.
+- 5–10% queue.
+- 1–5% auto-deny.
+
+If the queue ratio is over 15%, raise `auto_allow_threshold`. If under 2%,
+consider lowering it.
+
+## When profile is the better fix
+
+If the digest is full of *the same shape of call over and over* — e.g. "reading
+`~/.config/claude-code/auth.json`" — that's not a threshold problem. That's a
+missing `routine_paths` entry in your profile. Fix the profile, not the
+threshold.
+
+The threshold is a global knob. Tightening it to silence one chatty pattern
+makes everything else less safe.
+
+## Per-session thresholds (Pro)
+
+A Pro plan can attach per-session policy bundles that override thresholds for
+specific session profiles (e.g. tighter for production, looser for sandbox
+exploration). See [Centralised policies](/docs/pro/centralised-policies).
+
+## See also
+
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [`[proxy]` config](/docs/config/proxy)
+- [Adaptive reputation](/docs/concepts/adaptive-reputation) — automated tightening
+- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)

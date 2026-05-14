@@ -1,0 +1,147 @@
+---
+title: "Containment walkthrough"
+description: "Using zones to keep an agent in its lane — worked example with two concurrent sessions."
+section: "guides"
+order: 16
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/containment-walkthrough.mdx"
+---
+
+A worked example of using [session containment](/docs/concepts/session-containment)
+to isolate two concurrent agents. The scenario: you're working on a day-job
+project (`dayjob`) and a side project (`oss`) at the same time, and you want
+each agent's session bound to its zone.
+
+## Setup
+
+Define the zones in `~/.config/grith/filters/containment.toml`:
+
+```toml
+[zones.dayjob]
+description = "Day job"
+paths = ["${HOME}/work/dayjob/**"]
+network = ["github.com/your-org/**", "internal.dayjob.example"]
+
+[zones.oss]
+description = "OSS work"
+paths = ["${HOME}/oss/**"]
+network = ["github.com/grith-ai/**", "crates.io"]
+```
+
+Reload:
+
+```
+grith config reload
+```
+
+## Start two sessions
+
+Terminal 1:
+
+```
+cd ~/work/dayjob/some-repo
+grith exec --profile claude-code --zone dayjob -- claude
+```
+
+Terminal 2:
+
+```
+cd ~/oss/grith
+grith exec --profile claude-code --zone oss -- claude
+```
+
+Both sessions are now zone-bound.
+
+## In-zone work auto-allows
+
+In terminal 1, ask Claude to read project files:
+
+```
+> show me the README
+[grith] file_read ~/work/dayjob/some-repo/README.md → score 0.4 → allow
+```
+
+In terminal 2, same:
+
+```
+> show me the package.json
+[grith] file_read ~/oss/grith/package.json → score 0.4 → allow
+```
+
+Both inside their respective zones. No issue.
+
+## Cross-zone reads quarantine
+
+In terminal 1 (dayjob session), ask Claude to read the OSS project:
+
+```
+> can you check ~/oss/grith/Cargo.toml?
+[grith] file_read ~/oss/grith/Cargo.toml → score 5.2 → quarantine
+```
+
+The session_containment filter contributed +4 (out of zone). The sensitive_path
+filter didn't fire, but the containment filter alone took it past the
+auto-allow threshold.
+
+In another terminal:
+
+```
+grith digest review
+```
+
+Approve or deny. The dayjob session resumes either way.
+
+## Cross-zone writes are worse
+
+```
+> save a summary to ~/oss/notes.md
+[grith] file_write ~/oss/notes.md → score 7.8 → quarantine (close to deny)
+```
+
+Writes outside zone are heavier than reads. They'd auto-deny if you tightened
+the threshold.
+
+## Network out-of-zone
+
+```
+> fetch the docs from crates.io about tokio
+[grith] connect crates.io → score 3.2 → quarantine
+```
+
+`crates.io` isn't in the dayjob zone's network list. Approve in the digest if
+this is legitimate; consider adding to the zone if it's a frequent pattern.
+
+## Unlock egress for the session
+
+The digest's "u" (unlock-egress) action whitelists the destination for the rest
+of this session only. Useful for one-off needs:
+
+```
+> can you check the openai docs?
+[grith] connect platform.openai.com → score 3.0 → quarantine
+
+# In digest:
+[u]nlock-egress
+> done, you can continue using platform.openai.com for this session
+```
+
+Next call to platform.openai.com auto-allows. Session ends → unlock forgotten.
+
+## What this catches
+
+The containment filter is doing one specific job: catching when a session is
+trying to operate outside its declared scope. That's:
+
+- An agent confused about which project it's working on.
+- An attacker hijacking the agent and pivoting to another project's data.
+- A legitimate cross-zone need that the human can approve case-by-case.
+
+It complements the other filters; it doesn't replace them.
+
+## See also
+
+- [Session containment](/docs/concepts/session-containment)
+- [Filter 15: Session containment](/docs/filters/15-session-containment)
+- [`grith exec --zone`](/docs/cli/exec)

@@ -49,9 +49,19 @@ export default function DocPage({ doc, headings, prev, next }: DocPageProps) {
 
         <PrevNext prev={prev} next={next} />
 
-        {doc.meta.lastUpdated && (
-          <p className="mt-6 text-xs text-text-dim">Last updated: {doc.meta.lastUpdated}</p>
-        )}
+        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-dim">
+          {doc.meta.lastUpdated && <span>Last updated: {doc.meta.lastUpdated}</span>}
+          {doc.meta.editUrl && (
+            <a
+              href={doc.meta.editUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-text-secondary hover:text-green"
+            >
+              Edit this page on GitHub →
+            </a>
+          )}
+        </div>
       </article>
 
       <TableOfContentsWrapper headings={headings} />

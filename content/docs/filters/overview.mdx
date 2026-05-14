@@ -1,0 +1,55 @@
+---
+title: "Filter overview"
+description: "The 17 filters grith runs on every supervised call, organised into three phases."
+section: "filters"
+order: 0
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/overview.mdx"
+---
+
+Every call your agent makes is run past **17 filters**, organised into three phases.
+A filter's only job is to contribute a number to the composite score. The threshold
+table at the end of the pipeline routes the call to one of three outcomes:
+
+- **Auto-allow** — composite score below `proxy.auto_allow_threshold` (default `3.0`)
+- **Quarantine** — composite score between the thresholds; routed to the digest queue
+- **Auto-deny** — composite score above `proxy.auto_deny_threshold` (default `8.0`)
+
+Filters within a phase run in parallel. Phases run in order: static → pattern → context.
+The budget is roughly &lt;1ms / ~3ms / ~5ms — ~10ms typical, ~15ms worst-case.
+
+## The 17 filters
+
+<FilterTable />
+
+## Reading the table
+
+- **Phase** determines when the filter runs. Static filters do cheap structural checks
+  against pre-built indexes. Pattern filters do regex / parser work. Context filters
+  look up state from the running session and historical baseline.
+- **Latency budget** is the wall-clock target for the phase, not the individual filter.
+  Filters within a phase are concurrent.
+- **Score** is the inclusive range a filter can contribute. Negative values *lower* the
+  composite score (i.e. argue for allow). A value of `DENY` means the filter is a hard
+  gate — when it fires, the call is denied regardless of any other filter.
+
+## What's not visible in the table
+
+- The **scoring engine** doesn't sum scores naively. It applies weights and ceilings
+  from `[reputation]` (e.g. `ceiling_filter_threshold = 5.0` for capped contributions).
+  See [Composite scoring](/docs/concepts/composite-scoring).
+- The **reputation system** can subtract from the composite when the destination and
+  call shape have been observed-and-approved many times — see
+  [Adaptive reputation](/docs/concepts/adaptive-reputation).
+- **Canary detection** and **capability enforcement** are hard gates; they don't
+  contribute score, they short-circuit to DENY.
+
+## See also
+
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline) — why the phases are
+  ordered this way and what each contributes
+- [Scoring rules](/docs/filters/scoring-rules) — the math behind the composite
+- [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) — when and how
+  to move the default `3.0 / 8.0` thresholds

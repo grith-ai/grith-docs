@@ -1,0 +1,135 @@
+---
+title: "Daemon and thin-client sessions"
+description: "Why grith optionally runs as a daemon, and what changes when it does."
+section: "concepts"
+order: 12
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/daemon-and-sessions.mdx"
+---
+
+The simplest way to use grith is one-shot per session: `grith exec` spawns the agent,
+supervises it, exits when the agent exits. That works fine for a single terminal,
+single agent, single user.
+
+For everything else — multiple concurrent sessions, the dashboard, notification
+channels, team sync — there's the daemon. The daemon is a long-running grith process
+that owns the shared subsystems (audit, digest, reputation, server) and lets thin
+clients (each `grith exec` invocation) talk to them.
+
+## Daemon vs no daemon
+
+Without the daemon:
+
+```
+grith exec -- claude
+```
+
+This:
+
+- Owns its own audit log file (under `~/.local/share/grith/audit/<session>.sqlite`).
+- Runs its own filter pipeline.
+- Reviews go through `grith digest review` on the same terminal, or via TUI signal.
+- No HTTP API exposed, no dashboard.
+
+With the daemon (`grith daemon start`):
+
+```
+grith exec -- claude
+# Detects the daemon, registers as a thin-client session
+```
+
+This:
+
+- Sends syscall events to the daemon over a UNIX socket.
+- Audit log is the daemon's central SQLite database.
+- Digest is the daemon's central queue, reviewable from any terminal or the
+  dashboard at `http://127.0.0.1:3141`.
+- Notification channels (configured once in the daemon) deliver review prompts.
+- Reputation table is shared across all sessions.
+
+You can switch back and forth. A `grith exec` with no daemon running just falls back
+to standalone mode.
+
+## What the daemon owns
+
+- The **server** (`crates/grith-server/`) — REST API, WebSocket, dashboard.
+- The **digest queue** — single SQLite table, atomic decisions.
+- The **audit database** — central, indexed, retention-managed.
+- The **reputation table** — saved to disk every 5 minutes by default.
+- The **notification dispatcher** — owns channel state and rate-limit budgets.
+- The **license** — refreshed in-band on Pro plans.
+- The **canary registry** — same tokens visible to every session.
+
+A daemon restart drops in-flight digest items if it's running in standalone mode (the
+process freeze in the thin client times out and auto-denies). On the Pro plan,
+restarts are clean — the daemon flushes pending state to disk before stopping and
+recovers it on start.
+
+## Thin-client sessions
+
+When a daemon is running, `grith exec` becomes a thin client:
+
+```
+grith exec --profile claude-code -- claude
+
+# Internally:
+1. Connect to daemon UNIX socket
+2. POST /ipc/sessions  → daemon assigns session id, returns config snapshot
+3. fork + exec the supervised target, attach ptrace
+4. On each interesting syscall, POST /ipc/proxy/evaluate with the call shape
+5. Apply daemon's decision (allow / queue / deny)
+6. On exit, DELETE /ipc/sessions/{id}
+```
+
+The supervisor (ptrace machinery) still runs in the thin-client process — it has to,
+because that's the process attached to the agent. But the filter pipeline runs in
+the daemon, which means scoring decisions can use *global* context (other sessions'
+recent behaviour, the central reputation table) that the thin client wouldn't have.
+
+## Starting and stopping the daemon
+
+```
+grith daemon start         # foreground
+grith daemon start --detach # background, writes pid file
+grith daemon status
+grith daemon stop
+```
+
+Logs go to stderr (foreground) or `~/.local/share/grith/daemon.log` (detached).
+
+The daemon is local-only by default — binds to `127.0.0.1:3141`. To expose it (for
+the dashboard from another machine, or for a webhook receiver), either configure
+`[server.tls]` with cert + key, or run a reverse proxy in front. See
+[Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
+
+## When you'd not run a daemon
+
+- Single-user laptop, one terminal at a time, you're fine in standalone mode.
+- Containerised agents where each container is its own short-lived session.
+- CI runs where the agent runs once and exits.
+
+When you'd want a daemon:
+
+- More than one supervised session in flight.
+- You want the dashboard.
+- You want notifications routed through Slack / Telegram / etc.
+- You're on Pro and using team policies / sync.
+
+## The auth model
+
+For v0.1, IPC routes (`/ipc/*`) accept any caller from loopback. Public routes
+(`/health`, `/digest`, `/proxy/test`, etc.) are also loopback-only. Exposing beyond
+loopback requires explicit TLS configuration *and* turning on the auth flag — the
+HTTP API does not authenticate by default because the default deployment doesn't
+expose it.
+
+For team setups, the Pro plan adds short-lived bearer tokens issued by the dashboard
+for cross-machine review. See [Notification security](/docs/security/notification-security).
+
+## See also
+
+- [grith daemon](/docs/cli/daemon) — CLI reference
+- [Running as a daemon](/docs/ops/running-as-a-daemon) — operations guide
+- [API overview](/docs/api/overview) — what the daemon serves

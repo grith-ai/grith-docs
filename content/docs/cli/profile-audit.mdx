@@ -1,0 +1,102 @@
+---
+title: "grith profile audit"
+description: "Post-session forensics: audit a recorded syscall trace against a profile."
+section: "cli"
+order: 10
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/profile-audit.mdx"
+---
+
+```
+grith profile audit --profile <NAME> --trace <FILE>
+```
+
+Replay a recorded syscall trace against a supervisor profile and report:
+
+- Which routine entries the session exercised (kept).
+- Which routine entries the session never touched (candidates for trimming).
+- Which calls escaped the routine set and went through full scoring (candidates for
+  promoting to routine).
+- Which calls landed in queue / deny zones and why.
+
+This is the workhorse command for tightening a profile after live use, and for
+forensically reviewing a past session.
+
+## Recording a trace
+
+The trace is generated during a `grith exec` session with `--trace-syscalls-jsonl`:
+
+```
+grith exec \
+    --profile claude-code \
+    --trace-syscalls-jsonl ~/.cache/grith/last.jsonl \
+    -- claude
+```
+
+The JSONL file accumulates one record per intercepted syscall. Roughly 200KB per
+minute of busy agent activity — manageable for short audits, larger files for full-
+day sessions.
+
+## Auditing
+
+```
+grith profile audit \
+    --profile claude-code \
+    --trace ~/.cache/grith/last.jsonl
+```
+
+Sample output:
+
+```
+Profile audit: claude-code
+Trace:         ~/.cache/grith/last.jsonl (4823 calls)
+
+routine_paths (8 of 12 entries used):
+  ✓ ${PROJECT_DIR}/**              3210 hits
+  ✓ ${HOME}/.cache/claude/**        481 hits
+  ✓ ${HOME}/.config/claude/**       102 hits
+  ✓ /tmp/claude-**                  37  hits
+  ✗ ${HOME}/.local/share/claude     0 hits (candidate to drop)
+  ✗ /opt/claude                     0 hits (candidate to drop)
+  ...
+
+routine_destinations (5 of 8 used):
+  ✓ api.anthropic.com               412 hits
+  ✓ github.com                      89 hits
+  ✓ registry.npmjs.org              23 hits
+  ...
+
+escapees (calls that exited routine and were fully scored):
+  31 calls in 4 patterns:
+    file_read /etc/hosts                          12 hits  (consider readonly_paths)
+    file_read /usr/share/zoneinfo/**              8 hits   (consider readonly_paths)
+    network   api.anthropic-internal.com           7 hits  (consider routine_destinations)
+    shell     /usr/bin/which                       4 hits  (already in generic-cli baseline?)
+
+queue zone:  12 (8 ssh-related, 4 misc)
+deny zone:   2  (both canary fires — see audit)
+```
+
+The output is a profile tightening worklist. Add the escapees you trust, remove the
+unused entries, re-audit.
+
+## What it doesn't do
+
+`profile audit` doesn't make changes for you. It produces a diff against the current
+profile; applying the diff is a human edit of the profile TOML. This is intentional —
+profile changes ship signed, and an automated mutation pipeline would weaken that
+guarantee.
+
+## Pro: drift detection
+
+On the Pro plan, profile drift can be monitored continuously: the daemon periodically
+audits live sessions against the active profile and flags drift in the dashboard.
+See [Profile drift](/docs/profiles/profile-drift) (planned for v0.1.x).
+
+## See also
+
+- [Supervisor profiles](/docs/concepts/supervisor-profiles) — what a profile is
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)

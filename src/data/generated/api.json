@@ -1,0 +1,558 @@
+{
+  "groups": [
+    {
+      "description": "Liveness checks and license / plan-tier reporting.",
+      "name": "Health & tier",
+      "routes": [
+        {
+          "auth": "none",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/health",
+          "since": null,
+          "summary": "Server liveness probe.",
+          "tier": null
+        },
+        {
+          "auth": "none",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/tier",
+          "since": null,
+          "summary": "Current plan tier and license expiry.",
+          "tier": null
+        },
+        {
+          "auth": "none",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/license/status",
+          "since": null,
+          "summary": "License validity and refresh state.",
+          "tier": null
+        },
+        {
+          "auth": "local",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/config",
+          "since": null,
+          "summary": "Read the active configuration.",
+          "tier": null
+        },
+        {
+          "auth": "local",
+          "ipc_only": false,
+          "method": "PUT",
+          "path": "/config",
+          "since": null,
+          "summary": "Update configuration values at runtime.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "description": "Persisted audit log of every filter decision.",
+      "name": "Audit",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/audit",
+          "since": null,
+          "summary": "List audit events (paginated).",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/audit/export",
+          "since": null,
+          "summary": "Export audit events as JSON or CSV.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/audit/exfil-stats",
+          "since": null,
+          "summary": "Aggregate exfiltration analytics over the recent window.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/audit/{id}",
+          "since": null,
+          "summary": "Fetch one audit record.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/ipc/audit/ingest",
+          "since": null,
+          "summary": "Internal IPC: ingest a batch of audit records.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "description": "The quarantine queue: ambiguous calls awaiting human review.",
+      "name": "Digest",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/digest",
+          "since": null,
+          "summary": "List queued items.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/ipc/digest/items/{id}",
+          "since": null,
+          "summary": "Fetch one digest item with full forensics.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/digest/{id}/approve",
+          "since": null,
+          "summary": "Approve and execute.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/digest/{id}/deny",
+          "since": null,
+          "summary": "Deny and block.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/digest/{id}/learn",
+          "since": null,
+          "summary": "Approve and train the reputation system.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/digest/{id}/escalate",
+          "since": null,
+          "summary": "Escalate to team (Pro).",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/digest/{id}/unlock-egress",
+          "since": null,
+          "summary": "Approve and whitelist the destination for this session.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/digest/{id}/deny-terminate",
+          "since": null,
+          "summary": "Deny and kill the originating process tree.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/digest/{id}/allow-always",
+          "since": null,
+          "summary": "Permanent allowlist for this call shape (Pro).",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/digest/{id}/webhook-review",
+          "since": null,
+          "summary": "Apply a decision delivered via webhook callback.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "description": "Filter pipeline state and dry-run evaluation.",
+      "name": "Proxy",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/proxy/status",
+          "since": null,
+          "summary": "Filter stats, thresholds, and queue depth.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/proxy/test",
+          "since": null,
+          "summary": "Dry-run a tool call shape. Returns the would-be decision.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/proxy/evaluate",
+          "since": null,
+          "summary": "Internal IPC: evaluate a real syscall request.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/proxy/status/full",
+          "since": null,
+          "summary": "Internal IPC: extended state including per-filter scores.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "description": "Active supervised sessions and their lifecycle (IPC only).",
+      "name": "Supervisor sessions",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/ipc/sessions",
+          "since": null,
+          "summary": "List active supervisor sessions.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/ipc/sessions",
+          "since": null,
+          "summary": "Register a new session.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/ipc/sessions/{id}",
+          "since": null,
+          "summary": "Fetch session details.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "PUT",
+          "path": "/ipc/sessions/{id}",
+          "since": null,
+          "summary": "Update session metadata.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "DELETE",
+          "path": "/ipc/sessions/{id}",
+          "since": null,
+          "summary": "Unregister a session.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/ipc/sessions/{id}/kill",
+          "since": null,
+          "summary": "Terminate a session and its process tree.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "description": "Registered trap tokens that prove exfiltration if observed leaving the box.",
+      "name": "Canaries",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/canaries",
+          "since": null,
+          "summary": "List registered canary tokens.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/canaries",
+          "since": null,
+          "summary": "Add a new canary token.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "DELETE",
+          "path": "/canaries/{id}",
+          "since": null,
+          "summary": "Remove a canary token.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/canaries/{id}/rotate",
+          "since": null,
+          "summary": "Rotate the canary value while keeping its identity.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "description": "Channel configuration and delivery health.",
+      "name": "Notifications",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/notifications/channels",
+          "since": null,
+          "summary": "List configured channels and their states.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/notifications/status",
+          "since": null,
+          "summary": "Per-channel delivery health and recent failures.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/notifications/test/{channel}",
+          "since": null,
+          "summary": "Send a synthetic notification to verify a channel.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "description": "Aggregated usage, cost, and activity. Pro feature.",
+      "name": "Analytics",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/analytics/summary",
+          "since": null,
+          "summary": "Top-line stats: call volume, decisions split, cost.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/analytics/cost",
+          "since": null,
+          "summary": "Provider cost breakdown by model and user.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/analytics/activity",
+          "since": null,
+          "summary": "Call volume trends and per-session timelines.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/analytics/compliance",
+          "since": null,
+          "summary": "Compliance-ready reporting bundles.",
+          "tier": "enterprise"
+        }
+      ]
+    },
+    {
+      "description": "Cloud-sourced team policies and shared filter configs. Pro feature.",
+      "name": "Sync & policies",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/sync/status",
+          "since": null,
+          "summary": "Cloud sync state and last successful pull.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/sync/configs",
+          "since": null,
+          "summary": "List synced team configs.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/sync/configs",
+          "since": null,
+          "summary": "Apply a synced config bundle to this device.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/policies",
+          "since": null,
+          "summary": "List custom policies.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/policies/{name}",
+          "since": null,
+          "summary": "Fetch one policy.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/policies",
+          "since": null,
+          "summary": "Create a policy.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "PUT",
+          "path": "/policies/{name}",
+          "since": null,
+          "summary": "Update a policy.",
+          "tier": "pro"
+        },
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "DELETE",
+          "path": "/policies/{name}",
+          "since": null,
+          "summary": "Delete a policy.",
+          "tier": "pro"
+        }
+      ]
+    },
+    {
+      "description": "Read and reset the adaptive trust table (IPC only).",
+      "name": "Reputation",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/reputation/table",
+          "since": null,
+          "summary": "Dump the current trust table.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/reputation/observe",
+          "since": null,
+          "summary": "Record a single observation.",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/reputation/reset",
+          "since": null,
+          "summary": "Wipe learned trust (start over).",
+          "tier": null
+        },
+        {
+          "auth": null,
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/reputation/save",
+          "since": null,
+          "summary": "Force-flush the trust table to disk.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "description": "Real-time event stream for the dashboard.",
+      "name": "WebSocket",
+      "routes": [
+        {
+          "auth": null,
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/events",
+          "since": null,
+          "summary": "Upgrade to a WebSocket. Streams digest, session, audit, and notification events.",
+          "tier": null
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "source": "crates/grith-docgen/data/api.toml (curated)"
+}

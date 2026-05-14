@@ -1,0 +1,57 @@
+---
+title: "Configuration overview"
+description: "Where grith reads config from, the file format, and the top-level sections."
+section: "config"
+order: 0
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/overview.mdx"
+---
+
+grith is configured by TOML. The shipping defaults live in `config/default.toml` inside
+the grith repo, and that file is the source of truth for this reference.
+
+## Precedence
+
+When grith starts, configuration values are layered from highest priority to lowest:
+
+1. **CLI flags** (`--config`, `--log-level`, `--project`, etc.)
+2. **Environment variables** prefixed `GRITH_` (e.g. `GRITH_LOG_LEVEL=debug`)
+3. **Project-local config** at `.grith/config.toml`
+4. **User config** at `~/.config/grith/config.toml`
+5. **Built-in defaults** from `config/default.toml`
+
+A value set at a higher layer fully overrides the same key at a lower one. There is no
+deep-merge for arrays: an array reassignment replaces the whole array.
+
+## Top-level sections
+
+<ConfigKeyTable section="general" />
+
+<ConfigKeyTable section="proxy" />
+
+<ConfigKeyTable section="reputation" />
+
+<ConfigKeyTable section="digest" />
+
+<ConfigKeyTable section="supervisor" />
+
+<ConfigKeyTable section="server" />
+
+Each section above has further nested sub-sections (e.g. `[proxy.filters.reputation]`,
+`[supervisor.platform]`, `[server.rate_limit]`). Browse the per-section pages from
+the sidebar for the full nested tree.
+
+## Reloading
+
+`[server] enabled = true` exposes `PUT /config` over the local API. The dashboard, the
+CLI's `grith config set`, and direct curl all route through that endpoint. Most config
+changes apply on the next call; some (e.g. server port) require a daemon restart.
+
+## See also
+
+- [grith config](/docs/cli/config) — CLI surface for read/modify
+- [grith init](/docs/cli/init) — generate a starter config
+- [Filter config files](/docs/config/filter-config-files) — the standalone TOML files
+  for filter-specific data (paths, secrets, egress, etc.)

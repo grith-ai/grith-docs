@@ -1,0 +1,79 @@
+---
+title: "Notifications: Telegram"
+description: "Route grith events to a Telegram chat via bot API."
+section: "guides"
+order: 6
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-telegram.mdx"
+---
+
+Send digest items and alerts via a Telegram bot, with reply-based approve/deny
+support.
+
+## 1. Create a bot
+
+In Telegram:
+
+1. DM `@BotFather`.
+2. Run `/newbot`. Pick a name and a username.
+3. Copy the API token BotFather gives you (looks like `12345:ABC-DEF...`).
+
+## 2. Get a chat ID
+
+Add the bot to the chat (or DM it directly), then send any message. From a
+terminal:
+
+```
+curl https://api.telegram.org/bot<TOKEN>/getUpdates
+```
+
+The chat ID is in the response under `message.chat.id`. For groups it's
+negative; for DMs positive.
+
+## 3. Configure
+
+```toml
+[notifications.channels.telegram]
+enabled = true
+bot_token = "12345:ABC-DEF..."
+chat_id = "-1001234567890"
+severity_map = { canary = "critical", queue = "warning" }
+allow_interactive = true
+hmac_secret = "<random-32-byte-hex>"    # required for callback verification
+```
+
+## 4. Test
+
+```
+grith notifications test telegram
+```
+
+## Interactive approve/deny
+
+With `allow_interactive = true`, queued items arrive with inline buttons:
+
+- 👍 Approve
+- 👎 Deny
+- 🎓 Approve + Learn
+
+Tapping a button sends a callback to grith via a signed webhook. The
+`hmac_secret` is shared between grith and the bot for signature verification —
+keep it private.
+
+For details on the callback flow and the threat model around remote approvals,
+see [Notification security](/docs/security/notification-security).
+
+## Group chats
+
+Telegram bots in groups can be restricted to admin-only commands. We recommend
+that setup for any grith-approval channel — restricting who can press the
+approve buttons.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)
+- Other channels: [Slack](/docs/guides/notifications-slack),
+  [Discord](/docs/guides/notifications-discord)

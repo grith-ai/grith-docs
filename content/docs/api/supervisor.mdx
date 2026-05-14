@@ -1,0 +1,54 @@
+---
+title: "Supervisor sessions"
+description: "IPC-only routes for registering, listing, and killing supervised sessions."
+section: "api"
+order: 5
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/supervisor.mdx"
+---
+
+<ApiRouteTable group="Supervisor sessions" showHeadings={false} />
+
+All routes in this group are **IPC-only** — they reject non-loopback callers at the
+listener. The thin-client supervisor (`grith exec` when a daemon is running) uses
+these to register itself and report session state.
+
+## Session shape
+
+```json
+{
+  "id": "uuid-...",
+  "profile": "claude-code",
+  "zone": "dayjob",
+  "started_at": "2026-05-14T09:02:13Z",
+  "root_pid": 17421,
+  "root_command": "claude",
+  "tree_pids": [17421, 17430, 17440],
+  "decisions": { "allow": 781, "queue": 38, "deny": 15 },
+  "last_activity": "2026-05-14T09:14:32Z",
+  "frozen": false
+}
+```
+
+## Lifecycle
+
+A thin client typically:
+
+1. `POST /ipc/sessions` — register itself. Daemon assigns an id and returns the
+   active config snapshot.
+2. `GET /ipc/sessions/{id}` — periodically pull current config (in case of
+   config-reload events).
+3. `PUT /ipc/sessions/{id}` — update activity heartbeat.
+4. `DELETE /ipc/sessions/{id}` — unregister at exit.
+
+`POST /ipc/sessions/{id}/kill` is callable from any local origin (it's how
+`grith supervisor kill` and the dashboard's terminate button work) but still
+requires loopback.
+
+## See also
+
+- [Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions)
+- [`grith supervisor`](/docs/cli/supervisor)
+- [`grith exec`](/docs/cli/exec)

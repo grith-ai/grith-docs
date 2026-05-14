@@ -6,9 +6,14 @@ import Terminal from './Terminal';
 import CodeBlock from './CodeBlock';
 import ConfigExample from './ConfigExample';
 import Badge from '@/components/shared/Badge';
+import PlanBadge from './PlanBadge';
+import SinceTag from './SinceTag';
 import ScoreCalculator from './ScoreCalculator';
 import ArchitectureDiagram from './ArchitectureDiagram';
 import FilterTable from './FilterTable';
+import ConfigKeyTable from './ConfigKeyTable';
+import ApiRouteTable from './ApiRouteTable';
+import CliCommandTable from './CliCommandTable';
 
 function getTextContent(node: ReactNode): string {
   if (typeof node === 'string') return node;
@@ -48,7 +53,12 @@ export const mdxComponents = {
   CodeBlock,
   ConfigExample,
   Badge,
+  PlanBadge,
+  SinceTag,
   ScoreCalculator,
   ArchitectureDiagram,
   FilterTable,
+  ConfigKeyTable,
+  ApiRouteTable,
+  CliCommandTable,
 };

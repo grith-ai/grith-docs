@@ -1,0 +1,89 @@
+---
+title: "Air-gapped deployment"
+description: "Running grith with no outbound internet — for environments that require it."
+section: "guides"
+order: 20
+tier: "enterprise"
+status: "planned"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/air-gapped-deployment.mdx"
+---
+
+<PlanBadge tier="enterprise" planned />
+
+For environments where grith and the agents it supervises must run without
+internet access — classified networks, regulated industries, isolated lab
+environments.
+
+<Callout type="info" title="Planned for v2.0">
+Full air-gapped deployment ships in v2.0. v0.1 supports offline-only operation
+with local model providers; the missing pieces are offline license activation
+and offline policy distribution, which are in the Enterprise roadmap.
+</Callout>
+
+## What works today (v0.1)
+
+The community/Pro features that run purely offline:
+
+- All 17 filters (no cloud dependency).
+- Local model providers (Ollama, llama.cpp via OpenAI-compatible endpoint).
+- Audit log (local SQLite).
+- Reputation table (local file).
+- CLI digest review.
+- Canary tokens.
+
+## What needs cloud connectivity today
+
+- **License refresh** (Pro). Grith currently refreshes the license periodically.
+  In v0.1 a stale license falls back to community-tier behaviour, not full
+  failure — but full Pro features need the network.
+- **Update check**. Disable via `general.update_check = false`.
+- **Profile updates**. Disable via `general.profile_update_check = false`.
+- **Team sync**. Inherently requires the dashboard.
+
+## v0.1 offline-leaning config
+
+```toml
+[general]
+audit_sync = false
+update_check = false
+profile_update_check = false
+plan_tier = "community"      # avoids license-related cloud calls
+
+[llm]
+default_provider = "ollama"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+```
+
+With this config, no calls to grith.ai or any external service happen.
+
+## v2.0 air-gapped Enterprise (planned)
+
+- **Offline license activation** — license files signed by grith.ai release key,
+  importable via `grith pro activate <license.signed>`. Validates locally; no
+  network round-trip.
+- **Bundled policy artefacts** — sign the policy bundle and copy it to each
+  device manually; no live dashboard required.
+- **Air-gapped update channel** — signed tarballs distributed by the operator;
+  `grith update --bundle ./grith-0.2.tar.gz`.
+- **Self-hosted dashboard** — full dashboard runnable on-prem behind your
+  firewall, syncing locally over the LAN.
+
+## Migration plan
+
+When v2.0 ships air-gapped Enterprise:
+
+1. Generate an offline license bundle on the dashboard (admin action).
+2. Transfer the bundle to each device via your existing transfer mechanism
+   (USB, mirrored repo, etc.).
+3. Run `grith pro activate ./bundle.signed` on each device.
+4. Disable update checks (`update_check = false`).
+
+## See also
+
+- [What's in Enterprise](/docs/enterprise/whats-in-enterprise)
+- [Air-gapped deployment (Enterprise)](/docs/enterprise/air-gapped-deployment)
+- [Roadmap](/docs/resources/roadmap)

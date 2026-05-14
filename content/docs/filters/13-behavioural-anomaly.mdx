@@ -1,0 +1,78 @@
+---
+title: "13. Behavioural anomaly"
+description: "Deviation from the session's baseline activity — bursts, unusual ops, off-pattern calls."
+section: "filters"
+order: 22
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/13-behavioural-anomaly.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Context |
+| **Score range** | +1 to +3 |
+| **Module** | `crates/grith-proxy/src/filters/behavioural.rs` |
+
+The behavioural filter compares the current call against the session's established
+baseline of activity. It needs a baseline to be meaningful, so its contribution is
+suppressed until the session has racked up `proxy.filters.behavioural.min_calls_for_baseline`
+(default 200) calls.
+
+## What it catches
+
+- **Sudden bursts** — frequency of an operation class jumping to 5× its session mean
+  within a 30-second window.
+- **Out-of-pattern destinations** — a `network` call to a host the session hasn't
+  touched but that's *unlike* the hosts it has touched (different TLD, different
+  pattern of port use).
+- **Unusual operation classes** — a session that's been pure read-heavy suddenly
+  starting to `exec` other processes.
+- **Time-of-day anomalies** — the session is operating on a long-running daemon
+  and calls happen at hours the host process normally doesn't.
+
+Each anomaly type contributes a small score (+1.0 to +1.5). Compounding anomalies
+cap at +3.0 total.
+
+## Why it's a small contribution
+
+Anomaly detection without ground truth is the most false-positive-prone form of
+defense. The filter is intentionally conservative: it nudges score, doesn't tip
+calls into queue/deny on its own. The intent is to be the "...and another thing"
+that pushes a borderline call over.
+
+When combined with strong signals (sensitive path read, taint, DLP hit), the
+behavioural filter often makes the difference between a queue and a deny.
+
+## Baseline construction
+
+The baseline tracks:
+
+- Operations per minute by class, with a smoothed mean.
+- Destination histogram (frequency of each host).
+- Path histogram (frequency of each path prefix).
+- Time-bucket activity (hour-of-day for long sessions).
+
+The smoothing window is 5 minutes; calls older than 5 minutes age out of the
+window. This means the filter reacts to "recent normal", not "lifetime normal" —
+relevant because agents' behaviour evolves through a session.
+
+## When the filter fires too often
+
+This is the filter most likely to misbehave when an agent legitimately switches
+modes ("I was reading code, now I'm running tests"). Mitigations:
+
+- Increase `proxy.filters.behavioural.min_calls_for_baseline` so it takes longer to
+  consider the baseline established.
+- Adjust `proxy.filters.behavioural.mild_deviation_score` downward to soften the
+  nudges.
+
+For genuinely multi-modal agents, the filter performs best with sessions broken into
+distinct phases (e.g. separate `grith exec` invocations per task).
+
+## See also
+
+- [Filter 14: Taint tracking](/docs/filters/14-taint-tracking)
+- [Filter 16: Rate limiting](/docs/filters/16-rate-limiting)
+- [`[proxy.filters.behavioural]` config](/docs/config/proxy)

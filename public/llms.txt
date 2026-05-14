@@ -1,0 +1,192 @@
+# grith documentation
+
+grith is a security-first local AI agent platform. It intercepts every
+syscall an AI agent makes, scores it through 17 filters, and routes
+ambiguous calls to a human-review queue.
+
+Site: https://docs.grith.ai
+
+## Sections
+
+### Start here
+
+- [What is grith](https://docs.grith.ai/docs/start/what-is-grith) — An OS-level security supervisor for AI agents — intercept every action, score it against 17 filters, route ambiguous calls to a human review queue.
+- [Installation](https://docs.grith.ai/docs/start/installation) — Install grith v0.1 on Linux x86_64 — install script, manual download, or build from source.
+- [Quickstart](https://docs.grith.ai/docs/start/quickstart) — Five minutes from install to a supervised agent session and reviewing its first queued call.
+- [Choose your agent](https://docs.grith.ai/docs/start/choose-your-agent) — Pick the built-in supervisor profile that matches the AI agent you'll be running.
+- [Connect a model](https://docs.grith.ai/docs/start/connect-a-model) — Configure a provider for the built-in REPL: Ollama, OpenAI, Anthropic, or OpenRouter.
+- [Your first supervised session](https://docs.grith.ai/docs/start/first-supervised-session) — Worked example: start a session under grith, trigger a quarantine, and decide.
+- [Reviewing the digest](https://docs.grith.ai/docs/start/reviewing-the-digest) — Approve, deny, learn, escalate — the digest workflow from CLI and dashboard.
+
+### Concepts
+
+- [The threat model](https://docs.grith.ai/docs/concepts/threat-model) — What grith protects against, what it explicitly doesn't, and where the trust boundaries sit.
+- [Zero-trust for agents](https://docs.grith.ai/docs/concepts/zero-trust) — The single design principle: never trust the agent's decision about safety. Verify every action.
+- [The three-phase pipeline](https://docs.grith.ai/docs/concepts/three-phase-pipeline) — Why filters run in three phases — static, pattern, context — and what each phase contributes.
+- [Composite scoring](https://docs.grith.ai/docs/concepts/composite-scoring) — How 17 filter scores combine into one composite, and how that composite maps to a decision.
+- [The quarantine digest](https://docs.grith.ai/docs/concepts/quarantine-digest) — Why grith routes ambiguous calls to a human review queue instead of guessing.
+- [Syscall interception](https://docs.grith.ai/docs/concepts/syscall-interception) — How grith catches what an agent does at the OS level — ptrace + seccomp on Linux.
+- [Supervisor profiles](https://docs.grith.ai/docs/concepts/supervisor-profiles) — What a profile is, how it shapes scoring, and why every supervised session needs one.
+- [Adaptive reputation](https://docs.grith.ai/docs/concepts/adaptive-reputation) — How grith gets quieter over time by learning which call shapes you trust.
+- [Taint tracking](https://docs.grith.ai/docs/concepts/taint-tracking) — Following sensitive data from where it was read to where it tries to go.
+- [Session containment](https://docs.grith.ai/docs/concepts/session-containment) — Per-session isolation zones — keeping an agent in its lane.
+- [Canary tokens](https://docs.grith.ai/docs/concepts/canary-tokens) — Fake secrets that prove exfiltration when they show up where they shouldn't.
+- [Daemon and thin-client sessions](https://docs.grith.ai/docs/concepts/daemon-and-sessions) — Why grith optionally runs as a daemon, and what changes when it does.
+
+### CLI reference
+
+- [CLI overview](https://docs.grith.ai/docs/cli/overview) — Every top-level command in grith, what it does, and where to find more.
+- [grith run](https://docs.grith.ai/docs/cli/run) — Execute a single non-interactive task using the configured LLM provider.
+- [grith exec](https://docs.grith.ai/docs/cli/exec) — Supervise an external CLI tool with OS-level syscall interception.
+- [grith proxy test](https://docs.grith.ai/docs/cli/proxy-test) — Dry-run a tool call through the filter pipeline. Returns the would-be decision.
+- [grith digest](https://docs.grith.ai/docs/cli/digest) — Manage the quarantine queue: list, review, approve, deny, learn, escalate.
+- [grith audit](https://docs.grith.ai/docs/cli/audit) — Browse and export the audit log of every filter decision.
+- [grith log](https://docs.grith.ai/docs/cli/log) — Tail the audit-backed session log, like a live feed of decisions.
+- [grith canary](https://docs.grith.ai/docs/cli/canary) — Create and manage canary tokens for exfiltration trap detection.
+- [grith supervisor](https://docs.grith.ai/docs/cli/supervisor) — List and manage active supervisor sessions.
+- [grith daemon](https://docs.grith.ai/docs/cli/daemon) — Manage the long-running daemon that owns the shared subsystems.
+- [grith profile audit](https://docs.grith.ai/docs/cli/profile-audit) — Post-session forensics: audit a recorded syscall trace against a profile.
+- [grith reputation](https://docs.grith.ai/docs/cli/reputation) — Inspect and reset the adaptive trust table that quiets the digest over time.
+- [grith notifications](https://docs.grith.ai/docs/cli/notifications) — Manage notification channels — Slack, Discord, Telegram, Teams, email, webhook, and more.
+- [grith config](https://docs.grith.ai/docs/cli/config) — Show or modify configuration values from the command line.
+- [grith init](https://docs.grith.ai/docs/cli/init) — Generate a default configuration file in the user config directory.
+- [grith pro](https://docs.grith.ai/docs/cli/pro) — Pro plan: log in, sync team policies, refresh license, manage billing.
+
+### Filter reference
+
+- [Filter overview](https://docs.grith.ai/docs/filters/overview) — The 17 filters grith runs on every supervised call, organised into three phases.
+- [Phase 1 — Static](https://docs.grith.ai/docs/filters/phase-1-static) — Six filters that run cheap structural checks on every call. Sub-millisecond budget.
+- [Phase 2 — Pattern](https://docs.grith.ai/docs/filters/phase-2-pattern) — Five filters that scan content and structure. ~3ms budget.
+- [Phase 3 — Context](https://docs.grith.ai/docs/filters/phase-3-context) — Six filters that look at session history and accumulated state. ~5ms budget.
+- [1. Operation risk scoring](https://docs.grith.ai/docs/filters/01-operation-risk-scoring) — Baseline risk score for every call, by operation class.
+- [2. Static path matching](https://docs.grith.ai/docs/filters/02-static-path-matching) — Fast Aho-Corasick scan of paths against curated denylists and allowlists.
+- [3. Sensitive path heuristic](https://docs.grith.ai/docs/filters/03-sensitive-path-heuristic) — Pattern-based detection of credential-shaped paths the static list might miss.
+- [4. Allowlist / denylist](https://docs.grith.ai/docs/filters/04-allowlist-denylist) — User-managed allow and deny rules with explicit priority over static patterns.
+- [5. Argument length & structure](https://docs.grith.ai/docs/filters/05-argument-length-structure) — Flags suspiciously-shaped arguments — oversized payloads, encoded blobs, unusual metacharacters.
+- [6. Capability enforcement](https://docs.grith.ai/docs/filters/06-capability-enforcement) — Hard gate. Profile capabilities determine what an agent is allowed to do at all.
+- [7. Secret / credential scanning](https://docs.grith.ai/docs/filters/07-secret-credential-scanning) — 1,600+ regex patterns over outbound content. The credential leak filter.
+- [8. Command structure analysis](https://docs.grith.ai/docs/filters/08-command-structure-analysis) — Parses shell commands. Catches piped curl-to-sh, fork bombs, smuggled payloads.
+- [9. Egress policy](https://docs.grith.ai/docs/filters/09-egress-policy) — Network destination policy — allowlisted hosts lower the score, unknowns raise it.
+- [10. DLP gate](https://docs.grith.ai/docs/filters/10-dlp-gate) — Outbound payload scanning. Catches credentials, PII, and large file contents leaving the box.
+- [11. Canary detection](https://docs.grith.ai/docs/filters/11-canary-secret-detection) — Hard gate. Registered canary tokens leaving the box trigger an immediate DENY.
+- [12. Destination reputation](https://docs.grith.ai/docs/filters/12-destination-reputation) — Per-destination trust accumulated from observed approvals and denials over time.
+- [13. Behavioural anomaly](https://docs.grith.ai/docs/filters/13-behavioural-anomaly) — Deviation from the session's baseline activity — bursts, unusual ops, off-pattern calls.
+- [14. Taint tracking](https://docs.grith.ai/docs/filters/14-taint-tracking) — Follows sensitive data from where it was read to where it might leak.
+- [15. Session containment](https://docs.grith.ai/docs/filters/15-session-containment) — Score calls that escape the session's declared zone.
+- [16. Rate limiting](https://docs.grith.ai/docs/filters/16-rate-limiting) — Per-minute caps on operation classes. Bursts queue; sustained violations DENY.
+- [17. Semantic analysis](https://docs.grith.ai/docs/filters/17-semantic-analysis) — Stub. Local embedding-based intent classification. Planned for v1.5.
+- [Scoring rules](https://docs.grith.ai/docs/filters/scoring-rules) — The math behind the composite score — caps, sums, reputation discount, hard gates.
+
+### Configuration
+
+- [Configuration overview](https://docs.grith.ai/docs/config/overview) — Where grith reads config from, the file format, and the top-level sections.
+- [[general]](https://docs.grith.ai/docs/config/general) — Daemon basics — log level, audit directory, plan tier.
+- [[proxy]](https://docs.grith.ai/docs/config/proxy) — Scoring thresholds and per-filter sub-configs.
+- [[reputation]](https://docs.grith.ai/docs/config/reputation) — Adaptive trust parameters — decay, denial weight, auto-allow gates.
+- [[digest]](https://docs.grith.ai/docs/config/digest) — Queue behaviour — review intervals, delivery channel, queue size cap.
+- [[llm]](https://docs.grith.ai/docs/config/llm) — LLM provider configuration — Ollama, OpenAI, Anthropic, OpenRouter.
+- [[supervisor]](https://docs.grith.ai/docs/config/supervisor) — OS-level supervisor settings — interception mechanism, default profile, noise reduction.
+- [[server]](https://docs.grith.ai/docs/config/server) — Daemon HTTP server settings — host, port, TLS, rate limits.
+- [Filter config files](https://docs.grith.ai/docs/config/filter-config-files) — The standalone TOML files for filter-specific data — paths, secrets, egress, canaries, and more.
+
+### Supervisor profiles
+
+- [How profiles work](https://docs.grith.ai/docs/profiles/how-profiles-work) — What's in a supervisor profile and how it shapes scoring.
+- [Built-in profiles](https://docs.grith.ai/docs/profiles/built-in-profiles) — The supervisor profiles that ship with grith — pick the right one for your agent.
+- [Claude Code](https://docs.grith.ai/docs/profiles/claude-code) — Supervisor profile for Anthropic's Claude Code CLI.
+- [Codex](https://docs.grith.ai/docs/profiles/codex) — Supervisor profile for OpenAI's Codex CLI.
+- [Aider](https://docs.grith.ai/docs/profiles/aider) — Supervisor profile for the Aider git-aware coding assistant.
+- [Goose](https://docs.grith.ai/docs/profiles/goose) — Supervisor profile for Block's Goose agent.
+- [GitHub Copilot](https://docs.grith.ai/docs/profiles/copilot) — Supervisor profile for the GitHub Copilot CLI.
+- [Cursor](https://docs.grith.ai/docs/profiles/cursor) — Supervisor profile for Cursor's CLI / agent-mode helpers.
+- [Cline](https://docs.grith.ai/docs/profiles/cline) — Supervisor profile for Cline (Claude Dev) and similar extension CLIs.
+- [OpenClaw](https://docs.grith.ai/docs/profiles/openclaw) — Supervisor profile for the OpenClaw community fork.
+- [Generic CLI](https://docs.grith.ai/docs/profiles/generic-cli) — Profile for plain shell sessions and unsupervised tool work.
+- [Writing a custom profile](https://docs.grith.ai/docs/profiles/writing-a-custom-profile) — End-to-end workflow for creating a profile for an agent that isn't covered by a built-in.
+- [Profile audit](https://docs.grith.ai/docs/profiles/profile-audit) — Audit a recorded syscall trace against a profile — find unused entries, find escapees.
+- [Profile drift](https://docs.grith.ai/docs/profiles/profile-drift) — Continuous monitoring for profile divergence from observed behaviour. Planned.
+
+### API reference
+
+- [API overview](https://docs.grith.ai/docs/api/overview) — REST endpoints exposed by the grith daemon, organised by surface area.
+- [Health & tier](https://docs.grith.ai/docs/api/health-and-tier) — Liveness checks, plan tier reporting, license status, config read/write.
+- [Audit](https://docs.grith.ai/docs/api/audit) — Browse, export, and aggregate the audit log over REST.
+- [Digest](https://docs.grith.ai/docs/api/digest) — REST endpoints for the quarantine queue — list, inspect, decide.
+- [Proxy](https://docs.grith.ai/docs/api/proxy) — Filter pipeline state and dry-run evaluation.
+- [Supervisor sessions](https://docs.grith.ai/docs/api/supervisor) — IPC-only routes for registering, listing, and killing supervised sessions.
+- [Canaries](https://docs.grith.ai/docs/api/canaries) — REST endpoints for managing canary tokens.
+- [Notifications](https://docs.grith.ai/docs/api/notifications) — Channel configuration and delivery health over REST.
+- [Analytics](https://docs.grith.ai/docs/api/analytics) — Pro analytics: summary, cost, activity, and compliance bundles.
+- [Sync & policies](https://docs.grith.ai/docs/api/sync-and-policies) — Pro sync state and centralised policy CRUD.
+- [Reputation (IPC)](https://docs.grith.ai/docs/api/reputation) — Inspect and reset the adaptive trust table — internal endpoints.
+- [WebSocket /events](https://docs.grith.ai/docs/api/websocket) — Real-time stream of digest, session, audit, and notification events.
+
+### Guides
+
+- [Tuning scoring thresholds](https://docs.grith.ai/docs/guides/tuning-scoring-thresholds) — When and how to move auto_allow_threshold and auto_deny_threshold.
+- [Writing custom filter rules](https://docs.grith.ai/docs/guides/writing-custom-filter-rules) — Add your own paths, commands, hosts, and patterns to the shipping filter configs.
+- [Setting up canary tokens](https://docs.grith.ai/docs/guides/setting-up-canary-tokens) — Place canary tokens that prove exfiltration when they appear in outbound traffic.
+- [Notifications: Slack](https://docs.grith.ai/docs/guides/notifications-slack) — Route digest items and security events to a Slack channel via webhook.
+- [Notifications: Discord](https://docs.grith.ai/docs/guides/notifications-discord) — Route grith events to a Discord channel via webhook.
+- [Notifications: Telegram](https://docs.grith.ai/docs/guides/notifications-telegram) — Route grith events to a Telegram chat via bot API.
+- [Notifications: Microsoft Teams](https://docs.grith.ai/docs/guides/notifications-teams) — Route grith events to a Microsoft Teams channel.
+- [Notifications: Email](https://docs.grith.ai/docs/guides/notifications-email) — Route grith events to email via SMTP.
+- [Notifications: Webhook](https://docs.grith.ai/docs/guides/notifications-webhook) — Generic HMAC-signed webhook receiver — the most flexible delivery channel.
+- [Notifications: PagerDuty](https://docs.grith.ai/docs/guides/notifications-pagerduty) — Page oncall on canary fires and high-severity grith events.
+- [Notifications: Opsgenie](https://docs.grith.ai/docs/guides/notifications-opsgenie) — Page oncall via Atlassian Opsgenie.
+- [Notifications: WhatsApp](https://docs.grith.ai/docs/guides/notifications-whatsapp) — Route grith events to WhatsApp via a provider API.
+- [Notifications: Desktop](https://docs.grith.ai/docs/guides/notifications-desktop) — Native OS notifications for the local user.
+- [Notifications: WebSocket](https://docs.grith.ai/docs/guides/notifications-websocket) — Real-time event stream for the dashboard and custom integrations.
+- [Exfiltration walkthrough](https://docs.grith.ai/docs/guides/exfiltration-walkthrough) — End-to-end attack and defence: simulating an exfil attempt against a grith install.
+- [Containment walkthrough](https://docs.grith.ai/docs/guides/containment-walkthrough) — Using zones to keep an agent in its lane — worked example with two concurrent sessions.
+- [Reverse proxy & TLS](https://docs.grith.ai/docs/guides/reverse-proxy-tls) — Front grith with nginx, Caddy, or Traefik for TLS termination and ACL.
+- [Team setup](https://docs.grith.ai/docs/guides/team-setup) — Roll out grith across a team — single dashboard, shared policies, per-developer audit.
+- [Encrypted team key sync](https://docs.grith.ai/docs/guides/encrypted-team-key-sync) — Share provider API keys across a team without leaking them to grith.ai.
+- [Air-gapped deployment](https://docs.grith.ai/docs/guides/air-gapped-deployment) — Running grith with no outbound internet — for environments that require it.
+- [Migrating policy across machines](https://docs.grith.ai/docs/guides/migrating-policy) — Move your grith config from one machine to another, or sync between devices.
+- [Troubleshooting](https://docs.grith.ai/docs/guides/troubleshooting) — Common problems running grith — ptrace permissions, daemon binding, the digest, more.
+
+### Security
+
+- [Threat model](https://docs.grith.ai/docs/security/threat-model) — Formal threat model — what grith defends, what it doesn't, and where the trust boundaries sit.
+- [Trust boundaries](https://docs.grith.ai/docs/security/trust-boundaries) — Where the trust boundary sits between grith, the agent, the model, and untrusted input.
+- [Supervisor-only security assessment](https://docs.grith.ai/docs/security/supervisor-only-assessment) — Formal evaluation of the supervisor as the sole defence path — without the rest of the filter pipeline.
+- [Notification security model](https://docs.grith.ai/docs/security/notification-security) — HMAC-signed callbacks, replay protection, and the threat model around remote approvals.
+- [Responsible disclosure](https://docs.grith.ai/docs/security/responsible-disclosure) — Found a vulnerability in grith? Here's how to report it.
+- [Security advisories](https://docs.grith.ai/docs/security/advisories) — Published CVEs and security fixes for grith.
+
+### Pro
+
+- [What's in Pro](https://docs.grith.ai/docs/pro/whats-in-pro) — Team-scope features on top of the community core.
+- [Authentication](https://docs.grith.ai/docs/pro/authentication) — Device-auth and API-key flows for linking a device to a Pro team.
+- [License lifecycle](https://docs.grith.ai/docs/pro/license-lifecycle) — How Pro licenses are issued, refreshed, and revoked.
+- [Team sync](https://docs.grith.ai/docs/pro/team-sync) — Centrally-managed policies pulled to every device on schedule.
+- [Centralised policies](https://docs.grith.ai/docs/pro/centralised-policies) — Author and distribute named policy bundles from the dashboard.
+- [Analytics & cost](https://docs.grith.ai/docs/pro/analytics-and-cost) — Team-scope usage analytics, decision splits, per-user cost.
+- [Encrypted key management](https://docs.grith.ai/docs/pro/encrypted-key-management) — Provider API keys, encrypted end-to-end between admin browser and team devices.
+
+### Enterprise
+
+- [What's in Enterprise](https://docs.grith.ai/docs/enterprise/whats-in-enterprise) — Enterprise tier — SSO, RBAC, SIEM, compliance, air-gapped deployment.
+- [SSO & SAML](https://docs.grith.ai/docs/enterprise/sso-saml) — Sign-on via Okta / Azure AD / Google Workspace. Planned for v2.0.
+- [RBAC](https://docs.grith.ai/docs/enterprise/rbac) — Role-based access control over dashboard actions. Planned for v2.0.
+- [Compliance reporting](https://docs.grith.ai/docs/enterprise/compliance-reporting) — Audit-ready bundles for SOC 2, ISO 27001, GDPR, HIPAA.
+- [SIEM integration](https://docs.grith.ai/docs/enterprise/siem-integration) — Stream grith audit events to Splunk, Elastic, Sentinel, Datadog, or a generic HTTP target.
+- [Air-gapped deployment](https://docs.grith.ai/docs/enterprise/air-gapped-deployment) — Run grith with no outbound internet, including self-hosted dashboard.
+
+### Operations
+
+- [Running as a daemon](https://docs.grith.ai/docs/ops/running-as-a-daemon) — Operations guide for long-running grith deployments — systemd, logging, restarts.
+- [Performance & tuning](https://docs.grith.ai/docs/ops/performance-tuning) — Measuring grith overhead and squeezing latency out of the pipeline.
+- [Logging & audit retention](https://docs.grith.ai/docs/ops/logging-and-audit-retention) — Where logs live, how big they grow, and how to manage retention.
+- [Updates & profile updates](https://docs.grith.ai/docs/ops/updates-and-profile-updates) — How grith updates itself and how shipping profiles get refreshed.
+- [Release process](https://docs.grith.ai/docs/ops/release-process) — How grith versions are cut, signed, and published.
+
+### Resources
+
+- [Architecture overview](https://docs.grith.ai/docs/resources/architecture-overview) — The big-picture diagram of grith — daemon, supervisor, filter pipeline, dashboard.
+- [Glossary](https://docs.grith.ai/docs/resources/glossary) — Terms used throughout the grith docs, defined.
+- [FAQ](https://docs.grith.ai/docs/resources/faq) — Frequently asked questions about grith.
+- [Changelog](https://docs.grith.ai/docs/resources/changelog) — What changed in each grith release.
+- [Roadmap](https://docs.grith.ai/docs/resources/roadmap) — What's coming next in grith.
+

@@ -1,0 +1,129 @@
+---
+title: "grith digest"
+description: "Manage the quarantine queue: list, review, approve, deny, learn, escalate."
+section: "cli"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/digest.mdx"
+---
+
+```
+grith digest [list | review | show | approve | deny | ...]
+```
+
+The digest is the queue of calls that landed between the auto-allow and auto-deny
+thresholds. `grith digest` is the CLI surface for working with it.
+
+## Subcommands
+
+| Subcommand | What it does |
+| --- | --- |
+| `list` | Print queued items (newest first). |
+| `review` | Interactive review mode — one item at a time, keystroke decisions. |
+| `show <id>` | Print full forensics for a single item. |
+| `approve <id>` | Approve a queued item by ID. |
+| `deny <id>` | Deny a queued item by ID. |
+| `approve --filter ...` | Batch approve items matching a filter expression. |
+| `learn <id>` | Approve + train reputation for similar future calls. |
+
+## `grith digest review`
+
+Interactive flow. Shows the next pending item with its forensics, then waits for a
+keystroke:
+
+| Key | Action |
+| --- | --- |
+| `a` | Approve once. |
+| `l` | Approve + learn. |
+| `u` | Approve + unlock destination for the session (network calls). |
+| `d` | Deny. |
+| `t` | Deny + terminate process tree. |
+| `e` | Escalate to team channel (Pro). |
+| `s` | Skip — leave queued. |
+| `?` | Help. |
+| `q` | Quit review mode. |
+
+Decisions apply immediately and unfreeze the originating process. The next item
+displays after each decision.
+
+## `grith digest list`
+
+Default output: one row per item with id, age, score, decision-zone, target.
+
+```
+$ grith digest list
+ID            AGE   SCORE  ZONE   OP          TARGET
+7d1f...0002   13s   4.2    queue  file_read   /home/you/.ssh/config
+3c40...0004   1m4s  5.8    queue  network     POST api.example.com/data
+...
+```
+
+`--format json` prints structured records. Useful with `jq`:
+
+```
+grith digest list --format json | jq '.[] | select(.composite_score > 5)'
+```
+
+## `grith digest show <id>`
+
+Full forensics on a single item: the call, every filter's contribution and
+annotations, the session's recent history, and the reputation snapshot for the
+destination.
+
+```
+$ grith digest show 7d1f...0002
+Item 7d1f...0002
+
+  Call:        file_read /home/you/.ssh/config
+  Operation:   file_read
+  Composite:   4.2
+  Zone:        queue (3.0–8.0)
+  Session:     abc12345-... (claude-code, pid 17421, age 4m)
+
+  Filters:
+    sensitive_path  +3.5  ssh-config heuristic
+    path_match      +1.2  static deny .ssh/
+    reputation       0    no prior observations
+    others           0
+
+  Session recent calls:
+    19:14:01 file_read /proj/README.md       → allow
+    19:14:02 file_read /proj/package.json    → allow
+    19:14:23 file_read ~/.ssh/config         → queue (this one)
+
+  Actions: approve | learn | deny | terminate | skip
+```
+
+## Batch decisions
+
+For tidying up the queue without going one-by-one:
+
+```
+grith digest approve --filter 'session=abc12345-...,target=/proj/**'
+grith digest deny    --filter 'target=https://**.example.com/**'
+```
+
+Filter syntax: comma-separated `field=value` pairs. Supports globs in `target` and
+exact match elsewhere.
+
+## Pro extras
+
+With a Pro license, two more actions are unlocked from the digest CLI:
+
+- **escalate** — `grith digest escalate <id>` routes the item to your team's
+  notification channel for second opinion.
+- **allow-always** — `grith digest allow-always <id>` adds the call shape to the
+  permanent allowlist (sparingly).
+
+## Daemon vs no daemon
+
+If the daemon is running, `grith digest` talks to its REST API. Otherwise it reads
+the local-session digest file directly. The output is the same in both cases.
+
+## See also
+
+- [Reviewing the digest](/docs/start/reviewing-the-digest) — workflow walkthrough
+- [The quarantine digest](/docs/concepts/quarantine-digest) — concept
+- [Digest API](/docs/api/digest) — REST routes for programmatic decisions

@@ -1,0 +1,64 @@
+---
+title: "Notifications: Discord"
+description: "Route grith events to a Discord channel via webhook."
+section: "guides"
+order: 5
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-discord.mdx"
+---
+
+Send digest items and alerts to a Discord channel.
+
+## 1. Get a webhook URL
+
+In your Discord server:
+
+1. **Channel settings → Integrations → Webhooks → New Webhook**.
+2. Name it (e.g. `grith`), pick the channel.
+3. Copy the webhook URL (it looks like `https://discord.com/api/webhooks/...`).
+
+## 2. Configure
+
+```toml
+[notifications.channels.discord]
+enabled = true
+webhook_url = "https://discord.com/api/webhooks/..."
+username = "grith"
+avatar_url = "https://grith.ai/logo.png"        # optional
+severity_map = { canary = "critical", queue = "warning" }
+```
+
+## 3. Test
+
+```
+grith notifications test discord
+```
+
+## Format
+
+Discord messages are rich embeds:
+
+- Title — the operation and target.
+- Description — first-line summary.
+- Fields — filter contributions, session info.
+- Colour — green for allow, amber for queue, red for deny/canary.
+
+## Interactive buttons
+
+Discord interactive components require a Discord bot, not a plain webhook. The
+v0.1 release uses webhook delivery only — buttons aren't supported. To approve
+or deny:
+
+- Click the link in the embed to open the daemon dashboard.
+- Or use `grith digest` from any terminal.
+
+A full Discord bot integration is planned for v0.2.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)
+- Other channels: [Slack](/docs/guides/notifications-slack),
+  [Teams](/docs/guides/notifications-teams)

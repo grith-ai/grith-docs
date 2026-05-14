@@ -1,0 +1,74 @@
+---
+title: "Notifications: PagerDuty"
+description: "Page oncall on canary fires and high-severity grith events."
+section: "guides"
+order: 10
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-pagerduty.mdx"
+---
+
+Route critical grith events to a PagerDuty service. Best paired with another
+channel (Slack, email) for non-critical traffic.
+
+## 1. Create a PagerDuty service
+
+In PagerDuty:
+
+1. **Services → New service**.
+2. Name it (e.g. `grith-security`).
+3. Integration type: **Events API v2**.
+4. Copy the **Integration Key**.
+
+## 2. Configure
+
+```toml
+[notifications.channels.pagerduty]
+enabled = true
+integration_key = "...."
+events = ["canary", "capability_deny"]
+severity_map = { canary = "critical", capability_deny = "warning" }
+dedupe_window_seconds = 300
+```
+
+`events` is intentionally narrow — you don't want every digest queue event paging
+the oncall. PagerDuty is for events that genuinely warrant waking someone up.
+
+## 3. Test
+
+```
+grith notifications test pagerduty
+```
+
+A test incident appears in your service. Resolve it.
+
+## Severity mapping
+
+PagerDuty has four severities: `critical`, `error`, `warning`, `info`. Map grith
+event types accordingly:
+
+| grith event | Suggested PD severity |
+| --- | --- |
+| `canary` | `critical` |
+| `capability_deny` | `warning` or `error` |
+| `queue` (Pro escalations only) | `warning` |
+| All else | not paged |
+
+## Dedupe
+
+`dedupe_window_seconds` collapses repeated alerts of the same shape into one
+incident, with a count. Useful when a misbehaving session triggers multiple
+canaries simultaneously — one incident is more actionable than ten.
+
+## Auto-resolve
+
+The integration auto-resolves the PagerDuty incident when the grith decision is
+made (deny + terminate, or session ended). Default behaviour; toggle off with
+`auto_resolve = false` if you want manual resolve.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)
+- [Opsgenie alternative](/docs/guides/notifications-opsgenie)

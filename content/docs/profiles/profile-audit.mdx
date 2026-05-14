@@ -1,0 +1,83 @@
+---
+title: "Profile audit"
+description: "Audit a recorded syscall trace against a profile — find unused entries, find escapees."
+section: "profiles"
+order: 13
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/profile-audit.mdx"
+---
+
+```
+grith profile audit --profile <NAME> --trace <FILE>
+```
+
+Replay a recorded syscall trace against a profile and produce a tightening
+worklist. The CLI reference is at [`grith profile audit`](/docs/cli/profile-audit).
+This page covers when and how to use it.
+
+## When to audit
+
+- **After writing a custom profile** — confirm it covers what the agent actually
+  does.
+- **Every few weeks of routine use** — profiles drift; entries you added six
+  months ago might be obsolete.
+- **After an agent upgrade** — new versions sometimes change cache locations,
+  helper binaries, and API endpoints.
+- **After a security review** — verify that the profile isn't grown too permissive.
+
+## The output, in detail
+
+```
+Profile audit: claude-code
+Trace:         ~/.cache/grith/last.jsonl (4823 calls)
+
+routine_paths (8 of 12 entries used):
+  ✓ ${PROJECT_DIR}/**              3210 hits
+  ✓ ${HOME}/.cache/claude/**        481 hits
+  ...
+  ✗ ${HOME}/.local/share/claude     0 hits  (drop candidate)
+
+routine_destinations (5 of 8 used):
+  ✓ api.anthropic.com               412 hits
+  ...
+
+escapees (24 entries, 4 patterns):
+  file_read /etc/hosts              12 hits  (consider readonly_paths)
+  ...
+
+queue zone: 12   deny zone: 2 (canary fires)
+```
+
+The three sections to act on:
+
+1. **Unused routine entries** — drop them. They cost nothing but signal that the
+   profile is wider than necessary.
+2. **Escapees** — calls that exited routine and were scored. If they're
+   legitimate-looking and frequent, promote to `routine_*`. If they're unusual,
+   leave them in scoring (they're doing their job).
+3. **Queue/deny totals** — high numbers mean either the agent's doing
+   suspicious things, or the profile's too tight. Compare against your
+   expectations.
+
+## What it doesn't do
+
+`profile audit` is read-only. It doesn't modify the profile. The output is a
+suggestion; you make the change manually.
+
+This is intentional — profile changes are policy changes, and policy should be
+deliberate. An automated mutation pipeline would weaken the signed-distribution
+guarantee for shipping profiles.
+
+## Continuous mode (Pro)
+
+For continuous monitoring, the Pro plan's [profile drift](/docs/profiles/profile-drift)
+detection runs an equivalent audit on live sessions and flags drift in the
+dashboard.
+
+## See also
+
+- [`grith profile audit`](/docs/cli/profile-audit) — CLI reference
+- [Profile drift](/docs/profiles/profile-drift) — continuous monitoring
+- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)

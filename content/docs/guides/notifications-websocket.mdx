@@ -1,0 +1,61 @@
+---
+title: "Notifications: WebSocket"
+description: "Real-time event stream for the dashboard and custom integrations."
+section: "guides"
+order: 14
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-websocket.mdx"
+---
+
+The WebSocket channel is what powers the dashboard and `grith log --tail`. It's
+also useful as a building block for custom real-time integrations.
+
+## Connect
+
+```
+ws://127.0.0.1:3141/events
+```
+
+On connect, send a subscription message:
+
+```json
+{ "subscribe": ["digest", "session", "audit", "notifications"] }
+```
+
+Or subscribe to everything:
+
+```json
+{ "subscribe": ["*"] }
+```
+
+## Configure (delivery via daemon)
+
+The WebSocket isn't a delivery target in the same sense as Slack — it's a stream
+subscribers attach to. If you want grith to push to your custom WebSocket
+endpoint, use [the webhook channel](/docs/guides/notifications-webhook) instead.
+
+For consuming the daemon's built-in stream, no configuration is required beyond
+running `grith daemon`.
+
+## Event shapes
+
+See [WebSocket /events](/docs/api/websocket) for the full event-shape reference.
+
+## Authentication
+
+- For v0.1: loopback only. Any local caller can subscribe.
+- For Pro/team deployments behind a reverse proxy: bearer token via
+  `Authorization` header.
+
+## Reconnection
+
+The stream is best-effort — no replay. On disconnect, reconnect with exponential
+backoff. Use the REST API to fetch state on (re)connect.
+
+## See also
+
+- [WebSocket /events API](/docs/api/websocket)
+- [Notifications: Webhook](/docs/guides/notifications-webhook)
+- [`grith log --tail`](/docs/cli/log)

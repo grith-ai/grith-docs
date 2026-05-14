@@ -1,0 +1,82 @@
+---
+title: "12. Destination reputation"
+description: "Per-destination trust accumulated from observed approvals and denials over time."
+section: "filters"
+order: 21
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/12-destination-reputation.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Context |
+| **Score range** | -1 to +4 |
+| **Module** | `crates/grith-proxy/src/filters/reputation.rs` |
+| **Config file** | `config/filters/domains.toml` (initial seeds) |
+
+The reputation filter applies the adaptive trust system at scoring time. A
+destination with established trust (many approvals, few denials, regular activity)
+pulls the score down; a destination that's never been seen, or that's been denied
+recently, pushes it up.
+
+## What it scores on
+
+The trust table key is the destination, scoped by profile context. The contribution
+to the composite is shaped by:
+
+- **Trust score** ∈ [0, 1] for the destination. Default neutral is 0.5.
+- **Observation count.** Trust < `auto_allow_min_observations` (default 8) doesn't
+  earn the full discount, regardless of how favourable the trust score looks.
+- **Recency.** A destination that's been actively used recently gets a slightly
+  bigger boost than one that's gone quiet.
+- **Denial weight.** Denials count `reputation.deny_weight` × more than approvals,
+  so a single deny dramatically lowers trust.
+
+## How it differs from egress allowlist
+
+- [Egress policy (9)](/docs/filters/09-egress-policy) is **static** — you set it up.
+- Reputation is **learned** — you teach it via your decisions in the digest.
+
+Both run, both contribute, and they often agree. They disagree productively when:
+
+- An allowlisted destination's behaviour suddenly changes (lots of denies) →
+  reputation argues for less trust even though the allowlist says fine.
+- A non-allowlisted destination has been used routinely and approved → reputation
+  argues for trust, easing the unfamiliar-host penalty.
+
+## Initial seeds
+
+The shipping config seeds a few high-confidence destinations:
+
+```toml
+# config/filters/domains.toml
+[[seed]]
+host = "api.anthropic.com"
+trust = 0.85
+observations = 20
+
+[[seed]]
+host = "registry.npmjs.org"
+trust = 0.85
+observations = 20
+```
+
+Seeds let a fresh install have *some* trust signal on day one without waiting for
+hundreds of approvals to build up. Tune as needed.
+
+## Cross-profile
+
+Trust is scoped per-profile by default — claude-code's trust for api.anthropic.com
+doesn't transfer to a `generic` session. This avoids one profile's looser approvals
+unhelpfully easing scoring under a stricter profile.
+
+For team sync (Pro), trust can be merged across team members under the same
+profile. See [Team sync](/docs/pro/team-sync).
+
+## See also
+
+- [Adaptive reputation](/docs/concepts/adaptive-reputation) — concept
+- [`grith reputation`](/docs/cli/reputation) — inspection CLI
+- [Filter 9: Egress policy](/docs/filters/09-egress-policy) — static complement

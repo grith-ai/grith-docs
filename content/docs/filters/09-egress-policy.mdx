@@ -1,0 +1,109 @@
+---
+title: "9. Egress policy"
+description: "Network destination policy — allowlisted hosts lower the score, unknowns raise it."
+section: "filters"
+order: 18
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/09-egress-policy.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Pattern |
+| **Score range** | -1 to +5 |
+| **Module** | `crates/grith-proxy/src/filters/egress_policy.rs` |
+| **Config file** | `config/filters/egress.toml` |
+
+The egress filter scores network destinations. It's the single most-edited filter
+config for most teams.
+
+## What it catches
+
+For every network call, the destination (hostname or IP) is looked up in three layers:
+
+1. **Routine destinations** from the active supervisor profile → strong negative
+   score (-2.0) — these are the hosts the agent legitimately needs.
+2. **Egress allowlist** in `config/filters/egress.toml` → moderate negative score
+   (-1.0).
+3. **Egress denylist** in same → positive score (+3.0 to +5.0).
+4. **Anything else** — small positive (+1.0) for an unknown destination.
+
+## Config shape
+
+```toml
+# config/filters/egress.toml
+
+[[allow]]
+host = "api.anthropic.com"
+score = -2.0
+
+[[allow]]
+host = "registry.npmjs.org"
+score = -1.5
+
+[[allow]]
+host = "*.internal.acme.com"      # glob
+score = -2.0
+
+[[deny]]
+host = "*.suspicious-cdn.example"
+score = 4.0
+reason = "known phishing CDN"
+
+[[deny]]
+host_pattern = "^.{0,3}\\.tk$"    # regex, sketchy TLDs
+score = 3.0
+```
+
+Hosts match by literal, glob (`*.example.com`), or regex (`host_pattern`).
+
+## How resolution works
+
+When an agent does `connect()` or DNS lookup, grith captures the host *before*
+resolution where possible (intercepted DNS lookup) and the destination IP after
+resolution. The filter applies to whichever match is more specific:
+
+- Hostname match wins over IP match.
+- More specific glob wins over wildcard.
+- Denylist always wins over allowlist on the same key.
+
+For agents that bypass DNS (talk directly to IPs), the IP-only path still works but
+gives the filter less to work with — bare IPs default to "unknown" unless
+explicitly listed.
+
+## IP allowlists
+
+For internal services on stable IPs (e.g. a VPN endpoint):
+
+```toml
+[[allow]]
+ip = "10.42.0.0/16"
+score = -2.0
+```
+
+CIDR ranges are supported.
+
+## When it fires
+
+- Outbound connection (`connect`).
+- Outbound UDP send (`sendto` to a network address).
+- New socket creation when grith can determine the target.
+- DNS lookups when DNS interception is enabled.
+
+## Tuning
+
+- **Too many quarantines** — your routine hosts aren't in the allowlist. Add them
+  with `-1.0` to `-2.0` scores.
+- **Wrong things being approved** — your allowlist is too broad (e.g. `*.com`
+  matches more than intended). Tighten patterns.
+- **Specific IPs blocked but should be allowed** — add an `ip` entry to allow.
+
+## See also
+
+- [`config/filters/egress.toml`](/docs/config/filter-config-files)
+- [Filter 12: Destination reputation](/docs/filters/12-destination-reputation) —
+  adaptive complement
+- [Filter 10: DLP gate](/docs/filters/10-dlp-gate) — payload scan, runs on the same
+  egress

@@ -1,0 +1,92 @@
+---
+title: "grith daemon"
+description: "Manage the long-running daemon that owns the shared subsystems."
+section: "cli"
+order: 9
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/daemon.mdx"
+---
+
+```
+grith daemon [start | stop | status]
+```
+
+The daemon is the long-running grith process that owns the dashboard server, the
+shared audit + digest, the reputation table, and the notification dispatcher. See
+[Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions) for the
+"why".
+
+`grith daemon` is also aliased as `grith dashboard` for the common case of "I just
+want the web UI running".
+
+## Subcommands
+
+### `grith daemon start`
+
+Start the daemon.
+
+```
+grith daemon start                    # foreground (Ctrl-C stops)
+grith daemon start --detach           # background, writes pid file
+grith daemon start --host 0.0.0.0     # bind to all interfaces (not recommended without TLS)
+grith daemon start --port 8080        # override default 3141
+```
+
+The dashboard becomes reachable at `http://127.0.0.1:3141` once started. The HTTP
+API is documented in [API overview](/docs/api/overview).
+
+### `grith daemon status`
+
+```
+$ grith daemon status
+grith daemon: running
+  PID:        18123
+  Uptime:     2h14m
+  Listening:  http://127.0.0.1:3141
+  Sessions:   3 active
+  Digest:     2 pending
+  Plan:       community
+```
+
+Exits non-zero if the daemon isn't running.
+
+### `grith daemon stop`
+
+Graceful shutdown. The daemon flushes the reputation table, finalises pending audit
+writes, unregisters sessions (they fall back to standalone), and exits.
+
+```
+grith daemon stop
+```
+
+`--force` skips graceful shutdown and sends SIGKILL.
+
+## Logs and pid
+
+| Path | What |
+| --- | --- |
+| `~/.local/share/grith/daemon.log` | Rotating log file (detached mode). |
+| `~/.local/share/grith/daemon.pid` | PID file when detached. |
+| `~/.config/grith/config.toml` | `[server]` section controls the daemon's HTTP server. |
+
+## Running as a system service
+
+For unattended deployments, run the daemon under systemd / launchd / a process
+supervisor. The shipping unit files are at `contrib/systemd/grith.service` in the
+grith repo. See [Running as a daemon](/docs/ops/running-as-a-daemon) for the full
+operations guide.
+
+## Restart safety
+
+Restarts are clean on Pro (state is checkpointed before the stop). On community,
+in-flight digest items are dropped — they were never persistently stored, so a
+restart auto-denies them via timeout in the calling thin client.
+
+## See also
+
+- [Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions)
+- [Running as a daemon](/docs/ops/running-as-a-daemon)
+- [`[server]` config](/docs/config/server)
+- [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls)

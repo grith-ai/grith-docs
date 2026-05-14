@@ -1,0 +1,91 @@
+---
+title: "Supervisor-only security assessment"
+description: "Formal evaluation of the supervisor as the sole defence path — without the rest of the filter pipeline."
+section: "security"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/supervisor-only-assessment.mdx"
+---
+
+This page evaluates grith in a degenerate mode — the **supervisor-only** scenario
+— where filtering is at minimum and the security guarantee rests on syscall
+interception alone. Useful for understanding what grith protects even when
+filters are misconfigured or disabled.
+
+A more formal version is in `grith/docs/SUPERVISOR-ONLY-SECURITY-ASSESSMENT.md`
+in the product repo.
+
+## The scenario
+
+Configure grith with the bare minimum:
+
+```toml
+[supervisor]
+enabled = true
+
+[proxy]
+auto_allow_threshold = 1000   # effectively disable scoring → everything allows
+```
+
+In this configuration the supervisor still intercepts syscalls and records them
+to the audit log — but every call auto-allows because no filter can reach the
+threshold.
+
+## What's still defended
+
+Despite filter degeneration:
+
+1. **Observability** — every syscall is recorded with full context. An attack
+   that succeeds is still fully observable afterwards.
+2. **Process tree visibility** — `grith supervisor list` shows everything an
+   agent spawned, including helpers and shells.
+3. **Auditable termination** — the operator can kill any session at any time
+   via `grith supervisor kill`. The agent has no way to prevent this.
+4. **Forensic record** — every call is in the audit log. Post-incident
+   reconstruction works.
+
+## What's not defended
+
+Without active filtering:
+
+- Calls execute. The supervisor doesn't block; it observes.
+- Credential exfiltration runs through to completion. The DLP gate and canary
+  filter aren't in the loop.
+- No quarantine queue triggers; no human review prompts.
+
+## When supervisor-only is appropriate
+
+Limited cases:
+
+- **Initial deployment phase** — you want to see what the agent does before
+  you commit to filter tuning. Run in this mode for a week, audit, tighten.
+- **Compliance "audit log only" mandates** — some regulators want a full
+  audit trail without enforcement (audit-mode certifications). grith can run
+  in observation-only mode for these.
+
+For all other production uses, enable the filters. The supervisor's value
+without filters is similar to running `strace` continuously — useful for
+forensics, not for defence.
+
+## Audit log integrity in supervisor-only
+
+The audit log is the primary security artifact in this mode. Concerns:
+
+- **Tampering by the agent** — mitigated by filesystem perms; the agent runs
+  with the user's UID and `~/.local/share/grith/audit/` is `0600`-owned by
+  the user.
+- **Tampering by local root** — out of scope (root can do anything).
+- **Append-only guarantee** — not currently enforced; planned for v0.2 via
+  WORM-style append-only log option.
+
+For high-assurance audit, stream to a SIEM with append-only retention
+configured at the SIEM level — see
+[SIEM integration (Enterprise)](/docs/enterprise/siem-integration).
+
+## See also
+
+- [Threat model](/docs/security/threat-model)
+- [Trust boundaries](/docs/security/trust-boundaries)
+- [Filter overview](/docs/filters/overview)

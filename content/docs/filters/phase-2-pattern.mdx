@@ -1,0 +1,54 @@
+---
+title: "Phase 2 — Pattern"
+description: "Five filters that scan content and structure. ~3ms budget."
+section: "filters"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/phase-2-pattern.mdx"
+---
+
+Phase 2 is where the regex and parser work happens. Five filters scan the call's
+content and structure for signatures of trouble. The budget is **about 3ms** — fast for
+this kind of work because the underlying matchers (Aho-Corasick, compiled regex
+sets) are aggressive.
+
+## The five filters
+
+| # | Filter | Score range | What it does |
+| --- | --- | --- | --- |
+| 7 | [Secret / credential scanning](/docs/filters/07-secret-credential-scanning) | +3 to +5 | 1,600+ regex patterns over content. |
+| 8 | [Command structure analysis](/docs/filters/08-command-structure-analysis) | +2 to +4 | Shell parser, catches dangerous patterns. |
+| 9 | [Egress policy](/docs/filters/09-egress-policy) | -1 to +5 | Network destination trust. |
+| 10 | [DLP gate](/docs/filters/10-dlp-gate) | +3 to +5 | Outbound payload scan. |
+| 11 | [Canary detection](/docs/filters/11-canary-secret-detection) | DENY | Hard gate for exfil traps. |
+
+## What Phase 2 buys you
+
+Phase 1 is structure; Phase 2 is content. A call's payload is where most actual
+attacks reveal themselves:
+
+- A network POST whose body contains AWS-key-shaped text → secret scanner fires.
+- A shell command that pipes `curl | sh` → command parser fires.
+- A request to an unfamiliar destination → egress policy fires.
+- A registered canary value in the outbound bytes → canary detection denies, hard.
+
+Filters in this phase often produce the dominant score contributions on calls that
+are actually dangerous.
+
+## Why these are Phase 2 and not Phase 1
+
+They all need to look at *something* beyond the call header — file content, parsed
+syntax, destination context. That work is real microseconds. Doing it on every call
+would slow the pipeline by ~3× compared to Phase 1 alone.
+
+The phase split lets the easy 80% of calls escape on Phase 1 alone (e.g. routine
+project reads that aren't anywhere near suspicious), while the calls that *do*
+warrant scrutiny pay the Phase 2 cost.
+
+## See also
+
+- [Phase 1 — Static](/docs/filters/phase-1-static)
+- [Phase 3 — Context](/docs/filters/phase-3-context)
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline)

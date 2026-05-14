@@ -1,145 +1,61 @@
 ---
 title: "SSO & SAML"
-description: "Single sign-on with SAML 2.0 and OIDC for enterprise identity management"
+description: "Sign-on via Okta / Azure AD / Google Workspace. Planned for v2.0."
 section: "enterprise"
-order: 1
+order: 2
 tier: "enterprise"
-lastUpdated: "2026-02-24"
+status: "planned"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/enterprise/sso-saml.mdx"
 ---
 
-<Callout type="info" title="Roadmap">
-SSO and SAML support is planned for grith v2.0. This page describes the planned implementation.
+<PlanBadge tier="enterprise" planned />
+
+<Callout type="info" title="Planned for v2.0">
+SSO / SAML integration is in the v2.0 Enterprise roadmap. Until then, dashboard
+authentication uses email-based device-auth or API keys. See
+[Authentication](/docs/pro/authentication) for the v0.1 flow.
 </Callout>
 
-grith Enterprise will support centralized authentication via SAML 2.0 and OpenID Connect (OIDC), allowing organizations to enforce their existing identity policies across every grith deployment. No local passwords, no shared secrets — identity flows through your IdP.
+## What's planned
 
-## Supported identity providers
+- **SAML 2.0** — Okta, Azure AD (Entra ID), Google Workspace, OneLogin, Ping,
+  and any compliant IdP.
+- **SCIM 2.0** — automated user provisioning and de-provisioning. New hires
+  get a grith seat on team join; leavers lose access immediately.
+- **JIT user creation** — first SSO login provisions the user automatically.
+- **Group → role mapping** — IdP groups map to grith RBAC roles (planned;
+  see [RBAC](/docs/enterprise/rbac)).
+- **Just-in-time access** — temporary elevated roles for incident response,
+  expiring automatically.
 
-grith will integrate with the identity providers most commonly deployed in enterprise environments:
+## Integration shape (preview)
 
-| Provider | Protocol | Status |
-|---|---|---|
-| Okta | SAML 2.0, OIDC | <Badge variant="roadmap">Planned</Badge> |
-| Azure AD (Entra ID) | SAML 2.0, OIDC | <Badge variant="roadmap">Planned</Badge> |
-| Google Workspace | SAML 2.0, OIDC | <Badge variant="roadmap">Planned</Badge> |
-| OneLogin | SAML 2.0 | <Badge variant="roadmap">Planned</Badge> |
-| PingFederate | SAML 2.0 | <Badge variant="roadmap">Planned</Badge> |
-| Generic SAML 2.0 | SAML 2.0 | <Badge variant="roadmap">Planned</Badge> |
-| Generic OIDC | OIDC | <Badge variant="roadmap">Planned</Badge> |
+The eventual integration will look like:
 
-## Configuration
+1. Admin configures SSO in the dashboard: IdP metadata URL, role mapping rules.
+2. End users sign in via `https://grith.ai/sso/<team-slug>`.
+3. Their grith.ai session is bound to their IdP-asserted identity.
+4. Device-auth still works for headless installs; SCIM keeps the seat list
+   in sync.
 
-SSO will be configured via the `[enterprise.sso]` block in your grith configuration file. The configuration supports both SAML 2.0 and OIDC flows.
+## What it will not do
 
-### SAML 2.0
+- **SSO does not replace device authentication.** Each developer device still
+  goes through device-auth or API-key auth to bind to a team. SSO controls
+  *which user can run that bind*, not the device-level trust model.
+- **SSO does not give grith.ai access to your IdP.** Standard SAML / SCIM
+  patterns: assertions and provisioning calls only.
 
-<ConfigExample code={`[enterprise.sso]
-enabled = true
-protocol = "saml2"
+## Timeline
 
-[enterprise.sso.saml]
-idp_metadata_url = "https://your-idp.example.com/metadata.xml"
-entity_id = "https://grith.your-company.com"
-acs_url = "http://localhost:3141/auth/saml/callback"
-certificate_path = "/etc/grith/saml/idp-cert.pem"
-sign_requests = true
-name_id_format = "emailAddress"
-`} title="SAML 2.0 configuration" />
+Target: v2.0, late 2026. The infrastructure (multi-team account model, role
+plumbing) is in place; the actual SAML responder and SCIM endpoint are the
+remaining work.
 
-### OIDC
+## See also
 
-<ConfigExample code={`[enterprise.sso]
-enabled = true
-protocol = "oidc"
-
-[enterprise.sso.oidc]
-issuer = "https://your-idp.example.com"
-client_id = "grith-enterprise"
-client_secret_env = "GRITH_OIDC_CLIENT_SECRET"
-redirect_uri = "http://localhost:3141/auth/oidc/callback"
-scopes = ["openid", "profile", "email", "groups"]
-`} title="OIDC configuration" />
-
-<Callout type="tip" title="Secret management">
-Never store client secrets directly in configuration files. Use the `_env` suffix to reference an environment variable, or integrate with your organization's secrets manager.
-</Callout>
-
-## Just-in-time user provisioning
-
-When a user authenticates via SSO for the first time, grith will automatically create a local user record based on the identity claims returned by your IdP. This is just-in-time (JIT) provisioning — no need to pre-create user accounts in grith.
-
-JIT provisioning maps IdP attributes to grith user properties:
-
-| IdP attribute | grith field | Notes |
-|---|---|---|
-| `email` / `nameID` | `user.email` | Primary identifier |
-| `displayName` | `user.name` | Display name in dashboard and audit logs |
-| `groups` | `user.roles` | Mapped to grith RBAC roles via group mapping |
-| `department` | `user.metadata.department` | Stored as metadata for audit purposes |
-
-### Group mapping
-
-IdP groups can be mapped to grith RBAC roles, so your existing group structure determines what users can do in grith:
-
-<ConfigExample code={`[enterprise.sso.group_mapping]
-"Security Team"    = "security-analyst"
-"Platform Engineering" = "admin"
-"Engineering"      = "developer"
-"*"                = "viewer"
-`} title="Group-to-role mapping" />
-
-See [RBAC](/docs/enterprise/rbac) for the full role and permission model.
-
-## Session management
-
-SSO sessions will be managed with the following controls:
-
-| Setting | Default | Description |
-|---|---|---|
-| `session_lifetime` | `8h` | Maximum session duration before re-authentication |
-| `idle_timeout` | `30m` | Inactivity timeout |
-| `max_sessions_per_user` | `5` | Concurrent session limit per user |
-| `force_reauth_on_sensitive` | `true` | Require re-authentication for policy changes |
-
-<ConfigExample code={`[enterprise.sso.sessions]
-session_lifetime = "8h"
-idle_timeout = "30m"
-max_sessions_per_user = 5
-force_reauth_on_sensitive = true
-`} title="Session management" />
-
-## Authentication flow
-
-The planned authentication flow for SAML 2.0:
-
-1. User accesses grith dashboard or CLI triggers an authenticated action
-2. grith redirects to the IdP login page (SP-initiated SSO)
-3. User authenticates with their corporate credentials (+ MFA if configured at the IdP)
-4. IdP posts a signed SAML assertion back to grith's ACS endpoint
-5. grith validates the assertion signature, checks audience restriction, and extracts claims
-6. JIT provisioning creates or updates the local user record
-7. A session token is issued and the user proceeds
-
-<Callout type="warning" title="Network requirements">
-The grith dashboard must be reachable by the IdP for SAML callback delivery. In air-gapped environments, SAML metadata must be exchanged manually. See [Deployment](/docs/enterprise/deployment) for air-gapped configuration.
-</Callout>
-
-## CLI authentication
-
-For headless and CI environments, grith will support machine-to-machine authentication alongside browser-based SSO:
-
-<Terminal command="grith pro login --sso" />
-
-This opens a browser-based SSO flow and stores the resulting session token locally. For CI pipelines where a browser is not available, service account tokens will be supported:
-
-<ConfigExample code={`[enterprise.sso.service_accounts]
-enabled = true
-token_lifetime = "90d"
-allowed_roles = ["developer"]
-`} title="Service account configuration" />
-
-## Next steps
-
-- [RBAC](/docs/enterprise/rbac) — Role-based access control and permission model
-- [Compliance](/docs/enterprise/compliance) — Audit logging and compliance reporting
-- [Deployment](/docs/enterprise/deployment) — Enterprise deployment patterns including air-gapped setups
+- [RBAC (planned)](/docs/enterprise/rbac)
+- [Authentication (Pro)](/docs/pro/authentication)
+- [Roadmap](/docs/resources/roadmap)

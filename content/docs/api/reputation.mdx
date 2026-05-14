@@ -1,0 +1,69 @@
+---
+title: "Reputation (IPC)"
+description: "Inspect and reset the adaptive trust table — internal endpoints."
+section: "api"
+order: 10
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/reputation.mdx"
+---
+
+<ApiRouteTable group="Reputation" showHeadings={false} />
+
+All routes in this group are **IPC-only** — they accept loopback callers only.
+The dashboard and [`grith reputation`](/docs/cli/reputation) talk to these.
+
+## `GET /reputation/table`
+
+Dump the current trust table. Shape:
+
+```json
+{
+  "entries": [
+    {
+      "operation": "file_read",
+      "destination": "${PROJECT_DIR}/**",
+      "profile": "claude-code",
+      "trust": 0.96,
+      "observations": 142,
+      "denials": 0,
+      "last_seen": "2026-05-14T09:14:23Z"
+    }
+  ]
+}
+```
+
+## `POST /reputation/observe`
+
+Record a single observation. Used internally by the scoring engine; not typically
+called by user code.
+
+```json
+{
+  "operation": "...",
+  "destination": "...",
+  "profile": "...",
+  "decision": "allow | deny",
+  "weight": 1.0
+}
+```
+
+## `POST /reputation/reset`
+
+Wipe the table.
+
+```json
+{ "profile": "optional-scope-to-one-profile" }
+```
+
+Without a `profile`, wipes everything.
+
+## `POST /reputation/save`
+
+Force-flush the in-memory table to disk. Useful before a planned restart.
+
+## See also
+
+- [Adaptive reputation](/docs/concepts/adaptive-reputation)
+- [`grith reputation`](/docs/cli/reputation)

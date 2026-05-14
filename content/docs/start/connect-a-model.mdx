@@ -1,0 +1,135 @@
+---
+title: "Connect a model"
+description: "Configure a provider for the built-in REPL: Ollama, OpenAI, Anthropic, or OpenRouter."
+section: "start"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/connect-a-model.mdx"
+---
+
+If you're only using grith to supervise an existing agent (Claude Code, Codex, Aider,
+etc.), the agent talks to its own model and grith doesn't need any provider
+configuration — skip this page.
+
+If you're using `grith run` or the interactive REPL, you need a model. grith is BYOK:
+your provider keys live in your config, never get sent to grith.ai, and stay local
+unless you opt in to team sync.
+
+## Supported providers
+
+| Provider | What it's good for | Free? |
+| --- | --- | --- |
+| **Ollama** | Local models, no external network, full privacy | Yes (CPU/GPU on your box) |
+| **OpenAI** | High-quality general-purpose models | Paid (API key) |
+| **Anthropic** | Claude family, strong at reasoning + code | Paid (API key) |
+| **OpenRouter** | One key, many providers (incl. open-source via inference vendors) | Paid (API key) |
+
+The default provider is **Ollama** — it works fully offline and doesn't need a card on
+file to try it out.
+
+## Ollama (recommended for getting started)
+
+Install Ollama from [ollama.com/download](https://ollama.com/download), then pull a
+model:
+
+```
+ollama pull llama3.1:8b
+ollama serve
+```
+
+In `~/.config/grith/config.toml`, set:
+
+```toml
+[llm]
+default_provider = "ollama"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+model = "llama3.1:8b"
+```
+
+Verify:
+
+```
+grith run "what is 2+2"
+```
+
+## OpenAI
+
+```toml
+[llm]
+default_provider = "openai"
+
+[llm.openai]
+api_key = "sk-..."     # or set OPENAI_API_KEY in your shell
+model = "gpt-4o-mini"
+```
+
+The API key can be set via the env var `OPENAI_API_KEY` instead. Env vars take
+precedence over config file values.
+
+## Anthropic
+
+```toml
+[llm]
+default_provider = "anthropic"
+
+[llm.anthropic]
+api_key = "sk-ant-..."   # or set ANTHROPIC_API_KEY
+model = "claude-sonnet-4-5-20250514"
+```
+
+## OpenRouter
+
+```toml
+[llm]
+default_provider = "openrouter"
+
+[llm.openrouter]
+api_key = "sk-or-..."    # or set OPENROUTER_API_KEY
+model = "anthropic/claude-sonnet-4-5-20250514"
+```
+
+OpenRouter accepts any model slug from their catalogue. Use it for cost-sensitive
+fan-out across providers from a single key.
+
+## Switching providers per call
+
+```
+grith run --provider anthropic "explain mutexes"
+grith run --provider ollama   "explain mutexes"
+```
+
+`--provider` overrides `[llm] default_provider` for that invocation only.
+
+## Where keys live
+
+- Plain text in `~/.config/grith/config.toml` (default). Permissioned to `0600`.
+- Or in `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` env vars.
+- For Pro teams: synced via the dashboard, encrypted at rest, decrypted only on
+  your device. See [Encrypted key management](/docs/pro/encrypted-key-management).
+
+grith never makes a network call to grith.ai for model requests. The only outbound
+calls to grith.ai are license refresh checks (if you're on Pro) and update checks
+(disable via `general.update_check = false`).
+
+## Egress filter implications
+
+The egress filter ([filter 9](/docs/filters/09-egress-policy)) sees provider API hosts
+as outbound network destinations. Built-in agent profiles already allow the right
+hosts (`api.anthropic.com`, `api.openai.com`, etc.). For `grith run` on the strict
+`generic` profile, add the host explicitly:
+
+```toml
+# config/filters/egress.toml
+[[allowed]]
+host = "api.anthropic.com"
+score = -2
+```
+
+## Next
+
+- [Your first supervised session](/docs/start/first-supervised-session)
+- [LLM provider config](/docs/config/llm) — full reference for the `[llm]` section

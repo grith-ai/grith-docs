@@ -1,0 +1,89 @@
+---
+title: "15. Session containment"
+description: "Score calls that escape the session's declared zone."
+section: "filters"
+order: 24
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/15-session-containment.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Context |
+| **Score range** | +0 to +5 |
+| **Module** | `crates/grith-proxy/src/filters/session_containment.rs` |
+| **Config file** | `config/filters/containment.toml` |
+
+The containment filter enforces session-level zones — see
+[Session containment](/docs/concepts/session-containment) for the concept.
+
+## What it scores
+
+For a session bound to zone `Z`:
+
+- Path operation inside `Z.paths` → 0 (no contribution).
+- Path operation outside `Z.paths` → +1 to +3 (read) / +3 to +5 (write).
+- Network operation to host in `Z.network` → 0.
+- Network operation to host outside `Z.network` → +2 to +4.
+- Path operation in another defined zone's territory → +4 (cross-zone leak is
+  worse than a path that's in no zone).
+
+Sessions with no zone bound run with the filter disabled; everything's "in zone"
+by default.
+
+## Defining zones
+
+```toml
+# config/filters/containment.toml
+
+[zones.dayjob]
+description = "Day-job project work"
+paths = ["${HOME}/work/dayjob/**"]
+network = ["dayjob-vpn-host", "github.com/your-org/**"]
+
+[zones.oss]
+description = "Open-source side projects"
+paths = ["${HOME}/oss/**"]
+network = ["github.com/grith-ai/**", "crates.io"]
+
+[zones.experiments]
+description = "Disposable scratch"
+paths = ["${HOME}/scratch/**", "/tmp/scratch-**"]
+network = []
+```
+
+## Binding a session
+
+```
+grith exec --profile claude-code --zone dayjob -- claude
+```
+
+Without `--zone`, the session has no zone bound and the filter contributes nothing.
+
+## Soft vs. hard
+
+Containment is **soft** — it scores rather than blocks. A call that escapes the
+zone gets scored higher and likely quarantines, but if you approve in the digest,
+the call runs. This is intentional: legitimate cross-zone needs happen (e.g.
+"yes, I need to read the OSS project's config from a dayjob session this once").
+
+For hard zone isolation, run grith inside a container with the appropriate
+filesystem and network namespaces. Zones are a logical/policy boundary, not a
+kernel boundary.
+
+## Unlock semantics
+
+The digest's "approve + unlock-egress" action whitelists a specific destination
+for the rest of the session. The filter remembers and stops scoring that
+destination as a zone-escape for the session's lifetime. The unlock doesn't
+persist across sessions or modify the zone config.
+
+For permanent additions, edit `containment.toml` and reload.
+
+## See also
+
+- [Session containment](/docs/concepts/session-containment) — concept
+- [`config/filters/containment.toml`](/docs/config/filter-config-files)
+- [`grith exec --zone`](/docs/cli/exec)

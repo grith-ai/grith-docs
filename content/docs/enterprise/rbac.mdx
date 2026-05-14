@@ -1,217 +1,78 @@
 ---
-title: "Role-Based Access Control"
-description: "RBAC roles, permissions, and policy-as-code for team-wide security governance"
+title: "RBAC"
+description: "Role-based access control over dashboard actions. Planned for v2.0."
 section: "enterprise"
-order: 2
+order: 3
 tier: "enterprise"
-lastUpdated: "2026-02-24"
+status: "planned"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/enterprise/rbac.mdx"
 ---
 
-<Callout type="info" title="Roadmap">
-Role-based access control is planned for grith v2.0. This page describes the planned permission model and policy-as-code workflow.
+<PlanBadge tier="enterprise" planned />
+
+<Callout type="info" title="Planned for v2.0">
+RBAC ships with SSO/SAML in v2.0. Until then, dashboard access is binary:
+admins can do everything in a team, non-admins are read-only.
 </Callout>
 
-grith Enterprise will ship with a role-based access control system that governs who can modify security policies, review quarantined tool calls, export audit data, and manage users. RBAC rules are defined in configuration files and can be synced across teams via the policy distribution system.
+## What's planned
 
-## Built-in roles
+A flexible role model letting Enterprise customers carve up dashboard actions
+across roles:
 
-Four roles are planned, each designed around a specific organizational function:
+| Role | What they can do |
+| --- | --- |
+| `admin` | Everything: edit policies, manage members, manage billing. |
+| `policy-author` | Author and publish policies; cannot manage members or billing. |
+| `reviewer` | Review queued digest items via the dashboard; cannot edit policies. |
+| `viewer` | Read-only across all dashboards. |
+| `auditor` | Read-only plus the ability to export compliance bundles. |
+| Custom roles | Author-defined permission combinations. |
 
-| Role | Purpose | Typical user |
-|---|---|---|
-| `admin` | Full control over grith configuration, policies, and user management | Platform engineering lead, security team lead |
-| `security-analyst` | Review quarantined calls, adjust filter weights, export audit data | SOC analyst, AppSec engineer |
-| `developer` | Run tasks, view own audit history, manage own canary tokens | Software engineer using grith day-to-day |
-| `viewer` | Read-only access to dashboards and audit logs | Compliance auditor, manager |
+## Permissions surface
 
-<Callout type="tip" title="Principle of least privilege">
-Assign the most restrictive role that allows each user to do their job. Most engineers need only the `developer` role. Reserve `admin` for infrastructure owners.
-</Callout>
+The RBAC model will gate every dashboard action with a permission string. A
+non-exhaustive list:
 
-## Permission matrix
+- `policy.read`, `policy.write`, `policy.publish`, `policy.delete`
+- `member.invite`, `member.remove`, `member.role.assign`
+- `channel.read`, `channel.write`
+- `key.read`, `key.write`, `key.rotate`
+- `digest.review`, `digest.approve`, `digest.deny`, `digest.terminate`
+- `audit.export`, `audit.compliance.export`
 
-Each role maps to a set of granular permissions. The matrix below shows the planned access model:
+Roles are then permission bundles. Custom roles can be defined as any
+combination.
 
-| Permission | admin | security-analyst | developer | viewer |
-|---|---|---|---|---|
-| Run agent tasks | Yes | Yes | Yes | No |
-| View own audit log | Yes | Yes | Yes | Yes |
-| View all audit logs | Yes | Yes | No | Yes |
-| Review digest queue | Yes | Yes | No | No |
-| Approve/deny queued calls | Yes | Yes | No | No |
-| Modify filter weights | Yes | Yes | No | No |
-| Modify scoring thresholds | Yes | No | No | No |
-| Edit security policies | Yes | No | No | No |
-| Manage supervisor profiles | Yes | No | No | No |
-| Export audit data | Yes | Yes | No | Yes |
-| Manage canary tokens (own) | Yes | Yes | Yes | No |
-| Manage canary tokens (all) | Yes | Yes | No | No |
-| Manage users and roles | Yes | No | No | No |
-| View dashboard | Yes | Yes | Yes | Yes |
-| Modify notification channels | Yes | Yes | No | No |
-| Access SIEM export config | Yes | Yes | No | No |
+## Group mapping (with SSO)
 
-## Policy-as-code
-
-RBAC rules are defined in TOML configuration, not in a database. This means your access control model is versioned, reviewable, and deployable through the same pipeline as your security policies.
-
-### Role definitions
-
-<ConfigExample code={`[enterprise.rbac]
-enabled = true
-default_role = "viewer"
-
-[[enterprise.rbac.roles]]
-name = "admin"
-permissions = ["*"]
-
-[[enterprise.rbac.roles]]
-name = "security-analyst"
-permissions = [
-  "task.run",
-  "audit.read.all",
-  "digest.review",
-  "digest.approve",
-  "digest.deny",
-  "filter.modify",
-  "canary.manage.all",
-  "export.audit",
-  "notifications.manage",
-  "siem.configure",
-  "dashboard.view",
-]
-
-[[enterprise.rbac.roles]]
-name = "developer"
-permissions = [
-  "task.run",
-  "audit.read.own",
-  "canary.manage.own",
-  "dashboard.view",
-]
-
-[[enterprise.rbac.roles]]
-name = "viewer"
-permissions = [
-  "audit.read.all",
-  "export.audit",
-  "dashboard.view",
-]
-`} title="RBAC role definitions" />
-
-### User assignments
-
-Users can be assigned roles directly in configuration, or roles can be inherited from SSO group mappings:
-
-<ConfigExample code={`[[enterprise.rbac.users]]
-email = "alice@example.com"
-role = "admin"
-
-[[enterprise.rbac.users]]
-email = "bob@example.com"
-role = "security-analyst"
-
-# Team-wide default via SSO group mapping
-# See enterprise.sso.group_mapping in SSO & SAML docs
-`} title="Direct user-role assignments" />
-
-### Custom roles
-
-Organizations with needs that do not fit the built-in roles can define custom roles with specific permission sets:
-
-<ConfigExample code={`[[enterprise.rbac.roles]]
-name = "ci-bot"
-permissions = [
-  "task.run",
-  "audit.read.own",
-]
-
-[[enterprise.rbac.roles]]
-name = "compliance-officer"
-permissions = [
-  "audit.read.all",
-  "export.audit",
-  "dashboard.view",
-  "digest.review",
-]
-`} title="Custom role definitions" />
-
-## SSO group mapping
-
-When SSO is enabled, IdP groups are mapped to grith roles automatically. This eliminates the need for manual user-role assignments — your IdP becomes the single source of truth for access control.
-
-<ConfigExample code={`[enterprise.sso.group_mapping]
-"Security Team"        = "security-analyst"
-"Platform Engineering" = "admin"
-"Engineering"          = "developer"
-"Compliance"           = "compliance-officer"
-"*"                    = "viewer"
-`} title="SSO group-to-role mapping" />
-
-The wildcard `*` mapping acts as a fallback for users who do not belong to any explicitly mapped group. See [SSO & SAML](/docs/enterprise/sso-saml) for the full identity integration configuration.
-
-## Policy sync
-
-In team deployments, RBAC configuration can be distributed from a central source so that every grith instance enforces the same access model:
-
-<ConfigExample code={`[enterprise.policy_sync]
-enabled = true
-source = "https://policies.internal.example.com/grith/rbac.toml"
-interval = "5m"
-verify_signature = true
-signing_key_path = "/etc/grith/policy-signing-key.pub"
-`} title="Policy sync configuration" />
-
-When policy sync is enabled, the local RBAC configuration is treated as read-only. Changes are made at the central source and propagated to all instances on the configured interval. The signing key ensures that policies cannot be tampered with in transit.
-
-<Callout type="warning" title="Policy conflicts">
-If a local configuration defines RBAC rules and policy sync is enabled, the synced policy takes precedence. Local overrides are logged as warnings in the audit log.
-</Callout>
-
-## CLI integration
-
-Role enforcement applies to the CLI as well as the dashboard. Users will authenticate via `grith pro login --sso` and their role determines which commands are available:
-
-<Terminal command="grith rbac whoami" />
-
-Expected output for a developer:
+When SSO is configured, IdP groups can be mapped to grith roles:
 
 ```
-User:  alice@example.com
-Role:  developer
-Permissions:
-  - task.run
-  - audit.read.own
-  - canary.manage.own
-  - dashboard.view
+"grith-admins"     → admin
+"grith-reviewers"  → reviewer
+"security-team"    → auditor
+* (default)        → viewer
 ```
 
-Attempting an unauthorized action will return a clear error:
+Users get role(s) based on their IdP group membership. Changes in the IdP
+propagate via SCIM.
 
-```
-Error: permission denied
-  Action:  filter.modify
-  Role:    developer
-  Required: security-analyst or admin
+## Local RBAC
 
-Run 'grith rbac whoami' to see your current permissions.
-```
+For deployments without SSO, RBAC can still be used — admins assign roles
+manually in the dashboard.
 
-## Audit trail
+## Timeline
 
-Every permission check is recorded in the audit log, including denied access attempts. This provides a complete record of who tried to do what and whether they were authorized:
+Target: v2.0, late 2026. Some infrastructure (per-action permission gates) is
+already in the codebase; the surface area exposed in v0.1's dashboard is
+admin/non-admin only.
 
-| Audit field | Description |
-|---|---|
-| `user` | Email of the user who attempted the action |
-| `role` | Role assigned at the time of the attempt |
-| `permission` | Permission that was checked |
-| `granted` | Whether access was granted |
-| `timestamp` | When the check occurred |
-| `source_ip` | IP address of the request (dashboard only) |
+## See also
 
-## Next steps
-
-- [SSO & SAML](/docs/enterprise/sso-saml) — Identity provider integration
-- [Compliance](/docs/enterprise/compliance) — Audit logs and compliance reporting
-- [SIEM Integration](/docs/enterprise/siem-integration) — Export access events to your SIEM
+- [SSO & SAML (planned)](/docs/enterprise/sso-saml)
+- [What's in Enterprise](/docs/enterprise/whats-in-enterprise)
+- [Roadmap](/docs/resources/roadmap)

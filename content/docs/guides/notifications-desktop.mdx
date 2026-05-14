@@ -1,0 +1,61 @@
+---
+title: "Notifications: Desktop"
+description: "Native OS notifications for the local user."
+section: "guides"
+order: 13
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-desktop.mdx"
+---
+
+Native desktop notifications via libnotify (Linux). Useful for personal-laptop
+deployments where Slack is overkill.
+
+## Configure
+
+```toml
+[notifications.channels.desktop]
+enabled = true
+events = ["queue", "canary", "capability_deny"]
+severity_map = { canary = "critical", queue = "low" }
+expire_seconds = { queue = 0, canary = 0, default = 30 }
+```
+
+`expire_seconds = 0` keeps the notification on-screen until dismissed.
+
+## Test
+
+```
+grith notifications test desktop
+```
+
+A native notification pops up.
+
+## Behaviour
+
+- **Linux** — uses libnotify. Works under any modern desktop environment (GNOME,
+  KDE, Sway, etc.).
+- **macOS** — via NSUserNotificationCenter. (Ships with macOS supervisor in v2.0.)
+- **Windows** — via Win32 toast notifications. (Ships in v2.0.)
+
+## Click-to-open
+
+Clicking a desktop notification opens the daemon dashboard at the relevant
+digest item (if the dashboard is running). Approve from there.
+
+## Quiet hours
+
+For "don't notify me at night":
+
+```toml
+[notifications.channels.desktop]
+quiet_hours = { start = "22:00", end = "07:30", timezone = "Europe/London" }
+```
+
+Canary fires escape quiet hours regardless.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)

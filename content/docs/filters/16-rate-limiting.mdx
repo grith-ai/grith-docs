@@ -1,0 +1,87 @@
+---
+title: "16. Rate limiting"
+description: "Per-minute caps on operation classes. Bursts queue; sustained violations DENY."
+section: "filters"
+order: 25
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/16-rate-limiting.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Context (delivered as Pattern timing for low latency) |
+| **Score range** | 0 / QUEUE / DENY |
+| **Module** | `crates/grith-proxy/src/filters/rate_limit.rs` |
+| **Config** | `[proxy.filters.rate_limit]` |
+
+Per-minute caps on how many operations of each class a session can do. Burst
+multipliers let the rate vary in the short term; sustained violations escalate to
+DENY.
+
+## What it limits
+
+```toml
+[proxy.filters.rate_limit]
+enabled = true
+file_writes_per_minute      = 30
+shell_execs_per_minute      = 20
+network_requests_per_minute = 60
+burst_multiplier            = 3.0
+cooldown_seconds            = 30
+```
+
+These caps are per-session. Two concurrent sessions get separate budgets.
+
+## How it scores
+
+The filter doesn't contribute a graded score. Its three states:
+
+- **Within budget** — pass through, no score contribution.
+- **In burst zone** (between `cap` and `cap × burst_multiplier`) — call goes to
+  QUEUE. Reviewer can approve to let the burst continue.
+- **Above burst zone** or sustained violation across cooldown — DENY.
+
+For example, with defaults: 30 file writes/minute is fine. Up to 90 (3× burst) goes
+to queue, one per call. Above 90 in a minute, or any burst that doesn't cool down
+within 30s, denies.
+
+## Why the burst zone
+
+Real agents are bursty by nature. A code-editing session might write 50 files in 30
+seconds during a refactor and then go quiet for 10 minutes. A flat 30/min cap
+would punish that. The burst zone says "ok, this is a lot, let me ask once" — once
+in the queue zone, the digest reviewer can approve and the rest of the burst goes
+through without further prompts.
+
+After the burst dies down for `cooldown_seconds`, the budget resets to the base
+cap. Repeat bursts within the cooldown elevate the response to outright DENY.
+
+## What this catches
+
+- **Fork bombs and infinite loops** — rate-limited shell or exec floods.
+- **Slow exfil via many small writes** — file_writes_per_minute hits the cap.
+- **Net-scan attempts** — network_requests_per_minute hits the cap and the burst
+  zone fires fast.
+
+It doesn't catch low-and-slow attacks below the rate caps — that's
+[behavioural](/docs/filters/13-behavioural-anomaly)'s job.
+
+## Tuning
+
+For agents that legitimately exceed defaults (large codebase refactors writing
+100s of files), raise the relevant cap. The numbers are conservative for safety,
+not tight for any technical reason. Realistic ranges:
+
+| Workload | Sensible file_write cap |
+| --- | --- |
+| Code-editing agent on a small project | 30–60 |
+| Code-editing agent on a large monorepo | 100–200 |
+| Asset-generation agent (images, JSON outputs) | 100+ |
+
+## See also
+
+- [Filter 13: Behavioural anomaly](/docs/filters/13-behavioural-anomaly) — complement
+  for slow attacks
+- [`[proxy.filters.rate_limit]` config](/docs/config/proxy)

@@ -1,0 +1,86 @@
+---
+title: "Trust boundaries"
+description: "Where the trust boundary sits between grith, the agent, the model, and untrusted input."
+section: "security"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/trust-boundaries.mdx"
+---
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ trusted:                                                  │
+│   ─ the kernel                                            │
+│   ─ the grith binary itself                               │
+│   ─ the supervisor and filter pipeline                    │
+│   ─ the local user (== same as kernel-trust)              │
+└───────────────────────────────────────────────────────────┘
+              ▲ enforced via process / file perms
+              │
+┌───────────────────────────────────────────────────────────┐
+│ untrusted:                                                │
+│   ─ the supervised agent and its libraries                │
+│   ─ the model running inside the agent                    │
+│   ─ the agent's plugins / MCP servers / tool integrations │
+└───────────────────────────────────────────────────────────┘
+              ▲ enforced via syscall interception + filters
+              │
+┌───────────────────────────────────────────────────────────┐
+│ very untrusted:                                           │
+│   ─ files the agent reads (READMEs, search results, ...)  │
+│   ─ provider API responses                                │
+│   ─ stdin / network bytes flowing in                      │
+└───────────────────────────────────────────────────────────┘
+```
+
+## Why these three layers
+
+**Trusted** is everything that, if compromised, ends the game. The kernel and
+the grith binary are at this layer. We accept that we cannot defend ourselves
+against ourselves; we rely on the local OS process model and signed binaries
+to keep this layer intact.
+
+**Untrusted** is the agent. The agent might be malicious (compromised by
+input or supply chain) or merely mistaken; either way, its decisions about
+safety are not load-bearing. grith's job is to make sure the *outcomes* of
+the agent's actions are safe regardless of the agent's intent.
+
+**Very untrusted** is the data flowing into the agent. Prompt injection lives
+here. The agent reads bytes; those bytes might instruct it to do bad things.
+grith treats anything originating from this layer as suspect — that's the
+basis of [taint tracking](/docs/concepts/taint-tracking).
+
+## Crossings
+
+Each boundary crossing is where filtering happens:
+
+- **Very untrusted → Untrusted**: the agent reads. No enforcement here (the
+  read is allowed if path filters pass); the data is tagged as tainted for
+  later.
+- **Untrusted → Trusted**: every syscall the agent makes. This is where the
+  17 filters live. Sycall is allowed, queued, or denied.
+- **Trusted → Trusted**: internal grith operations. No filtering — these are
+  inside the trust boundary.
+
+## What lives where
+
+- **grith binary** — Trusted. Signed at build. ~25MB statically-linked
+  musl executable.
+- **Daemon (running grith process)** — Trusted. Per-user.
+- **Audit DB** — Trusted-data, untrusted-write-from-agent. Filesystem perms
+  keep the agent from writing to it. Cryptographic integrity (digest signing)
+  is on the roadmap.
+- **Reputation file** — Trusted-data. Read by the daemon; the agent never
+  reads or writes it.
+- **Profile files** — Built-in profiles are signed. User-defined profiles are
+  in the user's home dir; tampering by the agent means the user is
+  compromised, in which case all bets are off.
+- **License file** — Signed by grith.ai release key. Tamper-evident.
+
+## See also
+
+- [Threat model](/docs/security/threat-model)
+- [Supervisor-only assessment](/docs/security/supervisor-only-assessment)
+- [Notification security](/docs/security/notification-security)

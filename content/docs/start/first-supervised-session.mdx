@@ -1,0 +1,196 @@
+---
+title: "Your first supervised session"
+description: "Worked example: start a session under grith, trigger a quarantine, and decide."
+section: "start"
+order: 5
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/first-supervised-session.mdx"
+---
+
+This page walks through one full supervised session, from spawn to deciding on a
+queued call. It's intentionally concrete — copy the commands and follow along.
+
+## Setup
+
+Pick a project directory you don't mind grith reading. Anywhere with some real files
+to work with — a small repo is ideal.
+
+```
+cd ~/projects/some-repo
+```
+
+Make sure the daemon's audit dir exists:
+
+```
+mkdir -p ~/.local/share/grith/audit
+```
+
+Start the daemon in another terminal (optional, but it gives you the dashboard):
+
+```
+grith daemon start
+# Listening on http://127.0.0.1:3141
+```
+
+## Spawn the agent under grith
+
+We'll use a plain `bash` session for this walkthrough — it makes the quarantines easy
+to trigger on purpose. Real agents land you in the same place, just with the agent's
+prompt instead of `$`.
+
+```
+grith exec --profile generic-cli -- bash
+```
+
+You're now in a normal-feeling shell, but every syscall is being intercepted. Verify
+grith is supervising:
+
+<Terminal>
+{`$ grith supervisor list
+SESSION                                 PROFILE     PID    UPTIME
+abc12345-...-7e9f                        generic-cli  17421  4s`}
+</Terminal>
+
+## A call that auto-allows
+
+Do something routine:
+
+<Terminal>
+{`$ ls
+README.md  src  package.json  ...`}
+</Terminal>
+
+If you tail the audit log in a third terminal:
+
+<Terminal>
+{`$ grith log --tail
+[09:14:01] file_read package.json     → score 0.6 → allow
+[09:14:01] file_read src/             → score 0.4 → allow
+... (lots of these for the listing)`}
+</Terminal>
+
+These calls have low scores: `generic-cli` whitelists project-local paths and `ls` is
+a routine read.
+
+## A call that quarantines
+
+Now read a sensitive file:
+
+<Terminal>
+{`$ cat ~/.ssh/config
+[grith] quarantined — paused
+(your shell hangs)`}
+</Terminal>
+
+What happened: the sensitive path filter ([filter 3](/docs/filters/03-sensitive-path-heuristic))
+fired hard. With the static path filter ([filter 2](/docs/filters/02-static-path-matching))
+also firing for `~/.ssh/`, the composite landed above 3.0 — in the quarantine zone.
+
+Your bash process is now frozen (ptrace stop signal). It will sit there until you make
+a decision.
+
+## Review and decide
+
+In your *other* terminal, run:
+
+```
+grith digest review
+```
+
+You'll see something like:
+
+<Terminal>
+{`Pending review (1)
+
+  [7d1f...]  file_read  ~/.ssh/config
+             composite: 4.6 (queue)
+             filters fired:
+               - sensitive_path  +3.5  "ssh config in user home"
+               - path_match      +1.2  "static deny pattern .ssh/"
+               - egress_policy    0    "no network in this call"
+             session: abc12345-...
+             pid:     17421 (bash)
+
+  [a]pprove   [l]earn   [d]eny   [t]erminate   [u]nlock-egress   [?]
+
+> `}
+</Terminal>
+
+Press:
+
+- `a` to allow once and unfreeze the process.
+- `l` to allow + train the [reputation system](/docs/concepts/adaptive-reputation) so
+  similar future reads auto-allow.
+- `d` to deny — the syscall returns EACCES, your `cat` prints "Permission denied", the
+  shell continues.
+- `t` to deny + kill — the syscall is denied *and* the bash process tree is
+  terminated. Use this when something looks like exfil.
+
+Pick one. The frozen process resumes (or dies). The decision is recorded in the audit
+log.
+
+## Inspect the audit trail
+
+```
+grith audit
+```
+
+Lists all decisions, newest first. Or get JSON:
+
+```
+grith audit export --format json | jq '.[0]'
+```
+
+```json
+{
+  "id": "7d1f...",
+  "ts": "2026-05-14T09:14:23Z",
+  "operation": "file_read",
+  "target": "/home/you/.ssh/config",
+  "decision": "queue",
+  "resolved": "deny",
+  "composite_score": 4.6,
+  "filters": [
+    { "name": "sensitive_path", "score": 3.5, "annotations": ["ssh-config"] },
+    { "name": "path_match",     "score": 1.2 }
+  ],
+  "session": "abc12345-...",
+  "profile": "generic-cli",
+  "pid": 17421
+}
+```
+
+## Clean up
+
+Exit the supervised shell:
+
+```
+exit
+```
+
+The session unregisters automatically. You can verify:
+
+```
+grith supervisor list
+# (empty)
+```
+
+## What just happened, briefly
+
+1. `grith exec` spawned bash under ptrace.
+2. Every syscall in the supervised tree got routed through the 17-filter pipeline.
+3. Routine calls auto-allowed at under 15ms latency.
+4. Sensitive calls crossed the quarantine threshold and froze the process.
+5. You made a decision via the CLI; the process resumed accordingly.
+6. The audit log captured every decision for later inspection.
+
+## Next
+
+- [Reviewing the digest](/docs/start/reviewing-the-digest) — the digest UI in depth,
+  including the dashboard.
+- [The three-phase pipeline](/docs/concepts/three-phase-pipeline) — why the filter
+  order matters.
+- [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) — if everything
+  quarantined or nothing did.

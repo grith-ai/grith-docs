@@ -1,0 +1,59 @@
+---
+title: "Analytics"
+description: "Pro analytics: summary, cost, activity, and compliance bundles."
+section: "api"
+order: 8
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/analytics.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+<ApiRouteTable group="Analytics" showHeadings={false} />
+
+Pro analytics roll up the audit data and reputation table into team-friendly
+shapes. Requires a valid Pro license; without one, the routes return
+`403 PLAN_REQUIRED`.
+
+## `GET /analytics/summary`
+
+Top-line stats over a window.
+
+```json
+{
+  "window": "24h",
+  "calls": 9482,
+  "decisions": { "allow": 8920, "queue": 487, "deny": 75 },
+  "sessions": 14,
+  "cost_estimate_usd": 4.22
+}
+```
+
+## `GET /analytics/cost`
+
+Provider cost breakdown by model and user.
+
+```json
+{
+  "by_provider": [
+    { "provider": "anthropic", "model": "claude-sonnet-4-5", "tokens": 1_240_000, "cost_usd": 3.41 }
+  ],
+  "by_user": [...]
+}
+```
+
+## `GET /analytics/activity`
+
+Call volume trends, per-session timelines, decision splits over time.
+
+## `GET /analytics/compliance` <PlanBadge tier="enterprise" />
+
+Compliance-ready bundles for export. Returns SOC 2 / ISO 27001 / GDPR-flavoured
+report shapes. See [Compliance reporting](/docs/enterprise/compliance-reporting).
+
+## See also
+
+- [Analytics & cost (Pro)](/docs/pro/analytics-and-cost)
+- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)

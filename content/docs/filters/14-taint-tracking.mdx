@@ -1,0 +1,96 @@
+---
+title: "14. Taint tracking"
+description: "Follows sensitive data from where it was read to where it might leak."
+section: "filters"
+order: 23
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/14-taint-tracking.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Context |
+| **Score range** | +0 to +5 |
+| **Module** | `crates/grith-proxy/src/filters/taint.rs` |
+| **Config** | `[proxy.filters.taint]` |
+
+The taint filter remembers that the session read a sensitive file, and scores
+subsequent outbound operations accordingly. See
+[Taint tracking](/docs/concepts/taint-tracking) for the concept.
+
+## How it works
+
+1. A read of a path matching `[proxy.filters.taint] sensitive_paths` records a
+   taint entry: source kind, fd (if open), timestamp.
+2. Subsequent calls in the session check against active taint entries.
+3. Sinks classified as **high-risk** (`network`, `shell`) inherit a stronger score
+   contribution; **medium-risk** (`file_write`) inherits a moderate contribution.
+4. The contribution decays with time (half-life ~60s) and resets when the source
+   fd is closed.
+
+## Config
+
+```toml
+[proxy.filters.taint]
+enabled = true
+sensitive_paths = [
+    ".env", ".env.local",
+    "credentials.json", "secrets.yaml",
+    "id_rsa", "id_ed25519",
+    ".aws/credentials",
+    ".kube/config",
+    ".password-store/",
+]
+high_risk_sinks = ["network", "shell"]
+medium_risk_sinks = ["file_write"]
+
+decay_half_life_seconds = 60
+max_contribution = 5.0
+```
+
+`sensitive_paths` matches by suffix or path component — `.env` matches `~/.env` and
+`./project/.env` but not `version.envelope`. For complex match patterns, the
+sensitive-path heuristic ([3](/docs/filters/03-sensitive-path-heuristic)) is the
+preferred place.
+
+## Source kinds and weights
+
+| Kind | Default weight |
+| --- | --- |
+| `ssh_private_key` | 5.0 |
+| `cloud_credentials` | 4.5 |
+| `kubeconfig` | 4.0 |
+| `password_store` | 4.0 |
+| `env_file` | 3.0 |
+| `generic_secret` | 2.5 |
+| `user_configured` | 3.0 |
+
+## What it doesn't catch
+
+- **Long-tail exfil across sessions.** Taint is session-scoped. An attacker who
+  reads in session A and exfils in session B isn't caught by this filter.
+- **In-memory transforms outside grith's view.** If the agent reads, the model
+  summarises in some fully-internal way that doesn't surface as a syscall, then the
+  agent sends a sanitised version — taint sees the read and the send, scores the
+  send, but doesn't know if there's any actual leak.
+
+The DLP gate ([10](/docs/filters/10-dlp-gate)) complements taint by scanning the
+*payload* of the outbound call. Together they cover both "this looks tainted" and
+"this content looks dangerous regardless of taint".
+
+## Tuning
+
+- **Adding internal-team sensitive paths** — add to `sensitive_paths`.
+- **Slow legitimate workflows that span the half-life** — increase
+  `decay_half_life_seconds` to e.g. 300s. Tradeoff: weakens the exfil-detection
+  window.
+- **Disable for a session class** — set `enabled = false` for very short tasks
+  where you accept reduced exfil detection. Don't do this for long-running agents.
+
+## See also
+
+- [Taint tracking](/docs/concepts/taint-tracking) — concept
+- [Filter 10: DLP gate](/docs/filters/10-dlp-gate)
+- [Exfiltration walkthrough](/docs/guides/exfiltration-walkthrough)

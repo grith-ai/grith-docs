@@ -1,0 +1,43 @@
+---
+title: "OpenClaw"
+description: "Supervisor profile for the OpenClaw community fork."
+section: "profiles"
+order: 10
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/openclaw.mdx"
+---
+
+```
+grith exec --profile openclaw -- openclaw
+```
+
+The `openclaw` profile fits the OpenClaw community fork of Claude-style tooling.
+Surface area is similar to [`claude-code`](/docs/profiles/claude-code), tuned for
+OpenClaw's specific cache directories and tool integrations.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.openclaw/**`,
+  `${HOME}/.cache/openclaw/**`, `/tmp/openclaw-**`.
+- **Commands** — same toolchain baseline as Claude Code.
+- **Destinations** — provider APIs as configured; OpenClaw is provider-agnostic.
+- **Exec roots** — standard.
+
+## Tuning
+
+OpenClaw deployments vary widely. If yours pulls a custom toolchain or talks to
+internal services:
+
+```toml
+[profiles.my-openclaw]
+extends = "openclaw"
+routine_destinations = ["acme-llm-proxy.internal"]
+routine_exec_roots = ["${HOME}/code/openclaw-tools/bin"]
+```
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)

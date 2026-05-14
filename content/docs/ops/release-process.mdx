@@ -1,0 +1,94 @@
+---
+title: "Release process"
+description: "How grith versions are cut, signed, and published."
+section: "ops"
+order: 5
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/release-process.mdx"
+---
+
+This page documents how the grith release pipeline works — useful for
+auditing release integrity and for contributors planning to ship a fix.
+
+## Versioning
+
+grith uses semantic versioning: `<major>.<minor>.<patch>`.
+
+- **Patch** — bug fixes, no schema changes. Drop-in upgrade.
+- **Minor** — new features, additive schema changes. Forward-compatible config.
+- **Major** — breaking changes. Migration notes published with the release.
+
+Versions before v1.0 (e.g. v0.1.x) follow the same scheme but with the caveat
+that we may break minor-version compatibility for security fixes. Will not
+do so without an explicit notice in the changelog.
+
+## Release cadence
+
+- **Patch releases** — as needed for security and high-priority bugs.
+- **Minor releases** — every 4–6 weeks during active development.
+- **Major releases** — when warranted by the scope of change.
+
+## Pipeline
+
+1. **Tag a release commit** — `git tag v0.1.2 -s` (signed tag).
+2. **CI builds** — `x86_64-unknown-linux-musl` for v0.1; additional targets for
+   v2.0+. CI runs the full test suite, clippy, and the docs site build.
+3. **Artefacts published** — tarball + SHA-256 checksum + Ed25519 signature
+   to GitHub Releases.
+4. **Installer published** — `https://grith.ai/install` updated to point at
+   the new version's tarball.
+5. **OSS publish** — release commit cherry-picked to the public mirror.
+6. **Changelog updated** — `CHANGELOG.md` in the repo + docs site changelog.
+7. **Update-check endpoint updated** — `https://grith.ai/releases.json` now
+   advertises the new version. Devices pick this up on their next check.
+
+## Integrity
+
+Every release artefact has three layers of integrity:
+
+- **SHA-256 checksum** — published alongside the tarball.
+- **Ed25519 signature** — `release.sig` over the tarball, signed by the grith
+  release key.
+- **Signed git tag** — the source commit is verifiable against the same key.
+
+Public key: [`grith.ai/.well-known/release.pub`](https://grith.ai/.well-known/release.pub).
+
+Verifying:
+
+```
+curl -L -o grith.tar.gz https://github.com/grith-ai/grith/releases/download/v0.1.0/grith-v0.1.0-x86_64-unknown-linux-musl.tar.gz
+curl -L -o grith.tar.gz.sig https://github.com/grith-ai/grith/releases/download/v0.1.0/grith-v0.1.0-x86_64-unknown-linux-musl.tar.gz.sig
+curl -L -o release.pub https://grith.ai/.well-known/release.pub
+
+# Verify signature:
+openssl pkeyutl -verify -pubin -inkey release.pub -sigfile grith.tar.gz.sig -rawin -in grith.tar.gz
+```
+
+Or use the standard `minisign` tool if you prefer.
+
+## Reproducibility
+
+Builds are not yet bit-for-bit reproducible — Rust's compiler emits some
+nondeterministic state. Working toward reproducible builds for v2.0; track
+progress at [grith/issues](https://github.com/grith-ai/grith/issues).
+
+## Hotfix process
+
+For confirmed security issues, the timeline is compressed:
+
+1. Fix lands on a private branch.
+2. Patch tag is cut, signed, and published immediately.
+3. Advisory drafted in parallel with patch development.
+4. Once the patch is in users' hands, the advisory is published.
+
+See [Responsible disclosure](/docs/security/responsible-disclosure) for the
+upstream process.
+
+## See also
+
+- [Updates & profile updates](/docs/ops/updates-and-profile-updates)
+- [Responsible disclosure](/docs/security/responsible-disclosure)
+- [Changelog](/docs/resources/changelog)
+- [Advisories](/docs/security/advisories)

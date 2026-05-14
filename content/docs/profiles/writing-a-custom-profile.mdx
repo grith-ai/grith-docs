@@ -1,0 +1,117 @@
+---
+title: "Writing a custom profile"
+description: "End-to-end workflow for creating a profile for an agent that isn't covered by a built-in."
+section: "profiles"
+order: 12
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/writing-a-custom-profile.mdx"
+---
+
+When you've got an agent that isn't covered by a built-in profile — an in-house
+tool, a community fork without a shipping profile, or a wrapper around something
+unusual — write a custom profile. The workflow:
+
+1. Start under `generic-cli` and capture a session trace.
+2. Audit the trace to see what the agent actually does.
+3. Promote frequent escapees into `routine_*` entries.
+4. Save the profile to `~/.config/grith/profiles/`.
+5. Iterate.
+
+## 1. Capture a trace
+
+```
+grith exec \
+    --profile generic-cli \
+    --trace-syscalls-jsonl ~/.cache/grith/initial.jsonl \
+    -- my-custom-agent
+
+# Run the agent through its typical workflow for a session or two.
+# Exit normally.
+```
+
+`initial.jsonl` now contains every intercepted syscall.
+
+## 2. Audit
+
+```
+grith profile audit \
+    --profile generic-cli \
+    --trace ~/.cache/grith/initial.jsonl
+```
+
+The "escapees" section shows what the agent did that wasn't in `generic-cli`'s
+routine set:
+
+```
+escapees (calls that exited routine and were fully scored):
+  file_read ${HOME}/.config/my-custom-agent/*    24 hits
+  file_read ${HOME}/.cache/my-custom-agent/*     127 hits
+  network   api.my-vendor.com                    18 hits
+  shell     git submodule update                 3 hits
+  exec      /opt/my-custom-agent/bin/helper      52 hits
+```
+
+## 3. Write the profile
+
+```toml
+# ~/.config/grith/profiles/my-custom-agent.toml
+[profiles.my-custom-agent]
+extends = "generic-cli"
+
+routine_paths = [
+    "${PROJECT_DIR}/**",
+    "${HOME}/.config/my-custom-agent/**",
+    "${HOME}/.cache/my-custom-agent/**",
+]
+
+routine_destinations = [
+    "api.my-vendor.com",
+]
+
+routine_exec_roots = [
+    "/opt/my-custom-agent/bin",
+]
+```
+
+`extends = "generic-cli"` keeps you on the strict CLI baseline (no provider APIs)
+and adds the agent-specific routine entries on top.
+
+## 4. Run with the new profile
+
+```
+grith exec --profile my-custom-agent -- my-custom-agent
+```
+
+The digest should be quieter for the routine work. Sensitive operations
+(reading credentials, talking to unknown destinations) still go through normal
+scoring.
+
+## 5. Iterate
+
+Run the agent through more workflows. Audit again. Tighten or loosen as needed.
+Profile development is naturally iterative.
+
+## Things to be careful about
+
+- **Don't add `${HOME}/**`** to `routine_paths`. That blows past every
+  sensitive-path heuristic. Use specific subdirs.
+- **Don't add `*.com`** or other broad wildcards to `routine_destinations`.
+  Use specific hostnames or registered subdomains.
+- **Be selective with `routine_exec_roots`**. Anything in those directories runs
+  with reduced scrutiny.
+
+## Sharing
+
+A team can share custom profiles by:
+
+- Copying to teammates' `~/.config/grith/profiles/` — manual but simple.
+- Using [Centralised policies (Pro)](/docs/pro/centralised-policies) — pushes
+  signed profiles to every team device automatically.
+
+## See also
+
+- [Profile audit](/docs/profiles/profile-audit)
+- [How profiles work](/docs/profiles/how-profiles-work)
+- [Centralised policies (Pro)](/docs/pro/centralised-policies)

@@ -1,0 +1,99 @@
+---
+title: "grith notifications"
+description: "Manage notification channels — Slack, Discord, Telegram, Teams, email, webhook, and more."
+section: "cli"
+order: 12
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/notifications.mdx"
+---
+
+```
+grith notifications [status | channels | test]
+```
+
+Inspect channel state and send test messages. Channel **configuration** lives in
+`~/.config/grith/config.toml` under `[notifications.channels.*]` — see
+[Notifications guides](/docs/guides/notifications-slack) for per-channel setup.
+
+## Subcommands
+
+### `grith notifications channels`
+
+List configured channels and their health.
+
+```
+$ grith notifications channels
+CHANNEL      STATE       DELIVERED  FAILED  LAST
+slack        healthy     412        0       12s ago
+telegram     healthy     312        1       8m ago
+pagerduty    paused      0          0       —
+webhook-ops  healthy     54         0       3m ago
+email        unhealthy   12         8       1d ago      (smtp timeout)
+```
+
+Possible states: `healthy`, `paused` (user-disabled), `unhealthy` (recent delivery
+failures), `not-configured`.
+
+### `grith notifications status`
+
+A one-line summary plus per-channel delivery counts over the last 24h. Useful in
+status dashboards.
+
+### `grith notifications test <CHANNEL>`
+
+Send a synthetic notification to verify the channel is working.
+
+```
+grith notifications test slack
+```
+
+Output:
+
+```
+[slack] test message sent → delivered in 312ms
+```
+
+For webhook channels, the test posts a stub digest item shape; receiving endpoints
+can verify their HMAC handling against it.
+
+## Configuration
+
+Channels are configured in `config.toml` rather than via CLI. Example:
+
+```toml
+[notifications.channels.slack]
+enabled = true
+webhook_url = "https://hooks.slack.com/services/..."
+default_room = "#grith-alerts"
+
+[notifications.channels.pagerduty]
+enabled = true
+service_key = "..."
+severity_map = { canary = "critical", queue = "warning" }
+```
+
+See [`[notifications]` config](/docs/config/general) and the per-channel guides for
+the full field set.
+
+## Per-channel guides
+
+| Channel | Guide |
+| --- | --- |
+| Slack | [Notifications: Slack](/docs/guides/notifications-slack) |
+| Discord | [Notifications: Discord](/docs/guides/notifications-discord) |
+| Telegram | [Notifications: Telegram](/docs/guides/notifications-telegram) |
+| Microsoft Teams | [Notifications: Teams](/docs/guides/notifications-teams) |
+| Email (SMTP) | [Notifications: Email](/docs/guides/notifications-email) |
+| Generic webhook | [Notifications: Webhook](/docs/guides/notifications-webhook) |
+| PagerDuty | [Notifications: PagerDuty](/docs/guides/notifications-pagerduty) |
+| Opsgenie | [Notifications: Opsgenie](/docs/guides/notifications-opsgenie) |
+| WhatsApp | [Notifications: WhatsApp](/docs/guides/notifications-whatsapp) |
+| Desktop | [Notifications: Desktop](/docs/guides/notifications-desktop) |
+| WebSocket | [Notifications: WebSocket](/docs/guides/notifications-websocket) |
+
+## See also
+
+- [Notifications API](/docs/api/notifications)
+- [Notification security model](/docs/security/notification-security)

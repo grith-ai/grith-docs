@@ -1,93 +1,75 @@
 ---
-title: "Security Advisories"
-description: "Published security advisories for grith vulnerabilities"
+title: "Security advisories"
+description: "Published CVEs and security fixes for grith."
 section: "security"
-order: 3
+order: 6
 tier: "community"
-lastUpdated: "2026-02-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/advisories.mdx"
 ---
 
-This page lists all published security advisories for grith. Each advisory includes the vulnerability details, affected versions, severity, and remediation steps.
+Published security advisories for grith. Subscribe to the RSS feed at
+[`/changelog.xml`](/changelog.xml) to be notified of new advisories.
 
-## Current status
+## How to subscribe
 
-There are no known security vulnerabilities in the current release of grith.
+- **RSS** — [`https://docs.grith.ai/changelog.xml`](/changelog.xml). Filter the
+  feed for `category=security` to get advisories only.
+- **GitHub Security Advisories** — at
+  [github.com/grith-ai/grith/security/advisories](https://github.com/grith-ai/grith/security/advisories).
+- **Mailing list** — sign up at [grith.ai/security/announce](https://grith.ai/security/announce).
 
-<Callout type="tip" title="Stay informed">
-Subscribe to [GitHub Security Advisories](https://github.com/grith-ai/grith/security/advisories) for the `grith-ai/grith` repository to receive notifications when new advisories are published. You can also watch the repository with the "Security alerts" notification preference enabled.
+## Current advisories
+
+<Callout type="info" title="None at the time of v0.1 launch">
+There are no published advisories as of grith v0.1.0 (May 2026). When the first
+one ships, it will appear here with a CVE identifier, affected versions, and
+remediation steps.
 </Callout>
 
 ## Advisory format
 
-When vulnerabilities are discovered and patched, advisories are published here and on GitHub using the following format:
+Each advisory will include:
 
----
+- **Identifier** — `GHSA-...` or `CVE-...`.
+- **Severity** — CVSS v3.1 score and rating.
+- **Affected versions** — version range.
+- **Fixed in** — the version that contains the patch.
+- **Description** — what the issue is.
+- **Impact** — what an attacker could do.
+- **Reproduction** — minimal PoC (published only after the fix is widely
+  available).
+- **Mitigation** — workarounds for users who can't upgrade immediately.
+- **Credit** — researcher acknowledgement (if they accepted credit).
+- **Timeline** — report date, fix date, disclosure date.
 
-### GRITH-YYYY-NNN — Title
+## Patching policy
 
-**CVE:** CVE-YYYY-NNNNN (if assigned)
+- **Critical** (CVSS ≥ 9.0) — patch released within 7 days of confirmation.
+- **High** (CVSS 7.0–8.9) — within 30 days.
+- **Medium** (CVSS 4.0–6.9) — included in the next planned release.
+- **Low** (CVSS < 4.0) — fixed when convenient.
 
-**Severity:** Critical / High / Medium / Low
+## Update notification
 
-**Affected versions:** x.y.z through a.b.c
+`grith` checks for updates daily by default (`general.update_check = true`).
+When an update is available, a one-line notice appears at REPL start and
+daemon start. Security updates are flagged separately so you can tell "this
+is a security patch" from "this is a feature release".
 
-**Fixed in:** a.b.d
+To disable update checks:
 
-**Component:** `grith-core`, `grith-cli`, `grith-server`, `grith-llm`, `grith-proxy`, `grith-supervisor`, `grith-audit`, `grith-digest`, or `grith-notify`
+```toml
+[general]
+update_check = false
+```
 
-**Description:**
+(Disable only if you have an alternative notification mechanism — air-gapped
+deployments etc. should subscribe to the RSS feed or mailing list instead.)
 
-A description of the vulnerability, including the attack vector, preconditions, and potential impact.
+## See also
 
-**Mitigation:**
-
-Steps to mitigate the vulnerability if you cannot upgrade immediately (e.g., configuration changes, disabling specific filters).
-
-**Resolution:**
-
-Upgrade to the fixed version:
-
-<Terminal command="brew upgrade grith" />
-
-Or download the latest release from [GitHub Releases](https://github.com/grith-ai/grith/releases).
-
-**Credit:**
-
-Reported by [Researcher Name](https://example.com) via [responsible disclosure](/docs/security/responsible-disclosure).
-
----
-
-## Severity classification
-
-grith uses CVSS v3.1 base scores to classify severity, with adjustments for the AI agent security context:
-
-| Severity | CVSS range | Description |
-|---|---|---|
-| Critical | 9.0 – 10.0 | Filter bypass allowing arbitrary code execution without quarantine |
-| High | 7.0 – 8.9 | Filter bypass allowing data exfiltration or privilege escalation |
-| Medium | 4.0 – 6.9 | Partial filter bypass, information disclosure, or denial of service |
-| Low | 0.1 – 3.9 | Minor information leakage, non-exploitable without significant preconditions |
-
-<Callout type="info" title="AI-specific severity factors">
-Standard CVSS scoring may underestimate the impact of filter bypasses. A vulnerability that allows an AI agent to execute an unscored tool call is effectively a full sandbox escape, even if the CVSS "attack complexity" appears high. We adjust severity upward when the vulnerability undermines the core security guarantee.
-</Callout>
-
-## Disclosure process
-
-1. Vulnerability reported via [security@grith.ai](/docs/security/responsible-disclosure)
-2. Acknowledged within 24 hours, triaged within 72 hours
-3. Fix developed and tested
-4. New release published with the fix
-5. Advisory published here and on [GitHub Security Advisories](https://github.com/grith-ai/grith/security/advisories)
-6. CVE requested if applicable
-
-See [Responsible Disclosure](/docs/security/responsible-disclosure) for the full reporting process.
-
-## Archive
-
-No advisories have been published yet. This section will be updated as advisories are issued.
-
-## Next steps
-
-- [Responsible Disclosure](/docs/security/responsible-disclosure) — Report a vulnerability
-- [Threat Model](/docs/security/threat-model) — Understand what grith defends against
+- [Responsible disclosure](/docs/security/responsible-disclosure)
+- [Threat model](/docs/security/threat-model)
+- [Release process](/docs/ops/release-process)

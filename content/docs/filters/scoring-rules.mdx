@@ -1,0 +1,115 @@
+---
+title: "Scoring rules"
+description: "The math behind the composite score — caps, sums, reputation discount, hard gates."
+section: "filters"
+order: 30
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/scoring-rules.mdx"
+---
+
+This page is the reference for *how* filter contributions combine into the final
+composite. See [Composite scoring](/docs/concepts/composite-scoring) for the
+conceptual overview.
+
+## The algorithm
+
+```
+1. Run all filters in their phase order.
+2. Each filter emits a contribution `c_i ∈ ℝ`.
+3. Cap: c_i' = clamp(c_i, -∞, ceiling_filter_threshold)
+4. Sum: composite_raw = Σ c_i'
+5. Reputation discount:
+     if observations ≥ auto_allow_min_observations
+        and trust ≥ auto_allow_trust:
+        d = min(max_score_reduction, composite_raw × (trust − 0.5) × 2)
+        composite = max(0, composite_raw − d)
+     else:
+        composite = composite_raw
+6. Hard gates (capability deny, canary detection):
+     if any filter returned DENY: composite ← auto_deny_threshold + 1
+7. Decide:
+     composite < auto_allow_threshold → ALLOW
+     composite ≥ auto_deny_threshold → DENY
+     otherwise → QUEUE
+```
+
+The exact constants live in `[reputation]` and `[proxy]` config sections. Defaults:
+
+```toml
+[proxy]
+auto_allow_threshold = 3.0
+auto_deny_threshold  = 8.0
+
+[reputation]
+ceiling_filter_threshold     = 5.0
+auto_allow_min_observations  = 8
+auto_allow_trust             = 0.92
+max_score_reduction          = 4.0
+```
+
+## Per-filter caps
+
+Step 3 caps each filter's contribution at `ceiling_filter_threshold`. The intent:
+no single filter can dominate the composite. A buggy filter that fires too hard is
+limited; the operator can investigate without the call being incorrectly denied.
+
+The exception is **hard gates** (DENY-returning filters), which bypass the cap by
+forcing the composite past `auto_deny_threshold` directly.
+
+## Reputation discount
+
+Step 5 is where adaptive trust pays off. The discount is bounded by
+`max_score_reduction` (default 4.0) — so a fully-trusted shape can knock at most 4
+points off the composite. The discount is also gated:
+
+- Need `observations ≥ 8` (default). Newer shapes don't qualify, however
+  high-trust they look — the trust score on a tiny sample size is unreliable.
+- Need `trust ≥ 0.92` (default). Anything less, no discount.
+- Linear scaling: `d ∝ (trust − 0.5) × 2`. Trust at the threshold (0.92) earns less
+  discount than trust at 1.0.
+
+The discount never makes the composite go negative — `composite = max(0, …)`.
+
+## Cold-start mode
+
+`proxy.cold_start_calls` controls a wider escalation zone for the first N calls of a
+fresh install or after a reputation reset. During cold start, the thresholds
+temporarily become:
+
+```
+auto_allow ← cold_start_escalation_low   (default 2.0)
+auto_deny  ← cold_start_escalation_high  (default 10.0)
+```
+
+This makes the digest more aggressive (more things land in queue) and the auto-deny
+less aggressive (more things land in queue rather than deny). The intent is to give
+the reviewer a chance to shape the reputation table without auto-denying calls the
+filters haven't seen patterns for.
+
+Default `cold_start_calls = 0` (disabled). Set higher (e.g. 100) on new
+installations.
+
+## Worked examples
+
+See [Composite scoring](/docs/concepts/composite-scoring#a-worked-example) for
+worked examples with real filter contributions.
+
+## Inspecting scoring decisions
+
+Every decision is captured in the audit log with per-filter contributions, the raw
+and final composite, the reputation discount applied (if any), and any DENY
+short-circuit. Inspect with:
+
+```
+grith audit show <id>
+grith proxy test '<json>'    # for arbitrary call shapes
+```
+
+## See also
+
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [Filter overview](/docs/filters/overview)
+- [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds)
+- [Adaptive reputation](/docs/concepts/adaptive-reputation)

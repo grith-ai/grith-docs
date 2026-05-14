@@ -1,0 +1,77 @@
+---
+title: "Proxy"
+description: "Filter pipeline state and dry-run evaluation."
+section: "api"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/proxy.mdx"
+---
+
+<ApiRouteTable group="Proxy" showHeadings={false} />
+
+## `GET /proxy/status`
+
+Public status: filter stats, current thresholds, queue depth.
+
+```json
+{
+  "filters_enabled": 16,
+  "filters_total": 17,
+  "auto_allow_threshold": 3.0,
+  "auto_deny_threshold": 8.0,
+  "queue_depth": 2,
+  "decisions_last_minute": { "allow": 412, "queue": 3, "deny": 1 }
+}
+```
+
+## `POST /proxy/test`
+
+Dry-run a tool call shape. Returns the would-be decision and full filter breakdown.
+This is the REST equivalent of [`grith proxy test`](/docs/cli/proxy-test).
+
+Request:
+
+```json
+{
+  "operation": "file_read",
+  "target": "/home/you/.ssh/config"
+}
+```
+
+Response:
+
+```json
+{
+  "decision": "queue",
+  "composite_score": 4.2,
+  "filters": [
+    {
+      "name": "sensitive_path",
+      "score": 3.5,
+      "annotations": ["ssh-config"]
+    },
+    {
+      "name": "path_match",
+      "score": 1.2
+    }
+  ]
+}
+```
+
+## `POST /proxy/evaluate` (IPC)
+
+Internal endpoint used by thin-client supervisors to evaluate a real syscall.
+Authenticated by loopback origin only. Should not be called by user code.
+
+## `GET /proxy/status/full` (IPC)
+
+Extended state including per-filter metrics, per-session counters, and recent
+decision histograms. Used by the dashboard.
+
+## See also
+
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [`grith proxy test`](/docs/cli/proxy-test)
+- [Filter reference](/docs/filters/overview)

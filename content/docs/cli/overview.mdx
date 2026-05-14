@@ -1,0 +1,55 @@
+---
+title: "CLI overview"
+description: "Every top-level command in grith, what it does, and where to find more."
+section: "cli"
+order: 0
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/overview.mdx"
+---
+
+`grith` is the single binary that fronts the whole platform. With no arguments it drops
+into an interactive REPL; otherwise the first positional is a subcommand.
+
+```
+grith <command> [options...]
+```
+
+## Global flags
+
+| Flag | What it does |
+| --- | --- |
+| `--config <path>` | Override the config file location. |
+| `--log-level <level>` | One of `trace`, `debug`, `info`, `warn`, `error`. |
+| `--no-color` | Disable ANSI colour in output. Useful for piping. |
+| `--project <name>` | Override the project name (defaults to the current directory). |
+
+## Commands
+
+<CliCommandTable />
+
+## How to read this reference
+
+- **Commands** are documented one-per-page. Click through from the sidebar.
+- **Subcommands** appear on the parent command's page (e.g. `grith canary add`,
+  `grith canary remove` are documented under [grith canary](/docs/cli/canary)).
+- **Exit codes** are 0 for success, 1 for queue, 2 for deny in proxy-style commands;
+  generic non-zero for other failures.
+
+## Where do I start?
+
+Most readers want one of these three:
+
+1. **First-time setup** — run [`grith init`](/docs/cli/init), then point it at an
+   agent with [`grith exec`](/docs/cli/exec).
+2. **Reviewing decisions** — see [`grith digest`](/docs/cli/digest) and
+   [`grith log`](/docs/cli/log).
+3. **Operating the daemon** — see [`grith daemon`](/docs/cli/daemon).
+
+<Callout type="info" title="Generated from clap">
+The command list above is regenerated from the clap definitions in
+`crates/grith-core/src/main.rs` whenever `npm run gen:references` runs in the docs
+repo. If you add a new top-level command in grith, it will appear here automatically
+on the next regeneration.
+</Callout>

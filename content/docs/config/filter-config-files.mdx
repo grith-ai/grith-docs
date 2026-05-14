@@ -1,0 +1,84 @@
+---
+title: "Filter config files"
+description: "The standalone TOML files for filter-specific data — paths, secrets, egress, canaries, and more."
+section: "config"
+order: 8
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/filter-config-files.mdx"
+---
+
+Some filters carry too much data to live inline in `config.toml`. Those filters get
+dedicated TOML files in `config/filters/`, referenced by path from the main config.
+
+## The files
+
+| File | Filter | What it carries |
+| --- | --- | --- |
+| `paths.toml` | [2: Static path matching](/docs/filters/02-static-path-matching) | Curated deny/allow path patterns. |
+| `capabilities.toml` | [6: Capability enforcement](/docs/filters/06-capability-enforcement) | Capability classes per profile. |
+| `secrets.toml` | [7: Secret scanning](/docs/filters/07-secret-credential-scanning) | 1,600+ regex patterns for credential shapes. |
+| `commands.toml` | [8: Command structure analysis](/docs/filters/08-command-structure-analysis) | Dangerous-command patterns. |
+| `egress.toml` | [9: Egress policy](/docs/filters/09-egress-policy) | Allow/deny hostnames and IP ranges. |
+| `dlp.toml` | [10: DLP gate](/docs/filters/10-dlp-gate) | PII/credit-card patterns, custom data shapes. |
+| `canary.toml` | [11: Canary detection](/docs/filters/11-canary-secret-detection) | Registered canary tokens (auto-managed by `grith canary`). |
+| `domains.toml` | [12: Destination reputation](/docs/filters/12-destination-reputation) | Initial reputation seeds. |
+| `containment.toml` | [15: Session containment](/docs/filters/15-session-containment) | Zone definitions. |
+| `meta_rules.toml` | (scoring engine) | Composite scoring overrides. |
+
+## File locations
+
+The shipping default copies live in `config/filters/` inside the grith install.
+User overrides live in `~/.config/grith/filters/`. When a user file is present,
+grith **layers** it on top of the default — entries with the same key replace,
+new entries add.
+
+```
+/usr/local/share/grith/config/filters/paths.toml    # shipping defaults
+~/.config/grith/filters/paths.toml                  # user layer (optional)
+```
+
+Edit the user layer; leave the shipping defaults alone. `grith init` regenerates
+the user layer if you delete it.
+
+## Reload after edit
+
+The filter configs are loaded on daemon start and not watched. After editing:
+
+```
+grith config reload     # if daemon running
+# OR
+grith daemon stop && grith daemon start
+```
+
+For standalone `grith exec` invocations, the next invocation picks up changes.
+
+## Schema per file
+
+Each file's schema is documented on the corresponding filter page (see the table
+above). The common shape is:
+
+```toml
+[[allow]]
+key = "..."
+score = -1.0
+reason = "why we allow this"
+
+[[deny]]
+key = "..."
+score = 4.0
+reason = "why we deny this"
+```
+
+Where `key` varies per filter (path glob, command pattern, host, regex, etc).
+
+## Pro: centralised configs
+
+A Pro team can centrally manage these files via the dashboard and sync to every
+device. See [Centralised policies](/docs/pro/centralised-policies).
+
+## See also
+
+- [Configuration overview](/docs/config/overview)
+- Per-filter pages under [Filter reference](/docs/filters/overview).

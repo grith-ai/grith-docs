@@ -1,0 +1,53 @@
+---
+title: "[llm]"
+description: "LLM provider configuration — Ollama, OpenAI, Anthropic, OpenRouter."
+section: "config"
+order: 5
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/llm.mdx"
+---
+
+Provider configuration for `grith run` / built-in REPL. If you only supervise external
+agents (Claude Code, Codex, Aider), they manage their own model connections — this
+section can stay at defaults.
+
+<ConfigKeyTable section="llm" />
+
+<ConfigKeyTable section="llm.ollama" />
+
+<ConfigKeyTable section="llm.openai" />
+
+<ConfigKeyTable section="llm.anthropic" />
+
+<ConfigKeyTable section="llm.openrouter" />
+
+## API keys
+
+API keys can live in two places:
+
+1. **Inline in the config file**, e.g. `api_key = "sk-..."`. Permissioned to `0600`
+   on the user config file.
+2. **Environment variable** — provider-prefixed: `OPENAI_API_KEY`,
+   `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`. Env vars take precedence over
+   inline values.
+
+For Pro teams, an encrypted shared keystore is available; see
+[Encrypted key management](/docs/pro/encrypted-key-management).
+
+## Switching providers per call
+
+```
+grith run --provider anthropic "explain mutexes"
+grith run --provider ollama "explain mutexes"
+```
+
+`--provider` overrides `default_provider` for that invocation. The other provider
+configs stay in the config file but aren't touched.
+
+## See also
+
+- [Connect a model](/docs/start/connect-a-model) — getting-started guide
+- [`grith run`](/docs/cli/run)
+- [Encrypted key management (Pro)](/docs/pro/encrypted-key-management)

@@ -1,0 +1,124 @@
+---
+title: "Reverse proxy & TLS"
+description: "Front grith with nginx, Caddy, or Traefik for TLS termination and ACL."
+section: "guides"
+order: 17
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/reverse-proxy-tls.mdx"
+---
+
+The grith daemon binds to loopback by default — there is no remote attack
+surface. If you need to expose the dashboard or API to other machines, front
+grith with a reverse proxy that terminates TLS. This is almost always cleaner
+than configuring native TLS in grith.
+
+## Why a reverse proxy
+
+- **Centralised cert management** — let Let's Encrypt / cert-manager handle
+  certs.
+- **Modern TLS policy** — keep cipher suite + protocol versions consistent with
+  the rest of your stack.
+- **Access control** — IP allowlist, basic auth, or OIDC at the proxy layer.
+- **HSTS / CSP / other headers** — the proxy adds them; grith stays simple.
+
+## Caddy (simplest)
+
+`Caddyfile`:
+
+```
+grith.internal.example {
+    reverse_proxy 127.0.0.1:3141
+    # Caddy handles TLS automatically via Let's Encrypt
+}
+```
+
+`caddy run --config Caddyfile`. Done.
+
+## nginx
+
+```
+server {
+    listen 443 ssl http2;
+    server_name grith.internal.example;
+
+    ssl_certificate     /etc/letsencrypt/live/grith.internal.example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/grith.internal.example/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3141;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location /events {
+        proxy_pass http://127.0.0.1:3141;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 1d;
+    }
+}
+```
+
+The `/events` block is for the WebSocket — needs the upgrade headers.
+
+## Traefik
+
+```yaml
+http:
+  routers:
+    grith:
+      rule: "Host(`grith.internal.example`)"
+      service: grith
+      tls:
+        certResolver: letsencrypt
+  services:
+    grith:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:3141"
+```
+
+## Daemon-side config
+
+When fronted by a proxy, grith doesn't need TLS itself:
+
+```toml
+[server]
+host = "127.0.0.1"   # still loopback only — the proxy reaches across
+port = 3141
+# omit [server.tls]
+```
+
+## Authentication at the proxy
+
+For team setups with multiple users on the same daemon:
+
+- **OIDC** — Caddy + caddy-security, nginx + oauth2-proxy, Traefik + ForwardAuth.
+- **IP allowlist** — easiest for fixed-IP deployments.
+- **Basic auth** — for quick locked-down setups (less ideal than OIDC).
+
+The grith daemon will see authenticated requests from the proxy via headers like
+`X-Forwarded-User`. For v0.1, grith trusts the proxy's auth headers when
+configured to (`server.trust_forwarded_user = true`). For v0.2, native bearer-
+token auth is planned.
+
+## Headers grith reads
+
+| Header | What |
+| --- | --- |
+| `X-Forwarded-For` | Used for rate-limit keying. |
+| `X-Forwarded-Proto` | Used to emit the correct scheme in dashboard links. |
+| `X-Forwarded-User` | Used for audit attribution (with `trust_forwarded_user = true`). |
+| `Authorization: Bearer ...` | Future: native auth. |
+
+## See also
+
+- [`[server]` config](/docs/config/server)
+- [Running as a daemon](/docs/ops/running-as-a-daemon)
+- [Notification security model](/docs/security/notification-security)

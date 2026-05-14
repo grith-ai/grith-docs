@@ -1,0 +1,115 @@
+---
+title: "Quickstart"
+description: "Five minutes from install to a supervised agent session and reviewing its first queued call."
+section: "start"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/quickstart.mdx"
+---
+
+This is the shortest path from a freshly installed `grith` to a working supervised
+session with a real AI agent. The five steps below take five minutes if your network
+is cooperative.
+
+## 1. Generate a default config
+
+```
+grith init
+```
+
+That creates `~/.config/grith/config.toml` with the shipping defaults. You can edit
+this freely later — for the rest of this walkthrough, the defaults are exactly right.
+
+## 2. Pick an agent
+
+You can grith any agent that spawns processes. We're going to use Claude Code as the
+example because it has a built-in supervisor profile.
+
+```
+which claude
+# /home/you/.local/bin/claude
+```
+
+Don't have Claude Code installed? Substitute any of:
+
+- `aider` ([github.com/Aider-AI/aider](https://github.com/Aider-AI/aider))
+- `goose` ([block.github.io/goose](https://block.github.io/goose))
+- `codex` (OpenAI Codex CLI)
+- Or a plain `bash` shell — grith will supervise anything.
+
+## 3. Run it under grith
+
+```
+cd ~/projects/somewhere-with-code
+grith exec --profile claude-code -- claude
+```
+
+The double-dash is important — everything after it is passed verbatim to the supervised
+command. The `--profile` flag picks the supervisor profile; we have
+[built-in profiles](/docs/profiles/built-in-profiles) for the popular agents.
+
+You should now see Claude Code's normal prompt. grith has wrapped it transparently:
+input/output works exactly the same, but every file open, every shell command, every
+network call is being intercepted in real time.
+
+## 4. Watch a call get evaluated
+
+Ask the agent to do something innocuous, like reading a small file:
+
+<Terminal>
+{`> show me the package.json
+[grith] proxy: file_read /home/you/proj/package.json → score 0.4 → auto-allow
+[grith] audit: recorded #481
+{ "name": "my-project", ... }`}
+</Terminal>
+
+A score below `proxy.auto_allow_threshold` (default `3.0`) runs immediately. Now ask
+the agent to do something that should land in the digest:
+
+<Terminal>
+{`> read my SSH config
+[grith] proxy: file_read /home/you/.ssh/config → score 4.2 → quarantine
+[grith] queued for review: digest item 7d1f...
+[agent paused]`}
+</Terminal>
+
+The score crossed the quarantine threshold. The agent's process is frozen by ptrace,
+waiting for a decision from you.
+
+## 5. Review and decide
+
+In another terminal:
+
+```
+grith digest review
+```
+
+You'll see the queued item with full context: which filters fired, what the agent was
+about to do, and which actions are available. From here:
+
+- **Approve** — let it run once.
+- **Approve + learn** — let it run, and add this call shape to the reputation system
+  so similar future calls auto-allow.
+- **Deny** — block it.
+- **Deny + terminate** — block it and kill the agent's process tree.
+
+The keystrokes are `a`, `l`, `d`, `t` respectively. Pick one. The frozen agent
+unfreezes (or dies) accordingly.
+
+## You're done
+
+That's the core loop. Everything else in these docs is detail on top of those five
+steps.
+
+## Where to go next
+
+- [Choose your agent](/docs/start/choose-your-agent) — the right profile for the
+  specific agent you'll be running.
+- [Reviewing the digest](/docs/start/reviewing-the-digest) — full digest workflow,
+  including the dashboard UI.
+- [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) — if too much
+  is landing in the digest (or too little), this is where you adjust.
+- [The threat model](/docs/concepts/threat-model) — what grith protects against, and
+  what it explicitly doesn't.

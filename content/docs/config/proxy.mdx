@@ -1,0 +1,51 @@
+---
+title: "[proxy]"
+description: "Scoring thresholds and per-filter sub-configs."
+section: "config"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/proxy.mdx"
+---
+
+The `[proxy]` section configures the scoring engine — the thresholds, the cold-start
+behaviour, and the queue timeout.
+
+<ConfigKeyTable section="proxy" />
+
+## Per-filter sub-sections
+
+Each filter has its own sub-section under `[proxy.filters.*]`:
+
+<ConfigKeyTable section="proxy.filters.reputation" />
+
+<ConfigKeyTable section="proxy.filters.behavioural" />
+
+<ConfigKeyTable section="proxy.filters.taint" />
+
+<ConfigKeyTable section="proxy.filters.rate_limit" />
+
+<ConfigKeyTable section="proxy.filters.semantic" />
+
+<ConfigKeyTable section="proxy.filters.egress" />
+
+<ConfigKeyTable section="proxy.filters.session_containment" />
+
+## Tuning thresholds
+
+The most important pair is `auto_allow_threshold` and `auto_deny_threshold`:
+
+- **Lower auto-allow** = more calls go to queue (paranoid).
+- **Lower auto-deny** = more calls auto-deny (very paranoid).
+- **Higher auto-allow** = more calls auto-allow (quiet, less safe).
+- **Higher auto-deny** = fewer calls auto-deny (chatty queue).
+
+See [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) for the
+walkthrough.
+
+## See also
+
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [Filter overview](/docs/filters/overview)
+- [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds)

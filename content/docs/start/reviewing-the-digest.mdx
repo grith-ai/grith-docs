@@ -1,0 +1,135 @@
+---
+title: "Reviewing the digest"
+description: "Approve, deny, learn, escalate — the digest workflow from CLI and dashboard."
+section: "start"
+order: 6
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/reviewing-the-digest.mdx"
+---
+
+The digest is grith's review queue: ambiguous calls that scored between
+`proxy.auto_allow_threshold` (default `3.0`) and `proxy.auto_deny_threshold` (default
+`8.0`) land here, the originating process is frozen, and a human (you, or whoever's
+on call) makes the decision.
+
+There are two ways to review: the CLI and the dashboard.
+
+## CLI
+
+The fastest path:
+
+```
+grith digest review
+```
+
+This is interactive. You see one item at a time, with the full context from the filter
+pipeline, and a single keystroke applies a decision. The keystrokes:
+
+| Key | Action | What it does |
+| --- | --- | --- |
+| `a` | approve | Allow this call once. |
+| `l` | learn | Allow + train reputation so similar future calls auto-allow. |
+| `d` | deny | Block this call. Process gets EACCES (or the syscall-appropriate failure). |
+| `t` | deny + terminate | Block + kill the originating process tree. Use for clear exfil. |
+| `u` | unlock-egress | Approve and whitelist the destination for this session. |
+| `e` | escalate | (Pro) route to a teammate or channel for second opinion. |
+| `s` | skip | Move on without deciding. Item remains queued. |
+| `q` | quit | Exit review mode. Pending items stay queued. |
+
+For non-interactive use:
+
+```
+# List pending items
+grith digest list
+
+# Inspect one item by ID
+grith digest show 7d1f...
+
+# Decide one item directly
+grith digest approve 7d1f...
+grith digest deny 7d1f...
+```
+
+## Dashboard
+
+The dashboard lives at `http://127.0.0.1:3141` when the daemon is running. It shows
+the same queue with richer context: filter scores plotted on a number line, the
+session's recent call history, and the calling agent's full process tree.
+
+```
+grith daemon start
+# Visit http://127.0.0.1:3141 in a browser
+```
+
+Decisions made in the dashboard apply immediately and unfreeze the originating
+process. Multiple reviewers can connect simultaneously; decisions are atomic.
+
+## Pro: channel routing
+
+A Pro license lets you route the digest to Slack / Discord / Telegram / Teams / email
+/ PagerDuty / Opsgenie. Approvers click a button or react with an emoji; the decision
+posts back via HMAC-signed webhook. See:
+
+- [Notifications: Slack](/docs/guides/notifications-slack)
+- [Notifications: Telegram](/docs/guides/notifications-telegram)
+- [Notification security model](/docs/security/notification-security)
+
+## Anatomy of a queued item
+
+Every digest item records:
+
+- **Operation** (`file_read`, `file_write`, `shell`, `network`, ...) and target
+  (the path, command, or URL).
+- **Composite score** and the **threshold zone** it landed in.
+- **Filter scores** — one row per filter, with the contribution and annotations.
+- **Session info** — session id, profile, originating PID, command line.
+- **Recent calls** — the last N calls in the same session, for behavioural context.
+- **Reputation snapshot** — what the trust table says about this destination /
+  call shape today.
+
+A "yes" or "no" should be obvious from the filter list. When it isn't, that's a hint
+that your scoring thresholds need tuning — see
+[Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds).
+
+## Approval semantics
+
+- **approve** is single-shot. The exact call shape is recorded as allowed for this
+  invocation only.
+- **learn** updates the reputation table. Next time the same combination of
+  (destination, call shape, session profile) appears, it inherits the increased trust
+  and is more likely to auto-allow.
+- **allow-always** (Pro) adds the call to a permanent allowlist. Used sparingly — it
+  bypasses every filter except hard gates (canary, capability) on future matches.
+- **deny** is single-shot, same as approve.
+- **deny + terminate** also kills the process tree. Use when you've identified active
+  exfiltration in progress.
+
+## Timeouts
+
+If nothing decides a queued item within `proxy.review_timeout_seconds` (default 300s
+= 5 minutes), grith auto-denies. This avoids leaving frozen processes hanging
+indefinitely. Tune via `~/.config/grith/config.toml`:
+
+```toml
+[proxy]
+review_timeout_seconds = 600   # 10 minutes
+```
+
+Set to `0` to disable the timeout entirely (not recommended in unattended setups).
+
+## Programmatic decision-making
+
+Anything in the dashboard / CLI is also available over the REST API. See
+[Digest API](/docs/api/digest) for the route shapes. A common pattern: wire a
+notification channel to a webhook receiver that auto-approves based on caller
+identity (e.g. "any read inside the project dir from this user → approve") and falls
+back to human review otherwise.
+
+## See also
+
+- [The quarantine digest](/docs/concepts/quarantine-digest) — concept page on why
+  the queue exists and how the threshold model works.
+- [grith digest](/docs/cli/digest) — CLI reference.
+- [Digest API](/docs/api/digest) — REST endpoints.

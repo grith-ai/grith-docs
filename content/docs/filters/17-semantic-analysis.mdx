@@ -1,0 +1,78 @@
+---
+title: "17. Semantic analysis"
+description: "Stub. Local embedding-based intent classification. Planned for v1.5."
+section: "filters"
+order: 26
+tier: "community"
+status: "planned"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/17-semantic-analysis.mdx"
+---
+
+<Callout type="info" title="Stub in v0.1">
+Filter 17 is a stub in v0.1. The infrastructure ships and the scoring hook is wired
+in, but the embedding model is not — the filter currently always returns 0.0. Full
+implementation is targeted for v1.5.
+</Callout>
+
+| | |
+| --- | --- |
+| **Phase** | Pattern |
+| **Score range** | 0.0 (stub) → +0 to +4 (planned) |
+| **Module** | `crates/grith-proxy/src/filters/semantic.rs` |
+| **Config** | `[proxy.filters.semantic]` |
+
+## What it will do
+
+Semantic analysis runs a local embedding model over the call's content (command
+text, request body, args) and compares the resulting vector to known clusters of
+intent:
+
+- **Exfil intent** — payloads that semantically resemble "send credentials" /
+  "upload file contents" patterns the model has seen.
+- **Destructive intent** — commands that semantically resemble "delete data" /
+  "destroy state".
+- **Reconnaissance intent** — commands that semantically resemble "discover
+  filesystem" / "enumerate users" / "scan ports".
+
+The intent cluster contributes a score based on similarity strength.
+
+## Why it's stub for v0.1
+
+Two reasons:
+
+1. The model has to run locally — that's the whole point of grith staying offline.
+   Picking a model small enough to be a reasonable dependency, calibrated against
+   the right clusters, takes time.
+2. Semantic detection is the highest false-positive-risk filter we have on the
+   roadmap. Shipping it half-baked would degrade the rest of the pipeline's
+   precision. We'd rather have it disabled than have it nuisance.
+
+## What it complements
+
+Pattern-based filters catch the *shape* of a dangerous call. Semantic analysis
+will catch the *intent* even when the shape is novel:
+
+- A novel obfuscation that the command parser doesn't recognise.
+- An exfil request phrased in a way the secret scanner can't pattern-match.
+- A new credential format that hasn't been added to any regex set.
+
+The trade-off is that semantic similarity is fundamentally fuzzier than pattern
+matching, so the filter's contribution will be capped low and intended to nudge
+borderline cases rather than dominate scoring.
+
+## Status
+
+- v0.1: stub. Always returns 0.0.
+- v0.2: stub remains; integration scaffolding solidifies.
+- v1.5 (planned): full implementation with `all-MiniLM-L6-v2` or comparable local
+  embedding model.
+- v2.0: tunable intent clusters; team-shareable.
+
+For latest progress, see the [roadmap](/docs/resources/roadmap).
+
+## See also
+
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline)
+- [Composite scoring](/docs/concepts/composite-scoring)

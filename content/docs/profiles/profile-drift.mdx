@@ -1,0 +1,60 @@
+---
+title: "Profile drift"
+description: "Continuous monitoring for profile divergence from observed behaviour. Planned."
+section: "profiles"
+order: 14
+tier: "pro"
+status: "planned"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/profile-drift.mdx"
+---
+
+<PlanBadge tier="pro" planned />
+
+Profile drift is the continuous-monitoring sibling of [profile audit](/docs/profiles/profile-audit).
+Where audit is a manual one-shot, drift watches live sessions and surfaces
+divergence in the dashboard.
+
+<Callout type="info" title="Planned for v0.1.x">
+Profile drift detection is in the v0.1.x roadmap, after v0.1 launch stabilises.
+The infrastructure (audit log enrichment, dashboard surfaces) is ready; the
+drift detector itself ships in a point release.
+</Callout>
+
+## What it will detect
+
+- **Stale routine entries** — profile entries that haven't matched any call in
+  the last 30 days. Candidates for removal.
+- **Persistent escapees** — call patterns that escape the routine set every
+  session. Candidates for promotion.
+- **Agent version changes** — when an agent's underlying binary changes and the
+  helper-subprocess shape changes with it (e.g. new cache directory).
+- **Profile vs. observed-capabilities mismatch** — when the profile grants a
+  capability that hasn't been exercised in N sessions.
+
+## How it surfaces
+
+The dashboard's "Profiles" tab lists active profiles with a drift indicator.
+Clicking through opens an audit-style view of the live data with
+"keep / drop / promote" suggestions.
+
+For team-managed profiles (Pro), drift detection can open a PR-style review
+flow against the central profile bundle, so changes are made deliberately and
+audited.
+
+## Threat model
+
+A drifting profile is a security concern: capabilities granted but unused
+represent attack surface that the profile claims but doesn't need. Drift
+detection helps tighten profiles over time, narrowing what an adversary could
+exploit by hijacking the agent.
+
+The detector is read-only — it doesn't modify profiles automatically. As with
+profile audit, policy changes are deliberate.
+
+## See also
+
+- [Profile audit](/docs/profiles/profile-audit) — manual equivalent
+- [Centralised policies (Pro)](/docs/pro/centralised-policies)
+- [Roadmap](/docs/resources/roadmap)

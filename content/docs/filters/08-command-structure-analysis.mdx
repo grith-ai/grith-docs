@@ -1,0 +1,87 @@
+---
+title: "8. Command structure analysis"
+description: "Parses shell commands. Catches piped curl-to-sh, fork bombs, smuggled payloads."
+section: "filters"
+order: 17
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/08-command-structure-analysis.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Pattern |
+| **Score range** | +2 to +4 |
+| **Module** | `crates/grith-proxy/src/filters/command.rs` |
+| **Config file** | `config/filters/commands.toml` |
+
+A small shell parser that catches dangerous command structures. Not a security
+sandbox — the kernel still runs the command — but it scores the call's shape against
+patterns that have no good reason to appear in normal agent activity.
+
+## What it catches
+
+| Pattern | Score | Why |
+| --- | --- | --- |
+| `curl ... \| sh` | +4.0 | Classic remote-code-execution one-liner. |
+| `wget ... \| sh` | +4.0 | Same. |
+| `bash <( curl ... )` | +4.0 | Process substitution variant. |
+| `eval $(base64 -d ...)` | +3.5 | Decoded-then-evaluated payload. |
+| `rm -rf /` | +4.0 | Or close variants. |
+| Fork-bomb-shaped patterns | +4.0 | The classic `:(){ ... };:` shape. |
+| `sudo ...` to a non-allowlisted command | +3.0 | Privilege escalation. |
+| `chmod 777` | +2.0 | Universal write — usually a bad sign. |
+| `nc -l` / `netcat -l` | +3.0 | Opening listening sockets via shell. |
+| Excessive subshell nesting (>4 deep) | +2.0 | Obfuscation tell. |
+| Backtick + base64 + pipe | +3.0 | Combined obfuscation. |
+
+The shipping ruleset is in `config/filters/commands.toml`. Each pattern has a
+short reason string that surfaces in the audit log.
+
+## How it parses
+
+The parser is intentionally lightweight — it tokenises into commands separated by
+`|`, `;`, `&&`, `||`, then matches against the pattern set. It is not a full POSIX
+shell parser; it doesn't try to track variables or process substitutions
+semantically. It catches the *shape*, not the meaning.
+
+That's deliberate. A semantic parser would be slow and have its own vulnerability
+surface. A pattern-shape parser is fast and bounded in what it can do (or get wrong).
+
+## Limitations
+
+- **Obfuscation gets through.** A determined attacker who chains 5 levels of
+  string-building, base64-encoded payloads, and indirection can evade this filter.
+  That's why it's not the only line — the secret scanner, DLP gate, and behavioural
+  filter also see what happens.
+- **Doesn't run on `exec` syscalls directly**, only on calls where the operation is
+  recognised as a shell command (i.e. the executable is bash/sh/zsh/dash with `-c`
+  args, or stdin to a shell process).
+
+## Tuning
+
+Add custom patterns in `~/.config/grith/filters/commands.toml`:
+
+```toml
+[[deny]]
+pattern = "kubectl delete --all"
+score   = 4.0
+reason  = "no agent should ever do this"
+```
+
+Or relax with allow-shape:
+
+```toml
+[[allow]]
+pattern = "deno run -A vendor/build.ts"
+score   = -1.0
+reason  = "our build script needs -A"
+```
+
+## See also
+
+- [`config/filters/commands.toml`](/docs/config/filter-config-files)
+- [Filter 5: Argument length & structure](/docs/filters/05-argument-length-structure)
+- [Filter 13: Behavioural anomaly](/docs/filters/13-behavioural-anomaly) — for
+  spotting patterns the shape parser misses

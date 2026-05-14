@@ -1,0 +1,184 @@
+---
+title: "Composite scoring"
+description: "How 17 filter scores combine into one composite, and how that composite maps to a decision."
+section: "concepts"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/composite-scoring.mdx"
+---
+
+After the [three-phase pipeline](/docs/concepts/three-phase-pipeline) runs, each of
+the 17 filters has emitted a score (positive contributes toward deny, negative toward
+allow). The scoring engine combines them into a single composite, applies the
+reputation adjustment, and routes the call.
+
+## The basic combination
+
+Naive sum is wrong: it would let one over-eager filter dominate, and it would make
+filter weights painfully fragile to tune.
+
+What grith actually does (in `grith-proxy::scoring::ScoringEngine`):
+
+1. **Cap each filter's contribution** at `reputation.ceiling_filter_threshold`
+   (default `5.0`). No single filter can push the composite past that ceiling on its
+   own.
+2. **Sum the capped contributions**. Negative scores (from routine paths, approved
+   destinations) subtract.
+3. **Apply the reputation discount**: if the trust table has observed this
+   (destination, call shape, profile) combination enough times to qualify
+   (`reputation.auto_allow_min_observations`, default `8`) and the trust score is
+   above `reputation.auto_allow_trust` (default `0.92`), subtract up to
+   `reputation.max_score_reduction` (default `4.0`) — but never below `0`.
+4. **Apply hard gates last**: if any filter returned DENY (capability filter blocked
+   the call, or canary filter detected an exfil token), force-set composite to
+   `>= auto_deny_threshold`.
+
+The result is the composite score.
+
+## The decision table
+
+```
+composite < proxy.auto_allow_threshold   →  ALLOW   (default <3.0)
+composite ≥ proxy.auto_deny_threshold    →  DENY    (default >8.0)
+otherwise                                →  QUEUE
+```
+
+`auto_allow_threshold` and `auto_deny_threshold` are configurable. The defaults
+(`3.0`, `8.0`) are tuned for the typical agent workload — see
+[Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) for when to
+move them.
+
+## Cold start
+
+Before grith has seen `proxy.cold_start_calls` worth of traffic, the thresholds
+widen — `cold_start_escalation_low` / `cold_start_escalation_high`. This makes the
+digest more permissive while you're learning your own scoring profile, so you can
+shape the reputation table without a torrent of trivial quarantines.
+
+Default for v0.1 is `cold_start_calls = 0` (cold start disabled). Set higher if a
+new install is flooding the queue.
+
+## A worked example
+
+Agent reads a project file:
+
+```
+file_read /project/src/app.ts
+
+  filter                       contribution
+  ────────────────────────────────────────
+  operation_risk               +0.5     (read = low risk)
+  path_match                   -1.0     (project dir is allowlisted)
+  sensitive_path                0
+  allowlist                     0
+  argument                      0
+  capability                    0
+  ────────────────────────────────────────
+  Phase 1 subtotal             -0.5
+
+  secret_scan                   0       (no content yet — this is a read)
+  command_structure             0       (not a shell call)
+  egress_policy                 0       (not a network call)
+  dlp_gate                      0
+  canary                        0
+  ────────────────────────────────────────
+  Phase 2 subtotal              0.0
+
+  reputation                   -0.3     (project dir trusted)
+  behavioural                   0       (within baseline)
+  taint                         0       (clean read)
+  session_containment           0       (in the right zone)
+  rate_limit                    0
+  semantic                      0       (stub)
+  ────────────────────────────────────────
+  Phase 3 subtotal             -0.3
+
+  Composite (pre-reputation):  -0.8
+  Reputation discount applied: -0.0     (already negative; floor at 0)
+  Composite:                    0.0   → ALLOW
+```
+
+The same agent reads `~/.ssh/config` ten seconds later:
+
+```
+file_read /home/you/.ssh/config
+
+  operation_risk               +0.5
+  path_match                   +1.2     (.ssh/ on the static denylist)
+  sensitive_path               +3.5     (ssh config heuristic)
+  allowlist                     0
+  argument                      0
+  capability                    0
+  ────────────────────────────────────────
+  Phase 1 subtotal             +5.2
+
+  (Phases 2 and 3 add nothing material)
+
+  Composite:                   +5.2   → QUEUE  (between 3.0 and 8.0)
+```
+
+A taint-tracked network call after that:
+
+```
+network POST https://api.example.com/upload  (body contains .env contents)
+
+  operation_risk               +1.5     (network write)
+  ...
+  secret_scan                  +4.0     (matched API key pattern)
+  egress_policy                +1.0     (unknown host)
+  dlp_gate                     +3.5     (large credential-shaped payload)
+  ...
+  taint                        +3.0     (body originated from .env read 4 calls ago)
+  reputation                    0       (no history with this host)
+
+  Composite (before ceiling):  +12.5
+  After per-filter ceilings:   +9.5   → DENY
+```
+
+(Numbers are illustrative — the exact filter weights are documented per-filter and
+in [Scoring rules](/docs/filters/scoring-rules).)
+
+## Why caps and not weights
+
+Per-filter weights would mean tuning ~17 numbers in concert. Caps mean tuning one
+number per filter (its maximum contribution), and the composite emerges. It's also
+robust to a buggy filter: a filter that fires too aggressively can still only push
+the composite up by its cap.
+
+## Hard gates: capability and canary
+
+Two filters are *not* score contributors:
+
+- [Capability enforcement](/docs/filters/06-capability-enforcement) returns DENY when
+  the active profile doesn't grant the necessary capability for the call.
+- [Canary detection](/docs/filters/11-canary-secret-detection) returns DENY when an
+  outbound payload contains a registered canary token.
+
+Both short-circuit the composite. A capability deny on a network call doesn't get
+the "you're inside the project, that's nice" discount.
+
+## Inspecting the scoring
+
+Every decision is logged with the per-filter breakdown:
+
+```
+grith audit
+grith audit show <id>
+```
+
+For interactive debugging:
+
+```
+grith proxy test '{"operation":"file_read","target":"/home/you/.ssh/config"}'
+```
+
+The exit code reflects the decision (0 allow, 1 queue, 2 deny). Useful in scripts.
+
+## See also
+
+- [Filter overview](/docs/filters/overview) — every filter and its score range
+- [Scoring rules](/docs/filters/scoring-rules) — full math reference
+- [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds)
+- [Adaptive reputation](/docs/concepts/adaptive-reputation) — the trust table

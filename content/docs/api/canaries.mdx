@@ -1,0 +1,56 @@
+---
+title: "Canaries"
+description: "REST endpoints for managing canary tokens."
+section: "api"
+order: 6
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/canaries.mdx"
+---
+
+REST surface for the canary registry. CLI equivalent: [`grith canary`](/docs/cli/canary).
+
+<ApiRouteTable group="Canaries" showHeadings={false} />
+
+## Canary shape
+
+```json
+{
+  "id": "ca-7f1...",
+  "label": "aws-prod-decoy",
+  "format": "aws_secret",
+  "placed_at": "/home/you/.aws/credentials_backup",
+  "registered_at": "2026-05-10T11:00:00Z",
+  "fires": 0
+}
+```
+
+The actual token value is never returned by the API — it would defeat the trap.
+
+## `POST /canaries`
+
+Create + register a new canary. Request:
+
+```json
+{
+  "format": "aws_secret",
+  "place": "/home/you/.aws/credentials_backup",
+  "label": "aws-prod-decoy"
+}
+```
+
+For `format: "custom"`, also include `"value": "<literal token>"`.
+
+Response: the canary shape (without the value).
+
+## `POST /canaries/{id}/rotate`
+
+Generate a new token of the same format/label, replace the file in place, update
+the registration.
+
+## See also
+
+- [Canary tokens](/docs/concepts/canary-tokens)
+- [Filter 11: Canary detection](/docs/filters/11-canary-secret-detection)
+- [Setting up canary tokens](/docs/guides/setting-up-canary-tokens)

@@ -3,24 +3,27 @@ import { GITHUB_URL, WEBSITE_URL, DOCS_REPO_URL } from '@/lib/constants';
 
 const footerLinks = {
   Documentation: [
-    { label: 'Installation', href: '/docs/getting-started/installation' },
-    { label: 'Quickstart', href: '/docs/getting-started/quickstart' },
-    { label: 'CLI Reference', href: '/docs/reference/cli' },
-    { label: 'API Reference', href: '/docs/reference/api-rest' },
+    { label: 'Installation', href: '/docs/start/installation' },
+    { label: 'Quickstart', href: '/docs/start/quickstart' },
+    { label: 'CLI reference', href: '/docs/cli/overview' },
+    { label: 'API reference', href: '/docs/api/overview' },
+    { label: 'Filter reference', href: '/docs/filters/overview' },
   ],
   Product: [
     { label: 'Website', href: WEBSITE_URL, external: true },
     { label: 'GitHub', href: GITHUB_URL, external: true },
-    { label: 'Pro Plan', href: '/docs/pro/overview' },
+    { label: 'Pro', href: '/docs/pro/whats-in-pro' },
+    { label: 'Enterprise', href: '/docs/enterprise/whats-in-enterprise' },
   ],
   Security: [
-    { label: 'Threat Model', href: '/docs/security/threat-model' },
-    { label: 'Responsible Disclosure', href: '/docs/security/responsible-disclosure' },
-    { label: 'Security Advisories', href: '/docs/security/advisories' },
+    { label: 'Threat model', href: '/docs/security/threat-model' },
+    { label: 'Responsible disclosure', href: '/docs/security/responsible-disclosure' },
+    { label: 'Advisories', href: '/docs/security/advisories' },
   ],
   Community: [
     { label: 'Discussions', href: GITHUB_URL + '/discussions', external: true },
     { label: 'Edit these docs', href: DOCS_REPO_URL, external: true },
+    { label: 'Changelog', href: '/docs/resources/changelog' },
   ],
 };
 

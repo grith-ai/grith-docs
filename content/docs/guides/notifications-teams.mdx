@@ -1,0 +1,58 @@
+---
+title: "Notifications: Microsoft Teams"
+description: "Route grith events to a Microsoft Teams channel."
+section: "guides"
+order: 7
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-teams.mdx"
+---
+
+Send digest items and alerts to a Microsoft Teams channel via incoming webhook.
+
+## 1. Get a webhook URL
+
+In Teams:
+
+1. **Channel → ⋯ → Connectors → Incoming Webhook**.
+2. Name it (e.g. `grith`), upload an icon, save.
+3. Copy the webhook URL.
+
+## 2. Configure
+
+```toml
+[notifications.channels.teams]
+enabled = true
+webhook_url = "https://outlook.office.com/webhook/..."
+severity_map = { canary = "critical", queue = "warning" }
+```
+
+## 3. Test
+
+```
+grith notifications test teams
+```
+
+## Format
+
+Teams messages render as Adaptive Cards. Each digest item shows:
+
+- The operation and target as the card title.
+- Filter scores in a fact list.
+- Session info at the bottom.
+- A link button to the daemon dashboard for review.
+
+## Interactive cards
+
+Teams supports Action.Submit for inline buttons, but routing the callback back
+to grith requires an Azure-side relay (Teams doesn't post to arbitrary external
+endpoints). For v0.1, we recommend dashboard-link review rather than inline
+buttons. Full Action.Submit + relay support is planned for v0.2.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)
+- Other channels: [Slack](/docs/guides/notifications-slack),
+  [Email](/docs/guides/notifications-email)

@@ -1,0 +1,80 @@
+---
+title: "grith run"
+description: "Execute a single non-interactive task using the configured LLM provider."
+section: "cli"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/run.mdx"
+---
+
+```
+grith run <TASK>
+```
+
+Run a single task through grith's built-in REPL non-interactively. The configured
+provider (Ollama / OpenAI / Anthropic / OpenRouter) is invoked with the task as a
+prompt; tool calls the model makes go through the filter pipeline before executing.
+
+## Synopsis
+
+```
+grith run [GLOBAL OPTIONS] <TASK>
+```
+
+## Arguments
+
+| Argument | Required | What it is |
+| --- | --- | --- |
+| `<TASK>` | yes | The natural-language instruction. Quote it if it contains spaces. |
+
+## Behaviour
+
+- Uses `[llm] default_provider` unless overridden via `--provider` (global flag).
+- Runs the model to completion or until tool-call budget is exhausted.
+- Every file/shell/network call the model issues is supervised exactly like
+  [`grith exec`](/docs/cli/exec).
+- Exits when the task is complete. Exit code `0` on success.
+
+## Examples
+
+A trivial completion:
+
+<Terminal>
+{`$ grith run "what's the capital of New Zealand"
+Wellington.`}
+</Terminal>
+
+A task that requires a tool call:
+
+<Terminal>
+{`$ grith run "summarise package.json"
+[grith] file_read package.json → score 0.4 → allow
+This project is "my-app", version 1.2.0, with dependencies on next, react...`}
+</Terminal>
+
+A task that quarantines:
+
+<Terminal>
+{`$ grith run "what's in my .ssh/config"
+[grith] file_read ~/.ssh/config → score 4.2 → quarantine
+
+[grith] Pending review. Approve in another terminal with:
+        grith digest review`}
+</Terminal>
+
+The CLI hangs until the digest item resolves, then continues with the model's
+response (or with the failure if denied).
+
+## When to use this vs `grith exec`
+
+- **`grith run`** — single one-shot prompt, you want grith's built-in REPL plumbing.
+- **`grith exec`** — wrapping an external agent (Claude Code, Codex, etc.) with
+  grith's supervision. Almost always what you want for real work.
+
+## See also
+
+- [`grith exec`](/docs/cli/exec) — supervise an external agent
+- [Connect a model](/docs/start/connect-a-model) — BYOK setup
+- [`[llm]` config](/docs/config/llm)

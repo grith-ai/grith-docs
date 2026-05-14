@@ -1,0 +1,89 @@
+---
+title: "Choose your agent"
+description: "Pick the built-in supervisor profile that matches the AI agent you'll be running."
+section: "start"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/choose-your-agent.mdx"
+---
+
+grith ships with built-in **supervisor profiles** for the popular AI agents. A profile
+is a curated set of routine paths, commands, and network destinations that the agent
+needs to do its job — paths grith already trusts and routes to auto-allow without
+quarantining.
+
+You don't have to use a built-in profile. The `generic` profile gives you strict
+defaults (project-only file access, no shell, no network) and you can [write your
+own](/docs/profiles/writing-a-custom-profile) for any agent. But starting from a
+built-in profile is faster and tends to produce a quieter digest.
+
+## Built-in profiles
+
+| Agent | Profile flag | Notes |
+| --- | --- | --- |
+| Claude Code | `--profile claude-code` | Anthropic API + node/cargo/python toolchains + GitHub |
+| OpenAI Codex CLI | `--profile codex` | Codex's stdlib of editors and exec patterns |
+| Aider | `--profile aider` | git-heavy workflow + provider API |
+| Goose | `--profile goose` | Block's agent with native tool calling |
+| GitHub Copilot CLI | `--profile copilot` | gh-cli integration and suggestions |
+| Cursor (CLI/agent mode) | `--profile cursor` | Cursor's helper subprocesses |
+| Cline (Claude Dev / extension CLI) | `--profile cline` | Browser auth, MCP servers |
+| OpenClaw | `--profile openclaw` | Community fork patterns |
+| Anything else | `--profile generic-cli` | Standard CLI tools (git, npm, pip, etc.) |
+| Strictest | `--profile generic` | Project-local files only, nothing else |
+
+All profiles extend `generic`, so any restriction set in `generic` applies to every
+profile unless explicitly relaxed.
+
+## How a profile shapes scoring
+
+The profile changes which calls go directly to auto-allow versus get scored
+fully. Concretely, a profile declares:
+
+- `routine_paths` — read/write paths the agent needs (e.g. `${PROJECT_DIR}/**`,
+  `~/.cache/{agent}/**`).
+- `routine_commands` — shell commands the agent runs frequently (e.g. `git status`,
+  `npm install`, `cargo build`).
+- `routine_destinations` — network hosts the agent needs (e.g. `api.anthropic.com`,
+  `github.com`, `registry.npmjs.org`).
+- `routine_exec_roots` — directories the agent's helper processes live in.
+- `readonly_paths` — paths it can read but not write.
+
+When a syscall hits a routine entry, the corresponding filter contributes a negative
+score (i.e. argues for allow) and the call usually auto-allows. Anything outside the
+routine set runs through the full filter stack at normal weight.
+
+## Picking a profile when in doubt
+
+1. **You're running a known agent** → use its named profile.
+2. **You're running a wrapper around a known agent** → use the wrapped agent's profile.
+3. **You're shelling around in `bash` directly** → use `generic-cli`.
+4. **You're paranoid or testing** → use `generic` and let everything land in the digest.
+
+## Custom profiles
+
+If your team has a house tool, an internal agent, or a fork of an upstream agent, you
+can either:
+
+- Extend an existing profile by copying it into `~/.config/grith/profiles/` and
+  editing.
+- Write one from scratch — see [Writing a custom profile](/docs/profiles/writing-a-custom-profile).
+
+For Pro teams, profiles can be centrally managed and synced — see
+[Team sync](/docs/pro/team-sync).
+
+## Auditing a profile
+
+After a session, `grith profile audit --profile <name> --trace <syscall-log>` rebuilds
+the call graph and shows which routine entries were exercised, which were never
+touched, and which calls escaped the routine set and went through full scoring. Useful
+for tightening a profile that's grown too permissive.
+
+## Next
+
+- [Connect a model](/docs/start/connect-a-model) — BYOK setup so your agent has
+  something to talk to.
+- [Your first supervised session](/docs/start/first-supervised-session) — worked
+  example end-to-end.

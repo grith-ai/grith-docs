@@ -1,0 +1,611 @@
+{
+  "schema_version": 1,
+  "sections": [
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "cli",
+          "description": null,
+          "name": "delivery",
+          "type": "string"
+        },
+        {
+          "default": "30m",
+          "description": null,
+          "name": "interval_active",
+          "type": "string"
+        },
+        {
+          "default": "24h",
+          "description": null,
+          "name": "interval_idle",
+          "type": "string"
+        },
+        {
+          "default": 100,
+          "description": null,
+          "name": "max_queue_size",
+          "type": "integer"
+        }
+      ],
+      "path": "digest"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "~/.local/share/grith/audit",
+          "description": null,
+          "name": "audit_dir",
+          "type": "string"
+        },
+        {
+          "default": true,
+          "description": "set to false to keep audit records local-only; license checks still use grith.ai",
+          "name": "audit_sync",
+          "type": "boolean"
+        },
+        {
+          "default": "info",
+          "description": null,
+          "name": "log_level",
+          "type": "string"
+        },
+        {
+          "default": "community",
+          "description": "\"community\", \"pro\", or \"enterprise\"",
+          "name": "plan_tier",
+          "type": "string"
+        }
+      ],
+      "path": "general"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "ollama",
+          "description": null,
+          "name": "default_provider",
+          "type": "string"
+        }
+      ],
+      "path": "llm"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "claude-sonnet-4-5-20250514",
+          "description": null,
+          "name": "model",
+          "type": "string"
+        }
+      ],
+      "path": "llm.anthropic"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "http://localhost:11434",
+          "description": null,
+          "name": "base_url",
+          "type": "string"
+        },
+        {
+          "default": "llama3.1:8b",
+          "description": null,
+          "name": "model",
+          "type": "string"
+        }
+      ],
+      "path": "llm.ollama"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "gpt-4o-mini",
+          "description": null,
+          "name": "model",
+          "type": "string"
+        }
+      ],
+      "path": "llm.openai"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "anthropic/claude-sonnet-4-5-20250514",
+          "description": null,
+          "name": "model",
+          "type": "string"
+        }
+      ],
+      "path": "llm.openrouter"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": 3.0,
+          "description": null,
+          "name": "auto_allow_threshold",
+          "type": "float"
+        },
+        {
+          "default": 8.0,
+          "description": null,
+          "name": "auto_deny_threshold",
+          "type": "float"
+        },
+        {
+          "default": 0,
+          "description": null,
+          "name": "cold_start_calls",
+          "type": "integer"
+        },
+        {
+          "default": 10.0,
+          "description": null,
+          "name": "cold_start_escalation_high",
+          "type": "float"
+        },
+        {
+          "default": 2.0,
+          "description": null,
+          "name": "cold_start_escalation_low",
+          "type": "float"
+        },
+        {
+          "default": 300,
+          "description": "auto-deny queued calls after 5 minutes",
+          "name": "review_timeout_seconds",
+          "type": "integer"
+        }
+      ],
+      "path": "proxy"
+    },
+    {
+      "description": null,
+      "keys": [],
+      "path": "proxy.filters"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": 1.0,
+          "description": null,
+          "name": "mild_deviation_score",
+          "type": "float"
+        },
+        {
+          "default": 200,
+          "description": null,
+          "name": "min_calls_for_baseline",
+          "type": "integer"
+        },
+        {
+          "default": 3.0,
+          "description": null,
+          "name": "significant_deviation_score",
+          "type": "float"
+        }
+      ],
+      "path": "proxy.filters.behavioural"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "config/filters/egress.toml",
+          "description": null,
+          "name": "config_file",
+          "type": "string"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        }
+      ],
+      "path": "proxy.filters.egress"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": 3.0,
+          "description": null,
+          "name": "burst_multiplier",
+          "type": "float"
+        },
+        {
+          "default": 30,
+          "description": null,
+          "name": "cooldown_seconds",
+          "type": "integer"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": 30,
+          "description": null,
+          "name": "file_writes_per_minute",
+          "type": "integer"
+        },
+        {
+          "default": 60,
+          "description": null,
+          "name": "network_requests_per_minute",
+          "type": "integer"
+        },
+        {
+          "default": 20,
+          "description": null,
+          "name": "shell_execs_per_minute",
+          "type": "integer"
+        }
+      ],
+      "path": "proxy.filters.rate_limit"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "config/filters/domains.toml",
+          "description": null,
+          "name": "domains_file",
+          "type": "string"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": 2.0,
+          "description": null,
+          "name": "ip_address_score",
+          "type": "float"
+        },
+        {
+          "default": 4.0,
+          "description": null,
+          "name": "malicious_domain_score",
+          "type": "float"
+        },
+        {
+          "default": -1.0,
+          "description": null,
+          "name": "safe_domain_score",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "description": null,
+          "name": "unknown_domain_score",
+          "type": "float"
+        }
+      ],
+      "path": "proxy.filters.reputation"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": false,
+          "description": "Stub in v1.5, requires local embedding model",
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": "all-MiniLM-L6-v2",
+          "description": null,
+          "name": "model",
+          "type": "string"
+        }
+      ],
+      "path": "proxy.filters.semantic"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "config/filters/containment.toml",
+          "description": null,
+          "name": "config_file",
+          "type": "string"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        }
+      ],
+      "path": "proxy.filters.session_containment"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": [
+            "network",
+            "shell"
+          ],
+          "description": null,
+          "name": "high_risk_sinks",
+          "type": "array"
+        },
+        {
+          "default": [
+            "file_write"
+          ],
+          "description": null,
+          "name": "medium_risk_sinks",
+          "type": "array"
+        },
+        {
+          "default": [
+            ".env",
+            ".env.local",
+            "credentials.json",
+            "secrets.yaml",
+            "id_rsa",
+            "id_ed25519"
+          ],
+          "description": null,
+          "name": "sensitive_paths",
+          "type": "array"
+        }
+      ],
+      "path": "proxy.filters.taint"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": 8,
+          "description": null,
+          "name": "auto_allow_min_observations",
+          "type": "integer"
+        },
+        {
+          "default": 0.92,
+          "description": null,
+          "name": "auto_allow_trust",
+          "type": "float"
+        },
+        {
+          "default": 5.0,
+          "description": null,
+          "name": "ceiling_filter_threshold",
+          "type": "float"
+        },
+        {
+          "default": 0.98,
+          "description": null,
+          "name": "decay_lambda",
+          "type": "float"
+        },
+        {
+          "default": 3.0,
+          "description": null,
+          "name": "deny_weight",
+          "type": "float"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": 7.0,
+          "description": null,
+          "name": "max_auto_allow_raw_score",
+          "type": "float"
+        },
+        {
+          "default": 4.0,
+          "description": null,
+          "name": "max_score_reduction",
+          "type": "float"
+        },
+        {
+          "default": 300,
+          "description": null,
+          "name": "save_interval_seconds",
+          "type": "integer"
+        }
+      ],
+      "path": "reputation"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "dashboard/dist",
+          "description": null,
+          "name": "dashboard_dir",
+          "type": "string"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": "127.0.0.1",
+          "description": null,
+          "name": "host",
+          "type": "string"
+        },
+        {
+          "default": 3141,
+          "description": null,
+          "name": "port",
+          "type": "integer"
+        }
+      ],
+      "path": "server"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": 100,
+          "description": null,
+          "name": "general_rps",
+          "type": "integer"
+        },
+        {
+          "default": 20,
+          "description": null,
+          "name": "proxy_test_rps",
+          "type": "integer"
+        },
+        {
+          "default": 10,
+          "description": null,
+          "name": "write_rps",
+          "type": "integer"
+        }
+      ],
+      "path": "server.rate_limit"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "generic",
+          "description": null,
+          "name": "default_profile",
+          "type": "string"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": 300,
+          "description": null,
+          "name": "freeze_timeout_seconds",
+          "type": "integer"
+        },
+        {
+          "default": 4,
+          "description": null,
+          "name": "max_concurrent_sessions",
+          "type": "integer"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "pty_forwarding",
+          "type": "boolean"
+        },
+        {
+          "default": false,
+          "description": null,
+          "name": "require_sandbox",
+          "type": "boolean"
+        }
+      ],
+      "path": "supervisor"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": true,
+          "description": null,
+          "name": "enabled",
+          "type": "boolean"
+        }
+      ],
+      "path": "supervisor.dns_inspection"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": true,
+          "description": null,
+          "name": "batch_rapid_reads",
+          "type": "boolean"
+        },
+        {
+          "default": 50,
+          "description": null,
+          "name": "batch_window_ms",
+          "type": "integer"
+        },
+        {
+          "default": true,
+          "description": null,
+          "name": "ignore_read_only",
+          "type": "boolean"
+        }
+      ],
+      "path": "supervisor.noise_reduction"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": "ptrace",
+          "description": null,
+          "name": "linux_mechanism",
+          "type": "string"
+        },
+        {
+          "default": "endpoint-security",
+          "description": null,
+          "name": "macos_mechanism",
+          "type": "string"
+        },
+        {
+          "default": false,
+          "description": null,
+          "name": "seccomp_pre_filter",
+          "type": "boolean"
+        }
+      ],
+      "path": "supervisor.platform"
+    }
+  ],
+  "source": "config/default.toml"
+}

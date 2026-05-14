@@ -1,0 +1,73 @@
+---
+title: "grith reputation"
+description: "Inspect and reset the adaptive trust table that quiets the digest over time."
+section: "cli"
+order: 11
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/reputation.mdx"
+---
+
+```
+grith reputation [show | reset]
+```
+
+The reputation table holds per-call-shape trust scores accumulated from your past
+approvals and denials. See [Adaptive reputation](/docs/concepts/adaptive-reputation)
+for the concept.
+
+## Subcommands
+
+### `grith reputation show`
+
+Print the trust table, one row per call shape.
+
+```
+$ grith reputation show
+TRUST  OBS  DENIES  SHAPE
+0.96   42   0       file_read ${PROJECT_DIR}/**
+0.94   38   1       network  api.anthropic.com
+0.92   91   2       shell    git status
+0.85   17   2       file_write ${PROJECT_DIR}/**
+0.04   1    8       network  *.suspicious-cdn.example
+...
+```
+
+Sort options: `--sort trust` (default), `--sort observations`, `--sort recent`,
+`--sort denies`.
+
+Filter options: `--profile <name>` to scope to one profile, `--min-trust <0..1>` to
+filter out low-trust noise.
+
+`--format json` for structured output.
+
+### `grith reputation reset`
+
+Wipe the trust table. Use after switching to a different agent, after a security
+audit, or if you accidentally trained the table on the wrong things.
+
+```
+grith reputation reset             # ask for confirmation
+grith reputation reset --yes       # skip confirmation
+grith reputation reset --profile claude-code   # scope to one profile
+```
+
+## Decay
+
+The trust table decays automatically over time. You don't need to manually prune. The
+decay constant lives in `[reputation] decay_lambda` — see [`[reputation]`
+config](/docs/config/reputation).
+
+## Backing store
+
+The table is persisted to `~/.cache/grith/reputation/<profile>.bin` (CBOR binary).
+Safe to delete — you'll lose accumulated trust but nothing critical. The daemon
+rewrites on a schedule (every 5 minutes by default).
+
+## See also
+
+- [Adaptive reputation](/docs/concepts/adaptive-reputation)
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [`[reputation]` config](/docs/config/reputation)
+- [Reputation API (IPC)](/docs/api/reputation)

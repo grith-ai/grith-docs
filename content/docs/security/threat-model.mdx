@@ -1,154 +1,122 @@
 ---
-title: "Threat Model"
-description: "Threats grith defends against and how filters map to each attack vector"
+title: "Threat model"
+description: "Formal threat model — what grith defends, what it doesn't, and where the trust boundaries sit."
 section: "security"
 order: 1
 tier: "community"
-lastUpdated: "2026-02-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/threat-model.mdx"
 ---
 
-grith assumes every AI agent is an untrusted principal. The threat model identifies five categories of attack that arise when language models have access to system tools, and maps each to the specific filters and mechanisms that mitigate it.
+This is the formal threat model. For the high-level conceptual overview, see
+[The threat model (concept)](/docs/concepts/threat-model). This page is the
+reference for security reviewers.
 
-## Threat 1: Prompt injection leading to unauthorised tool calls
+## Asset categorisation
 
-An attacker embeds instructions in user-supplied content (documents, web pages, code comments) that cause the LLM to invoke tools it was not asked to use. The model cannot reliably distinguish injected instructions from legitimate ones.
+| Asset | Description | Sensitivity |
+| --- | --- | --- |
+| Credentials at rest | API keys, SSH keys, cloud creds in user dotfiles | Critical |
+| Source code | Project files | High |
+| Operational data | Customer data, internal docs | High to critical |
+| Operating system state | Files, processes, registry-equivalents | Medium-high |
+| Network reachability | Outbound destinations and reachability state | Medium |
+| Reputation table | Accumulated trust signals | Low (leak is uninteresting; tamper is medium) |
+| Audit log | Record of decisions made | Medium (privacy: reveals usage patterns) |
 
-**Attack surface:** Any tool call the LLM can make — file writes, process execution, network requests.
+## Adversary types
 
-**Mitigations:**
+### A1: Prompt-injection attacker
 
-| Filter | Role |
-|---|---|
-| `command_denylist` | Blocks known-dangerous commands regardless of how they were requested |
-| `path_traversal` | Prevents writes outside the project directory, even if the model is tricked into requesting them |
-| `write_scope` | Restricts file writes to an explicit allowlist of directories |
-| `secrets_scan` | Catches credentials in arguments before they reach disk or network |
-| Scoring thresholds | Calls that trip multiple filters land in QUEUE for human review rather than executing |
+- **Capability**: controls some text the agent will read (README, search
+  result, comment, error message).
+- **Goal**: exfiltrate credentials, deploy malicious code, pivot to other
+  resources.
+- **Threat**: high. Most realistic attack today.
 
-<Callout type="info" title="Defence in depth">
-No single filter is expected to catch every injection. The scoring model aggregates signals from all filters so that a sophisticated injection that evades one classifier still accumulates enough score from others to trigger quarantine.
-</Callout>
+### A2: Compromised dependency
 
-## Threat 2: Data exfiltration
+- **Capability**: controls a package or tool the agent will run.
+- **Goal**: as A1 plus persistence.
+- **Threat**: high.
 
-A compromised or manipulated agent attempts to send sensitive data — source code, credentials, internal documents — to an external endpoint. Exfiltration channels include direct HTTP requests, DNS tunnelling, encoded payloads in seemingly benign arguments, and abuse of legitimate tool integrations.
+### A3: Compromised model
 
-**Attack surface:** Outbound network calls, DNS resolution, arguments to external-facing tools.
+- **Capability**: malicious model weights, MITM'd inference endpoint, or
+  malicious provider.
+- **Goal**: as A1.
+- **Threat**: medium. Requires significant resources.
 
-**Mitigations:**
+### A4: Confused agent
 
-| Filter | Role |
-|---|---|
-| `network_egress` | Restricts outbound connections to an allowlist of hosts and ports |
-| `dns_tunnelling` | Detects anomalous DNS query patterns indicative of data encoding in subdomains |
-| `entropy_check` | Flags high-entropy strings in arguments that may be encoded secrets or exfiltrated data |
-| `canary_detection` | Triggers on planted canary tokens that should never appear in outbound calls |
-| `exfil_size` | Limits the total payload size of outbound tool call arguments |
+- **Capability**: none — agent is non-malicious but mistaken.
+- **Goal**: none. Mistakes happen.
+- **Threat**: medium. Often as costly as actual attacks.
 
-<Callout type="warning" title="Canary tokens">
-Canary tokens are the last line of defence against exfiltration. Plant them in sensitive files with `grith canary add`. If the agent reads and transmits them, the canary filter fires and the call is denied immediately. See the [CLI Reference](/docs/reference/cli) for canary management commands.
-</Callout>
+### A5: Local userland attacker
 
-## Threat 3: Supply chain attacks via compromised packages
+- **Capability**: runs as the grith user.
+- **Goal**: bypass grith.
+- **Threat**: out of scope. Userland trust boundary is the kernel's job.
 
-An attacker publishes or compromises a package that, when installed or imported, executes malicious code. The agent may install such packages if instructed to add dependencies or if a prompt injection requests it.
+### A6: Local root attacker
 
-**Attack surface:** Package installation commands (`npm install`, `pip install`, `cargo add`), post-install scripts, dynamic imports.
+- **Capability**: root.
+- **Goal**: anything.
+- **Threat**: out of scope.
 
-**Mitigations:**
+### A7: Kernel-level attacker
 
-| Filter | Role |
-|---|---|
-| `command_denylist` | Can block specific package managers or restrict installation flags |
-| `process_spawn` | Monitors child process creation during installation for unexpected behaviour |
-| `network_egress` | Restricts which registries and hosts packages can be fetched from |
-| `write_scope` | Limits where installed packages can write files |
+- **Capability**: kernel exploit.
+- **Goal**: anything.
+- **Threat**: out of scope.
 
-<Terminal command='grith proxy test --tool process_exec --args &apos;{"command": "npm install totally-legit-package"}&apos;' />
+### A8: Network-layer attacker
 
-Use `grith proxy test` to validate that your filter configuration catches suspicious installation patterns before they reach production.
+- **Capability**: MITM between grith and grith.ai, or between grith and the
+  agent's provider.
+- **Goal**: license tamper / model MITM / exfil eavesdrop.
+- **Threat**: low (TLS + cert pinning). Out of scope for non-TLS variants.
 
-## Threat 4: Privilege escalation via subprocess spawning
+## Filter coverage matrix
 
-An agent spawns a subprocess that itself spawns further subprocesses, each inheriting or escalating privileges. A chain of `sh -c` calls can obfuscate the ultimate command being executed.
+| Attack class | Primary defence | Secondary | Notes |
+| --- | --- | --- | --- |
+| Read credential, send out | sensitive_path, taint, dlp, secret_scan | reputation, canary | Canary catches when others fuzz. |
+| Read credential, leak via summary | dlp, secret_scan | egress, reputation | Model summary can defeat taint; dlp catches if content shape persists. |
+| Pivot to other project | path_match, session_containment | sensitive_path | Zone enforcement. |
+| Privilege escalation | capability, command | rate_limit | Hard gate via capability. |
+| Lateral via shell | command, egress | rate_limit, behavioural | Command parser. |
+| Persistent backdoor (file write) | path_match, sensitive_path | behavioural | Writes outside project. |
+| Beaconing / C2 | egress, reputation | behavioural, rate_limit | Adaptive trust. |
+| Confused agent destructive | operation_risk, sensitive_path | path_match | Score lifts on rm-shaped. |
 
-**Attack surface:** Process creation syscalls (`execve`, `fork`, `clone`), shell invocations, privilege elevation tools (`sudo`, `su`, `doas`).
+## Defence-in-depth properties
 
-**Mitigations:**
+- **Composition**: every call routes through every applicable filter. No
+  single-filter failure compromises the whole pipeline.
+- **Determinism**: filters don't depend on the model's behaviour, only on the
+  syscall and session state.
+- **Hard gates**: canary detection and capability enforcement bypass scoring
+  to deny unconditionally.
+- **Cold start**: new installs widen the queue zone to avoid pathological
+  auto-allow on uncalibrated state.
 
-| Filter | Role |
-|---|---|
-| `process_spawn` | Evaluates every subprocess creation, not just the top-level command |
-| `command_denylist` | Blocks `sudo`, `su`, `doas`, and other privilege elevation binaries |
-| `argument_injection` | Detects shell metacharacters and injection patterns in command arguments |
-| Supervisor (ptrace) | Intercepts the actual `execve` syscall, so nested shells cannot hide the real command |
+## What grith doesn't promise
 
-<Callout type="tip" title="Syscall-level enforcement">
-On Linux, grith's supervisor uses ptrace and seccomp-BPF to intercept system calls at the kernel boundary. This means a subprocess cannot evade monitoring by spawning further children — every `execve` in the process tree is captured and evaluated.
-</Callout>
+- **Bypass impossibility**: a determined attacker with sufficient cleverness in
+  prompt construction *may* find a sequence of calls that, individually, all
+  auto-allow but composed effect a leak. Mitigations: canary, behavioural,
+  cross-session analytics (Pro).
+- **Future-proof signatures**: secret_scan and dlp_gate have curated pattern
+  sets. New credential formats won't be detected until added.
+- **Side-channel defence**: timing-based DNS exfil, slow-and-low patterns —
+  partially covered by behavioural, not formally guaranteed.
 
-## Threat 5: Information leakage via secrets in arguments
+## See also
 
-The agent inadvertently includes secrets — API keys, database credentials, tokens — in tool call arguments. This can happen when the model reads a `.env` file and includes its contents in a subsequent write or network call.
-
-**Attack surface:** Any tool call argument that contains credential-like strings.
-
-**Mitigations:**
-
-| Filter | Role |
-|---|---|
-| `secrets_scan` | Pattern-matches known secret formats (AWS keys, GitHub tokens, JWTs, private keys) |
-| `entropy_check` | Flags high-entropy strings that may be credentials even if they do not match known patterns |
-| `canary_detection` | Catches planted canary tokens that mimic real credentials |
-| `path_traversal` | Prevents the agent from reading credential files outside the project scope |
-
-<ConfigExample
-  title="Strict secrets scanning"
-  code={`[filters.secrets_scan]
-enabled = true
-weight = 3.0                    # high weight — secrets are critical
-patterns = "default"            # built-in patterns for AWS, GitHub, Stripe, etc.
-custom_patterns = [
-  "ghp_[a-zA-Z0-9]{36}",       # GitHub personal access tokens
-  "sk-[a-zA-Z0-9]{48}",        # OpenAI API keys
-]`}
-/>
-
-## Defence-in-depth model
-
-grith's security model does not rely on any single filter catching every attack. Instead, multiple independent classifiers evaluate each tool call from different angles. The scoring proxy aggregates their outputs into a composite score.
-
-```
-Tool call arrives
-    │
-    ├─ Static filters (path_traversal, write_scope, command_denylist)
-    │       ↓ scores accumulate
-    ├─ Pattern filters (secrets_scan, entropy_check, canary_detection)
-    │       ↓ scores accumulate
-    ├─ Context filters (network_egress, dns_tunnelling, exfil_size)
-    │       ↓ scores accumulate
-    │
-    └─ Final score → ALLOW / QUEUE / DENY
-```
-
-A prompt injection that bypasses the `command_denylist` still faces `write_scope`, `secrets_scan`, and `entropy_check`. An exfiltration attempt that uses a novel encoding still faces `canary_detection`, `exfil_size`, and `network_egress`. The attacker must simultaneously evade every relevant filter to avoid quarantine.
-
-<Callout type="danger" title="No security model is perfect">
-grith significantly raises the bar for AI agent exploitation, but it does not eliminate all risk. Novel attack vectors may evade current filters. The quarantine queue exists precisely for this reason — when filters are uncertain, humans decide. Always review your digest queue regularly.
-</Callout>
-
-## Assumptions and limitations
-
-grith's threat model makes the following assumptions:
-
-- **The host OS is trusted.** grith runs as a userspace process and relies on the kernel for syscall interception. A compromised kernel undermines all guarantees.
-- **The user reviews the digest queue.** Queued calls are held for human review. If no one reviews them, the security benefit of quarantine is lost.
-- **Filter weights are calibrated.** Default weights are tuned for general use. Specialised environments (financial services, healthcare, defence) should adjust weights based on their risk profile.
-- **LLM providers are reachable but not trusted.** grith does not trust the LLM's output — that is the entire point. However, it does assume the LLM API itself is available and returns well-formed responses.
-
-## Next steps
-
-- [Responsible Disclosure](/docs/security/responsible-disclosure) — How to report vulnerabilities in grith
-- [Security Advisories](/docs/security/advisories) — Known vulnerabilities and patches
-- [Scoring Reference](/docs/reference/scoring) — How filter scores combine into decisions
-- [Filter Reference](/docs/reference/filters) — Detailed documentation for every filter
+- [The threat model (concept)](/docs/concepts/threat-model)
+- [Trust boundaries](/docs/security/trust-boundaries)
+- [Supervisor-only assessment](/docs/security/supervisor-only-assessment)
+- [Responsible disclosure](/docs/security/responsible-disclosure)

@@ -1,0 +1,96 @@
+---
+title: "Compliance reporting"
+description: "Audit-ready bundles for SOC 2, ISO 27001, GDPR, HIPAA."
+section: "enterprise"
+order: 4
+tier: "enterprise"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/enterprise/compliance-reporting.mdx"
+---
+
+<PlanBadge tier="enterprise" />
+
+The compliance feature produces auditor-ready bundles from grith's audit log,
+shaped to match common compliance framework expectations.
+
+## Frameworks supported
+
+Each framework has a dedicated export shape:
+
+| Framework | Focus | Export shape |
+| --- | --- | --- |
+| **SOC 2 Type II** | Control objective + evidence period | CSV evidence sheet + summary PDF |
+| **ISO 27001** | Annex A control mapping | JSON bundle per control |
+| **GDPR** | Data processing register | CSV per data-flow |
+| **HIPAA** | Access log + risk events | CSV + access timeline |
+| **PCI-DSS** | Cardholder-data egress events | JSON + filtered audit log |
+
+## What's in a bundle
+
+Each export includes:
+
+- **Decision counts** by control objective.
+- **Canary fires** with full timeline.
+- **Threshold change history** — who changed what threshold when.
+- **Policy edits** — full audit of policy lifecycle.
+- **Notification delivery records** — proof that alerts were sent.
+- **Incident response timelines** — when canaries fired, when sessions were
+  terminated, when the team reviewed.
+
+## Generating
+
+From the dashboard:
+
+1. **Compliance → New report**.
+2. Pick framework, time window, scope (entire team or specific projects).
+3. Click **Generate**. Reports run async; you get a notification when ready.
+
+From the API:
+
+```
+GET /analytics/compliance?framework=soc2&since=2026-01-01&until=2026-03-31
+```
+
+Returns a signed bundle (JSON + CSV) downloadable via a one-time link.
+
+## Retention
+
+By default, audit data summaries are retained on the dashboard for **24 months**,
+sufficient for typical audit windows (12 months + lookback). Raw audit records
+stay on each developer's device (local SQLite, retention per
+[`general.audit_retention_days`](/docs/config/general)).
+
+For longer retention requirements, see [SIEM integration](/docs/enterprise/siem-integration)
+— SIEM platforms typically have longer retention by default.
+
+## Signing
+
+Each compliance bundle is signed by grith.ai with a per-team key. Auditors can
+verify integrity:
+
+```
+gpg --verify bundle.signed
+```
+
+The verification key is downloadable from the dashboard.
+
+## Custom controls
+
+For frameworks not in the built-in set, Enterprise customers can author
+custom control mappings:
+
+```toml
+[compliance.custom.acme-internal-policy]
+description = "Internal acme controls"
+controls = [
+    { id = "CTRL-1.1", grith_filters = ["canary", "dlp_gate"], objective = "no exfil" },
+    { id = "CTRL-2.3", grith_filters = ["capability"], objective = "least privilege" },
+]
+```
+
+## See also
+
+- [Analytics & cost (Pro)](/docs/pro/analytics-and-cost)
+- [SIEM integration](/docs/enterprise/siem-integration)
+- [Audit API](/docs/api/audit)

@@ -1,0 +1,56 @@
+---
+title: "What is grith"
+description: "An OS-level security supervisor for AI agents — intercept every action, score it against 17 filters, route ambiguous calls to a human review queue."
+section: "start"
+order: 0
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/what-is-grith.mdx"
+---
+
+AI agents are making security decisions. That's the problem.
+
+Claude, Codex, Aider, Cline, Goose — they all decide what's safe to run on your machine
+using probabilistic models. Auto-approve modes don't remove the risk; they just remove
+the prompts. A malicious README, a poisoned dependency, a clever prompt injection — and
+suddenly the agent is reading your SSH keys or exfiltrating credentials, with you out
+of the loop.
+
+grith sits underneath the agent and intercepts every syscall before it runs.
+
+## What grith does
+
+- **Intercepts** every file read, file write, command, and network call your agent makes,
+  using OS-level syscall interception (ptrace + seccomp on Linux). The agent doesn't
+  need to be modified, recompiled, or even cooperative.
+- **Scores** each call against 17 independent security filters running in three phases —
+  static checks, pattern matching, and contextual analysis. Total budget: ~15ms per call.
+- **Decides** automatically when the composite score is unambiguous. Routes the
+  ambiguous middle to a quarantine digest for human review. Blocks the obvious threats
+  outright.
+
+The model never sees a security gate. The filters are deterministic, run outside the
+model's trust boundary, and don't depend on the model behaving honestly.
+
+## What grith is not
+
+- Not a model. grith doesn't generate code, doesn't replace your agent, doesn't decide
+  what your agent should do.
+- Not a sandbox. grith runs the real syscall on the real filesystem when it allows; it
+  doesn't redirect or mock. Containment is opt-in per session.
+- Not a managed service. The community edition is fully local — no cloud calls, no
+  telemetry. Pro adds optional team sync; Enterprise adds optional SSO and SIEM.
+
+## Where to go next
+
+- [Installation](/docs/start/installation) — install the v0.1 Linux binary
+- [Quickstart](/docs/start/quickstart) — five-minute walkthrough
+- [Choose your agent](/docs/start/choose-your-agent) — supervisor profile for Claude Code, Codex, Aider, …
+- [The threat model](/docs/concepts/threat-model) — what grith protects against (and what it doesn't)
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline) — how the 17 filters compose
+
+<Callout type="info" title="Linux only for v0.1">
+The v0.1 release ships for Linux x86_64. macOS (Endpoint Security) and Windows builds
+are next. aarch64 follows. See the [roadmap](/docs/resources/roadmap) for timing.
+</Callout>

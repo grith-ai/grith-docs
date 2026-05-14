@@ -1,0 +1,66 @@
+---
+title: "Notifications"
+description: "Channel configuration and delivery health over REST."
+section: "api"
+order: 7
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/notifications.mdx"
+---
+
+<ApiRouteTable group="Notifications" showHeadings={false} />
+
+## `GET /notifications/channels`
+
+List configured channels.
+
+```json
+{
+  "channels": [
+    {
+      "id": "slack",
+      "type": "slack",
+      "enabled": true,
+      "state": "healthy",
+      "last_delivery": "2026-05-14T09:13:01Z",
+      "delivered_24h": 412,
+      "failed_24h": 0
+    }
+  ]
+}
+```
+
+## `GET /notifications/status`
+
+Roll-up status across channels.
+
+```json
+{
+  "channels_total": 5,
+  "channels_healthy": 4,
+  "channels_unhealthy": 1,
+  "delivered_24h": 821,
+  "failed_24h": 8
+}
+```
+
+## `POST /notifications/test/{channel}`
+
+Send a synthetic notification. The body is a stub digest item, useful for
+verifying HMAC handling on webhook receivers.
+
+Response on success:
+
+```json
+{
+  "delivered": true,
+  "ms": 312
+}
+```
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- Per-channel guides under [Guides](/docs/guides/notifications-slack)
+- [Notification security model](/docs/security/notification-security)

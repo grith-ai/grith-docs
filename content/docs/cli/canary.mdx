@@ -1,0 +1,95 @@
+---
+title: "grith canary"
+description: "Create and manage canary tokens for exfiltration trap detection."
+section: "cli"
+order: 7
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/canary.mdx"
+---
+
+```
+grith canary [list | add | remove | rotate]
+```
+
+Manage [canary tokens](/docs/concepts/canary-tokens) — fake credentials placed in your
+filesystem that trigger a hard DENY if they ever appear in an outbound payload.
+
+## Subcommands
+
+### `grith canary list`
+
+List all registered canaries.
+
+```
+$ grith canary list
+ID         LABEL              FORMAT       PLACED                          AGE
+ca-7f1...  aws-prod-decoy     aws_secret   ~/.aws/credentials_backup       4d
+ca-9c2...  gh-org-trap        gh_pat       ./test/fixtures/.env            12h
+ca-3e8...  ssh-honey          ssh_rsa      ~/honeypot/.ssh/id_rsa          21d
+```
+
+`--format json` for structured output.
+
+### `grith canary add`
+
+Generate and register a new canary.
+
+```
+grith canary add --format <FORMAT> --place <PATH> [--label <LABEL>]
+```
+
+| Option | Required | Description |
+| --- | --- | --- |
+| `--format <FORMAT>` | yes | One of `aws_secret`, `aws_access_key`, `gh_pat`, `slack_token`, `ssh_rsa`, `generic_jwt`, `random_hex`, `custom`. |
+| `--place <PATH>` | yes | Filesystem path where the canary is written. |
+| `--label <LABEL>` | no | Human-readable name for alerts. |
+| `--value <VALUE>` | no | (For `custom` format) the literal token value. |
+
+Example:
+
+```
+grith canary add --format aws_secret \
+    --place ~/.aws/credentials_backup \
+    --label "aws-prod-decoy"
+```
+
+This generates a plausible-looking AWS-shaped credential, writes it to the path you
+specified, and registers its exact value in the canary detection set.
+
+### `grith canary remove <id>`
+
+Unregister and delete the canary file.
+
+```
+grith canary remove ca-7f1...
+```
+
+### `grith canary rotate <id>`
+
+Generate a new token of the same format/label, replace the file in place, update the
+registration. Use after a suspected leak.
+
+```
+grith canary rotate ca-7f1...
+```
+
+## When a canary fires
+
+The canary filter ([11](/docs/filters/11-canary-secret-detection)) returns DENY for
+any outbound payload containing a registered canary value. The audit log records:
+
+- The canary id and label
+- The session and process that tried to send it
+- The destination
+- The other filter contributions (for context)
+
+Notification channels page on canary fires by default, regardless of the channel's
+normal rate-limit budget.
+
+## See also
+
+- [Canary tokens](/docs/concepts/canary-tokens) — concept
+- [Setting up canary tokens](/docs/guides/setting-up-canary-tokens) — placement strategy
+- [Canaries API](/docs/api/canaries) — REST routes

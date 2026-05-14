@@ -1,0 +1,129 @@
+---
+title: "Architecture overview"
+description: "The big-picture diagram of grith — daemon, supervisor, filter pipeline, dashboard."
+section: "resources"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/architecture-overview.mdx"
+---
+
+```
+                                ┌────────────────────────────┐
+                                │       grith daemon         │
+                                │  (long-lived, per-user)    │
+                                │                            │
+                                │  ┌──────────────────────┐  │
+                                │  │  filter pipeline     │  │
+                                │  │  (17 filters)        │  │
+                                │  └──────────────────────┘  │
+                                │  ┌──────────────────────┐  │
+                                │  │  digest queue        │  │
+                                │  └──────────────────────┘  │
+                                │  ┌──────────────────────┐  │
+                                │  │  audit log (SQLite)  │  │
+                                │  └──────────────────────┘  │
+                                │  ┌──────────────────────┐  │
+                                │  │  reputation table    │  │
+                                │  └──────────────────────┘  │
+                                │  ┌──────────────────────┐  │
+                                │  │  notification        │  │
+                                │  │  dispatcher          │  │
+                                │  └──────────────────────┘  │
+                                │  ┌──────────────────────┐  │
+                                │  │  HTTP/WS server      │──┼──▶  dashboard browser
+                                │  │  (127.0.0.1:3141)    │  │
+                                │  └──────────────────────┘  │
+                                └─────────▲──────────────────┘
+                                          │ IPC (UNIX socket)
+                                          │
+              ┌───────────────────────────┴──────────────────────────┐
+              │                                                      │
+   ┌──────────┴──────────┐                              ┌────────────┴────────┐
+   │  grith exec ─ thin- │                              │  grith exec ─ thin- │
+   │  client supervisor  │                              │  client supervisor  │
+   │  (ptrace + seccomp) │                              │  (ptrace + seccomp) │
+   │                     │                              │                     │
+   │  ┌───────────────┐  │                              │  ┌───────────────┐  │
+   │  │   agent A     │  │                              │  │   agent B     │  │
+   │  │   (claude)    │  │                              │  │   (codex)     │  │
+   │  └───────────────┘  │                              │  └───────────────┘  │
+   └─────────────────────┘                              └─────────────────────┘
+```
+
+## The pieces
+
+### `grith` binary
+
+A single statically-linked executable. Runs in three roles depending on how
+it's invoked:
+
+- **Daemon** — `grith daemon start`. Long-lived. Owns the shared subsystems.
+- **Thin-client supervisor** — `grith exec`. Short-lived. Wraps an agent with
+  ptrace+seccomp. Talks to the daemon over IPC for filter decisions.
+- **CLI** — `grith digest review`, `grith audit`, etc. Short-lived. Talks
+  to the daemon over the HTTP API.
+
+When no daemon is running, `grith exec` runs the filter pipeline in-process —
+no IPC. The audit DB and reputation table are then per-session rather than
+shared. Useful for one-off use; for anything multi-session, run the daemon.
+
+### Filter pipeline
+
+17 filters in 3 phases. See [Three-phase pipeline](/docs/concepts/three-phase-pipeline).
+
+### Digest queue
+
+The quarantine queue for ambiguous calls. SQLite-backed in daemon mode.
+See [The quarantine digest](/docs/concepts/quarantine-digest).
+
+### Audit log
+
+SQLite database at `~/.local/share/grith/audit/`. Indexed for fast queries.
+See [Logging & audit retention](/docs/ops/logging-and-audit-retention).
+
+### Reputation table
+
+In-memory hashmap, periodically flushed to
+`~/.cache/grith/reputation/<profile>.bin`. See
+[Adaptive reputation](/docs/concepts/adaptive-reputation).
+
+### Notification dispatcher
+
+Owns per-channel delivery state and rate limits. Delivers events to Slack /
+Telegram / etc. See [`grith notifications`](/docs/cli/notifications).
+
+### HTTP/WS server
+
+Serves the dashboard SPA, REST endpoints, and WebSocket event stream.
+Loopback-only by default. See [API overview](/docs/api/overview).
+
+## How a call flows
+
+1. Agent makes a syscall (e.g. `openat`).
+2. Seccomp filter in the supervised process traps the syscall to the thin-client
+   supervisor.
+3. Supervisor reads the syscall args, constructs a `ToolCallType` shape.
+4. Supervisor sends to daemon (or in-proc to filter pipeline if no daemon).
+5. Filter pipeline runs Phase 1 → 2 → 3, emits composite score.
+6. Composite compared to thresholds → allow / queue / deny.
+7. Decision returns to supervisor.
+8. If allow: supervisor lets the syscall continue with `ptrace(PTRACE_SYSCALL)`.
+9. If deny: supervisor rewrites syscall to a no-op + sets return reg to EACCES.
+10. If queue: supervisor leaves the thread in ptrace-stop until a decision arrives.
+11. Audit record is written regardless of decision.
+
+Total budget for the round-trip: under 15ms typical.
+
+## Cross-repo
+
+- **`../grith/`** — the Rust workspace, all production code.
+- **`../grith-website/`** — the marketing site (grith.ai).
+- **this repo** — the docs (docs.grith.ai).
+
+## See also
+
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline)
+- [Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions)
+- [Syscall interception](/docs/concepts/syscall-interception)

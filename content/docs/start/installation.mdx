@@ -1,0 +1,129 @@
+---
+title: "Installation"
+description: "Install grith v0.1 on Linux x86_64 — install script, manual download, or build from source."
+section: "start"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/installation.mdx"
+---
+
+<Callout type="warning" title="Linux x86_64 only for v0.1">
+The v0.1 release ships for Linux x86_64. The supervisor uses ptrace + seccomp, which
+need OS-specific backends — macOS (Endpoint Security framework) and Windows
+(ETW / minifilter) are in active development. ARM Linux follows once the aarch64
+register backend lands. See the [roadmap](/docs/resources/roadmap).
+</Callout>
+
+## One-line install
+
+```
+curl -fsSL https://grith.ai/install | sh
+```
+
+The installer:
+
+1. Detects your distro and architecture.
+2. Downloads the signed binary tarball and its SHA-256 checksum.
+3. Verifies the checksum.
+4. Places `grith` in `~/.local/bin` (or `/usr/local/bin` if writable).
+5. Creates `~/.config/grith/` with default config.
+6. Prints next steps.
+
+If you'd rather see what runs before it runs, fetch the script and read it:
+
+```
+curl -fsSL https://grith.ai/install -o install.sh
+less install.sh
+sh install.sh
+```
+
+## Manual download
+
+Pre-built binaries are published to GitHub Releases.
+
+```
+# Replace VERSION with the latest tag (e.g. v0.1.0).
+VERSION=v0.1.0
+curl -L -o grith.tar.gz \
+  https://github.com/grith-ai/grith/releases/download/${VERSION}/grith-${VERSION}-x86_64-unknown-linux-musl.tar.gz
+curl -L -o grith.sha256 \
+  https://github.com/grith-ai/grith/releases/download/${VERSION}/grith-${VERSION}-x86_64-unknown-linux-musl.tar.gz.sha256
+sha256sum -c grith.sha256
+tar -xzf grith.tar.gz
+sudo mv grith /usr/local/bin/
+```
+
+The binary is a single statically-linked musl executable. No runtime dependencies, no
+glibc version pinning, no shared libraries to worry about.
+
+## Build from source
+
+You need Rust 1.88 or newer.
+
+```
+git clone https://github.com/grith-ai/grith.git
+cd grith
+cargo build --release
+./target/release/grith --version
+```
+
+The release build takes ~3–5 minutes on a modern laptop. Debug builds are about half
+that.
+
+## Verify the install
+
+```
+grith --version
+grith --help
+```
+
+Expected output:
+
+<Terminal>
+{`$ grith --version
+grith 0.1.0
+$ grith --help
+Zero Trust for AI Agents
+
+Usage: grith [OPTIONS] [COMMAND]
+...`}
+</Terminal>
+
+## What got placed where
+
+| Path | What |
+| --- | --- |
+| `~/.local/bin/grith` or `/usr/local/bin/grith` | The binary. |
+| `~/.config/grith/config.toml` | User-level config overrides. Edit freely. |
+| `~/.local/share/grith/audit/` | SQLite audit log. Grows over time; see [audit retention](/docs/ops/logging-and-audit-retention). |
+| `~/.cache/grith/` | Reputation table, profile updates, transient state. Safe to delete. |
+| `~/.config/grith/licenses/` | Pro license cache (only if you log in to Pro). |
+
+The CLI itself never writes to anywhere outside `~/.local/share/grith/` and
+`~/.cache/grith/` without an explicit config setting.
+
+## Permissions
+
+Running `grith exec` uses ptrace to attach to and supervise child processes. This works
+without root on most Linux distros via the default `kernel.yama.ptrace_scope = 1`. If
+your distro hardened ptrace (some EC2 AMIs set `ptrace_scope = 2`), you'll see a
+permission error when supervising. The fix is documented in
+[Troubleshooting](/docs/guides/troubleshooting#ptrace-permission-denied) (slug: `ptrace-permission-denied`).
+
+## Next
+
+- [Quickstart](/docs/start/quickstart) — five-minute hands-on walkthrough.
+- [Choose your agent](/docs/start/choose-your-agent) — pick the right supervisor profile.
+- [Connect a model](/docs/start/connect-a-model) — BYOK setup for OpenAI, Anthropic, Ollama, OpenRouter.
+
+## Uninstall
+
+```
+rm "$(command -v grith)"
+rm -rf ~/.config/grith ~/.local/share/grith ~/.cache/grith
+```
+
+The binary is self-contained — there are no service registrations, kernel modules,
+or system-wide files to clean up.

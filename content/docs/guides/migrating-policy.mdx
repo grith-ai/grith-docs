@@ -1,0 +1,134 @@
+---
+title: "Migrating policy across machines"
+description: "Move your grith config from one machine to another, or sync between devices."
+section: "guides"
+order: 21
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/migrating-policy.mdx"
+---
+
+You've tuned grith on your laptop — added routine paths, learned a bunch of
+allowed shapes, set up notification channels. You want the same setup on your
+desktop (or your new laptop, or in a Docker dev image). Here's how.
+
+## What to bring
+
+Three things make up "your policy":
+
+1. **Configuration** — `~/.config/grith/config.toml` and `~/.config/grith/filters/*`.
+2. **Profiles** — `~/.config/grith/profiles/*.toml` (if you wrote any).
+3. **Reputation table** *(optional)* — `~/.cache/grith/reputation/*.bin`.
+
+The audit log itself (`~/.local/share/grith/audit/*.sqlite`) is per-machine —
+you usually want a fresh audit log on a new machine, not the merged history.
+
+## The simple approach: tarball
+
+On the source:
+
+```
+tar -czf grith-policy.tgz \
+    -C ~ \
+    .config/grith/config.toml \
+    .config/grith/filters \
+    .config/grith/profiles \
+    .cache/grith/reputation
+```
+
+Transfer the tarball to the destination, then:
+
+```
+tar -xzf grith-policy.tgz -C ~
+chmod 0600 ~/.config/grith/config.toml
+```
+
+Done. Verify with `grith config` and `grith reputation show`.
+
+## With a dotfiles repo
+
+If you use a dotfiles repo (chezmoi, stow, dotbot), commit:
+
+```
+~/.config/grith/config.toml
+~/.config/grith/filters/
+~/.config/grith/profiles/
+```
+
+Don't commit:
+
+```
+~/.config/grith/keys/             # decrypted API keys
+~/.config/grith/licenses/         # device-tied license cache
+~/.cache/grith/                   # state, regenerable
+~/.local/share/grith/             # audit log, machine-local
+```
+
+A `.gitignore` to slot into the dotfiles tree:
+
+```
+keys/
+licenses/
+```
+
+## Pro: just sync
+
+If you have a Pro license, this is much easier:
+
+```
+grith pro login                   # on the new device
+grith pro sync                    # pulls all team-managed policies
+```
+
+Centrally-managed policies, profiles, channel configs, and (encrypted) team
+keys all arrive automatically. The new device joins the team's policy
+discipline with one command.
+
+Personal customisations (your individual `~/.config/grith/profiles/` extensions)
+still need the tarball approach above — team sync is for shared team policy,
+not personal tuning.
+
+## What about reputation?
+
+Whether to migrate the reputation table is a judgement call:
+
+- **Bring it** — you keep the trust you've earned. The digest is quieter on
+  day one.
+- **Leave it** — fresh start on a fresh box. The digest is louder for a few
+  days; you re-train.
+
+For a new machine in the same role, bring it. For a security-cleanup machine,
+leave it. Reputation is a soft signal anyway, so this isn't a high-stakes
+choice.
+
+## Containerised dev environments
+
+For Docker / dev container setups, bake the config into the image:
+
+```dockerfile
+FROM ubuntu:24.04
+RUN curl -fsSL https://grith.ai/install | sh
+COPY config.toml      /etc/skel/.config/grith/config.toml
+COPY filters/         /etc/skel/.config/grith/filters/
+COPY profiles/        /etc/skel/.config/grith/profiles/
+```
+
+Then `useradd -m` populates the user from `/etc/skel`. Each spawned container
+gets the same baseline policy.
+
+## Verifying after migration
+
+```
+grith config                          # sanity-check active config
+grith proxy test '{"operation":"file_read","target":"~/proj/x"}'
+                                      # confirm filters are loaded
+grith reputation show | head          # if you brought the trust table
+```
+
+## See also
+
+- [Configuration overview](/docs/config/overview)
+- [Filter config files](/docs/config/filter-config-files)
+- [Team setup (Pro)](/docs/guides/team-setup)
+- [`grith pro sync`](/docs/cli/pro)

@@ -1,102 +1,159 @@
 ---
-title: "Syscall Interception"
-description: "Linux syscall interception today, with macOS and Windows support coming very soon"
+title: "Syscall interception"
+description: "How grith catches what an agent does at the OS level — ptrace + seccomp on Linux."
 section: "concepts"
-order: 5
+order: 6
 tier: "community"
-lastUpdated: "2026-03-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/syscall-interception.mdx"
 ---
 
-grith intercepts system calls at the OS level before they reach the kernel. This is the mechanism that makes the [CLI supervisor](/docs/concepts/cli-supervisor) possible — it allows grith to wrap any external tool with security enforcement, without modifying the tool itself.
+grith intercepts every syscall an agent makes. That sentence does most of the work in
+this product. Everything else — the filters, the digest, the scoring — is downstream
+of being able to see and stop syscalls before they run.
 
-## Platform support
+This page explains how that interception works on Linux x86_64 (the v0.1 supported
+target). macOS and Windows backends are different mechanisms with the same goal; see
+[Supported platforms](/docs/start/installation) for status.
 
-The current launch supports full syscall interception on Linux. macOS and Windows support is coming very soon.
+## The mechanism: ptrace + seccomp
 
-| Platform | Mechanism | Interception level | Status |
-|---|---|---|---|
-| Linux (x86_64, aarch64) | ptrace + seccomp-BPF | Full individual syscall interception | Supported today |
-| macOS (Apple Silicon, Intel) | Endpoint Security based supervisor | Planned | Coming very soon |
-| Windows (x86_64) | Minifilter + ETW style supervisor | Planned | Coming very soon |
+The grith supervisor uses two complementary kernel features:
 
-<Callout type="info" title="Linux provides the strongest guarantees">
-For the current launch, every file open, network connect, and process spawn is individually intercepted and evaluated on Linux before the kernel executes it. macOS and Windows will get their own supervised backends shortly after the Linux launch.
-</Callout>
+- **ptrace** lets one process attach to another and inspect/modify its execution
+  state, including pausing the tracee before a syscall is committed.
+- **seccomp-bpf** lets the kernel filter syscalls in-kernel using a BPF program. With
+  the right filter mode (`SECCOMP_RET_TRACE`), interesting syscalls trap to the
+  tracer and uninteresting ones run through at native speed.
 
-## Linux: ptrace + seccomp-BPF
+The combination is fast: most syscalls (close, mmap, futex, sched_yield) bypass grith
+entirely because the seccomp filter says "don't bother the tracer about these". Only
+the syscalls grith cares about (open, openat, execve, connect, sendto, write to
+certain fds) trap to the supervisor for evaluation.
 
-On Linux, grith uses two complementary kernel mechanisms to intercept syscalls with minimal overhead.
-
-### How it works
-
-**seccomp-BPF** installs a Berkeley Packet Filter program into the kernel that runs on every syscall. This BPF program is extremely fast — it executes in kernel space and adds negligible overhead. The filter is configured to trap specific syscall classes (file operations, network operations, process management) while allowing benign syscalls (memory allocation, clock reads) to pass through unimpeded.
-
-**ptrace** catches the trapped syscalls in userspace. When seccomp-BPF traps a syscall, the kernel suspends the calling thread and notifies grith via ptrace. grith reads the syscall number, arguments, and context, then makes an enforcement decision.
-
-The flow for a single syscall:
+## What grith actually does on `grith exec`
 
 ```
-Tool process makes syscall
-    ↓
-seccomp-BPF filter runs in kernel space
-    ↓
-Filter traps the syscall (file/network/process)
-    ↓
-Kernel suspends thread, notifies grith via ptrace
-    ↓
-grith reads syscall number + arguments
-    ↓
-Converts to ToolCallType
-    ↓
-Routes through security proxy → score → ALLOW/QUEUE/DENY
-    ↓
-ALLOW: ptrace resumes the syscall normally
-QUEUE: process frozen (SIGSTOP), awaits human review
-DENY: ptrace injects EPERM error, syscall blocked
+grith exec --profile claude-code -- claude
 ```
 
-<Callout type="tip" title="Selective trapping keeps overhead low">
-seccomp-BPF only traps syscalls that grith needs to evaluate — file opens, network connects, process spawns, and similar security-relevant operations. High-frequency benign syscalls like `clock_gettime`, `mmap`, and `brk` pass through without trapping. This keeps the performance overhead in the low single-digit percent range for most workloads.
-</Callout>
+Behind the scenes:
 
-### Syscall classes
+1. `fork()` a child process. The child immediately calls `prctl(PR_SET_PTRACER, ...)`
+   and waits.
+2. Parent calls `ptrace(PTRACE_SEIZE)` on the child to attach without stopping.
+3. Child installs the seccomp-bpf filter (the "interesting syscalls" filter) via
+   `seccomp(SECCOMP_FILTER_FLAG_TSYNC, ...)`.
+4. Child `execve()`s the target binary (claude in our example).
+5. From this point on, every interesting syscall in the supervised tree raises a
+   ptrace-stop. grith's supervisor reads the syscall args, builds a `ToolCallType`,
+   sends it through the filter pipeline.
+6. If filters auto-allow: grith resumes the syscall (`ptrace(PTRACE_SYSCALL, ...)`)
+   and the call runs normally.
+7. If filters auto-deny: grith rewrites the syscall to a no-op (e.g. `getpid`) and
+   sets the return register to EACCES before resuming.
+8. If filters quarantine: the thread stays stopped (`PTRACE_INTERRUPT`) until a
+   reviewer decides.
 
-grith intercepts the following syscall classes on Linux:
-
-| Class | Syscalls | What grith evaluates |
-|---|---|---|
-| File read | `open`, `openat`, `read`, `readlink`, `stat`, `access` | Path, flags, read target |
-| File write | `open` (with write flags), `openat`, `write`, `rename`, `unlink`, `chmod` | Path, content indicators, permissions |
-| Network | `connect`, `sendto`, `sendmsg`, `bind`, `listen` | Destination address, port, protocol |
-| Process | `execve`, `execveat`, `clone`, `fork`, `vfork` | Command, arguments, environment |
-| Dangerous | `ptrace` (from child), `mount`, `chroot`, `pivot_root` | Always high-score or auto-deny |
-
-### Injecting denials
-
-When grith denies a syscall, it does not kill the process. Instead, it uses ptrace to modify the syscall return value to an appropriate error code — typically `EPERM` (permission denied) or `EACCES` (access denied). The tool process receives the error as if the kernel had denied the operation. Well-behaved tools handle these errors gracefully; they see the same error they would get from standard Unix permission enforcement.
-
-## macOS: coming very soon
-
-macOS support is not part of the current Linux launch. The planned implementation uses Apple's Endpoint Security framework so grith can supervise file, process, and network activity with a native platform backend.
-
-## Windows: coming very soon
-
-Windows support is also not part of the current launch. The planned implementation combines file-system interception with Windows-native event streams for process and network visibility.
+This is a slightly simplified version of what's in `crates/grith-supervisor/`. The
+real code also handles PTY forwarding, signal forwarding, fork/clone tracking, and
+the noise-reduction batching for rapid reads.
 
 ## Process tree tracking
 
-When grith supervises a tool via `grith exec`, the tool may spawn child processes. A code editor might spawn a language server. A build tool might invoke compilers and linkers. A test runner might spawn application processes.
+`grith exec` doesn't only supervise the immediate child. Any process the child
+spawns inherits the seccomp filter and gets ptrace-attached automatically (via
+`PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK`). An agent that
+shells out to `bash -c 'curl ... | sh'` does not escape supervision — the bash, the
+curl, and the resulting sh are all in the tracked tree.
 
-grith tracks the full process tree of every supervised tool. When a supervised process calls `fork`, `clone`, or `execve`, grith detects the new child process and begins intercepting its syscalls with the same filters and profile applied to the parent.
+The session ID identifies the tree. `grith supervisor list` shows one row per active
+tree, with the root command line.
 
-This prevents a common evasion technique: a malicious tool spawning a child process to perform an action that the parent would not be permitted to do. The child inherits the parent's security profile.
+## What's "interesting"
 
-<Terminal command="grith exec --profile claude-code -- claude-code 'run the test suite'" />
+The seccomp filter intercepts (approximately):
 
-If `claude-code` spawns `npm test`, which spawns `node`, which spawns the application under test — every process in that tree is monitored by grith.
+- **File operations** — `open`, `openat`, `openat2`, `unlink`, `unlinkat`, `rename`,
+  `renameat2`, `chmod`, `fchmod`, `fchmodat`.
+- **Process operations** — `execve`, `execveat`, `clone`, `fork`, `vfork`,
+  `prlimit64` (for memory caps), `kill`.
+- **Network operations** — `socket`, `connect`, `bind`, `sendto`, `sendmsg`,
+  `getaddrinfo` (intercepted at the libc layer via a special hook in DNS-aware
+  builds).
+- **Memory protection** — `mprotect` with W^X violations (advisory; off by default).
 
-## Next steps
+Reads — `read`, `pread64` — are *not* in the interesting set by default, because the
+data flow has already been captured at the `open` time. Tracking every read would
+flood the pipeline. The taint filter inherits the read context from the file
+descriptor's open.
 
-- [CLI Supervisor](/docs/concepts/cli-supervisor) — How `grith exec` orchestrates syscall interception
-- [Architecture](/docs/concepts/architecture) — Where syscall interception fits in the overall system
-- [Quarantine Digest](/docs/concepts/quarantine-digest) — What happens when a syscall scores in the QUEUE zone
+## PTY forwarding
+
+When grith supervises an interactive program (REPL, shell, agent with a TUI),
+direct stdio inheritance wouldn't work — the supervisor sits between user and child.
+The supervisor allocates a master/slave PTY pair, hands the slave to the child, and
+shuttles bytes between the user's controlling TTY and the master.
+
+The user sees no difference: their input goes to the agent, the agent's output comes
+back, ANSI escapes work, signals (Ctrl-C, Ctrl-Z) are forwarded.
+
+The cost is one extra `read`+`write` per byte through the PTY. Negligible for
+text-rate interaction; can be measured if you're pushing tens of MB through stdio,
+which agents rarely do.
+
+## Noise reduction
+
+A lot of syscalls are uninteresting in aggregate. Reading a 50-file directory of
+configs touches `openat` 50 times. Each is a separate filter pass at base rates.
+`supervisor.noise_reduction` knobs (`ignore_read_only`, `batch_rapid_reads`,
+`batch_window_ms`) collapse rapid sequences of reads on the same FD into a single
+filter pass per batch window. Default `batch_window_ms = 50` is invisible to humans
+and dramatically reduces filter work for read-heavy workloads.
+
+## Permissions
+
+ptrace requires either CAP_SYS_PTRACE *or* matching uid + `kernel.yama.ptrace_scope`
+allowing it. Most distros ship `ptrace_scope = 1` ("only attach to descendants"),
+which is what grith needs — and what it does, because the supervised process is
+always a descendant of the supervisor.
+
+Some hardened distros (some EC2 AMIs, Ubuntu hardening guides) ship
+`ptrace_scope = 2` ("admin-only"). That breaks `grith exec`. The fix:
+
+```
+sudo sysctl kernel.yama.ptrace_scope=1
+```
+
+Add to `/etc/sysctl.d/` to persist.
+
+## What this is not
+
+grith is **not a sandbox**. Allowed calls run on the real filesystem against the
+real network. The supervisor decides yes/no; the kernel still does the work.
+
+This is intentional. Sandboxes have their own large attack surface (chroot escape,
+namespace escape, redirected mounts that confuse the agent). grith leaves the agent
+on the real system and trusts the kernel to keep it inside the OS process model. The
+security guarantee comes from policy, not from re-implementing the OS.
+
+If you do want a sandbox layer, run grith inside a container or behind a Linux user
+namespace. The supervision and the sandbox are complementary.
+
+## What's coming on other platforms
+
+- **macOS** — Endpoint Security framework, kext-free, requires entitlement. Status:
+  in-flight; ships in v2.0.
+- **Windows** — ETW + minifilter for fs/registry, plus a process injection hook for
+  network. Status: design done; ships in v2.0.
+- **aarch64 Linux** — needs the register backend (ptrace works; the BPF programs
+  are arch-specific). Status: targeting v0.2.
+
+## See also
+
+- [Supervisor profiles](/docs/concepts/supervisor-profiles) — what the supervisor
+  uses to decide quickly vs. fully scoring
+- [grith exec](/docs/cli/exec) — CLI reference
+- [Supervisor-only security assessment](/docs/security/supervisor-only-assessment) —
+  formal threat model

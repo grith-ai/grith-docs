@@ -1,0 +1,85 @@
+---
+title: "Analytics & cost"
+description: "Team-scope usage analytics, decision splits, per-user cost."
+section: "pro"
+order: 6
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/analytics-and-cost.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+Pro analytics aggregate audit summaries from every team device into team-scope
+dashboards. Raw audit records stay on each device; only summarised counts and
+top-N rollups flow to the dashboard.
+
+## What's surfaced
+
+- **Decision split** — allow/queue/deny ratios by team, user, project,
+  profile.
+- **Top destinations** — most-frequently-accessed hosts, by user.
+- **Top sessions by queue events** — sessions that produced the most digest
+  items.
+- **Canary fires** — every fire is logged with full context (these aren't
+  summarised — they're rare and important).
+- **Cost** — provider spend by model and user, derived from each agent's API
+  call accounting.
+- **Threshold drift** — sessions running with thresholds that diverge from
+  the team default.
+
+## Privacy posture
+
+What grith.ai sees:
+
+- **Counts** — number of allows, queues, denies, canary fires.
+- **Top-N rollups** — hosts and patterns, anonymised by default.
+- **Cost** — provider, model, token totals, user ID.
+
+What grith.ai does NOT see:
+
+- Individual call shapes (paths, command text, payloads).
+- Audit record contents.
+- Reputation table contents.
+- Provider API keys (those flow encrypted, never to grith.ai).
+- Source code / file contents.
+
+`general.audit_sync = false` disables the summaries entirely; in that mode,
+Pro analytics show no data for that device.
+
+## Cost tracking detail
+
+Each provider call's metadata (provider, model, prompt tokens, completion
+tokens) is captured locally. With `audit_sync = true`, the summarised totals
+sync hourly to the dashboard. The dashboard converts to USD using the
+provider's published rates (manually updated; not real-time).
+
+Cost is shown:
+
+- **Per user** — single-source-of-truth attribution.
+- **Per project** — when sessions use `--project` to tag.
+- **Per provider/model** — comparison between providers.
+- **Per week** — for trend.
+
+## Compliance-flavoured exports
+
+```
+GET /analytics/compliance
+```
+
+Returns SOC 2 / ISO 27001 / GDPR-flavoured bundles. Includes:
+
+- Decision counts by control objective.
+- Canary fires with full timeline.
+- Threshold change history.
+- Policy-edit audit.
+
+For deeper compliance integration (SIEM export, custom shapes), see
+[Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting).
+
+## See also
+
+- [Analytics API](/docs/api/analytics)
+- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)
+- [SIEM integration (Enterprise)](/docs/enterprise/siem-integration)

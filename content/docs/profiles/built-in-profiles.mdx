@@ -1,0 +1,67 @@
+---
+title: "Built-in profiles"
+description: "The supervisor profiles that ship with grith — pick the right one for your agent."
+section: "profiles"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/built-in-profiles.mdx"
+---
+
+grith ships 11 built-in profiles covering the popular AI agents. Pick the one
+matching your agent on every `grith exec`; if your agent isn't listed, start with
+`generic-cli` or write a [custom profile](/docs/profiles/writing-a-custom-profile).
+
+## Quick reference
+
+| Profile | For | Capabilities |
+| --- | --- | --- |
+| [`claude-code`](/docs/profiles/claude-code) | Anthropic Claude Code CLI | read/write home, shell, network, exec |
+| [`codex`](/docs/profiles/codex) | OpenAI Codex CLI | read/write home, shell, network, exec |
+| [`aider`](/docs/profiles/aider) | Aider git-aware agent | read/write home, shell, network |
+| [`goose`](/docs/profiles/goose) | Block's Goose | read/write home, shell, network, exec |
+| [`copilot`](/docs/profiles/copilot) | GitHub Copilot CLI | read/write home, shell (limited), network |
+| [`cursor`](/docs/profiles/cursor) | Cursor's helper subprocesses | read/write home, shell, network |
+| [`cline`](/docs/profiles/cline) | Cline / Claude Dev extension CLI | read/write home, shell, network, exec |
+| [`openclaw`](/docs/profiles/openclaw) | OpenClaw fork | read/write home, shell, network, exec |
+| [`generic-cli`](/docs/profiles/generic-cli) | Standard CLI tools (git, npm, ...) | read/write home, shell |
+| `grith-repl` | the built-in REPL | minimal |
+| `generic` | strictest baseline | read/write project only |
+
+## How to pick
+
+1. **You're running a named agent** — use its profile.
+2. **You're running a wrapper around a named agent** — use the wrapped agent's
+   profile.
+3. **You're shelling around in bash with tools** — `generic-cli`.
+4. **You're paranoid or exploring what an agent does** — `generic`. Everything
+   non-project will land in the digest.
+
+## Switching profiles
+
+A profile is set per `grith exec` invocation. The same agent can run under
+different profiles in different terminals — useful when you want to test a tighter
+profile against the same task that's working under a looser one.
+
+## Tuning a built-in
+
+Don't edit the shipping `profiles.toml` directly — your changes get overwritten on
+upgrade. Instead, **extend** in your user profiles directory:
+
+```toml
+# ~/.config/grith/profiles/my-claude-code.toml
+[profiles.my-claude-code]
+extends = "claude-code"
+routine_paths = [
+    "${HOME}/work/special-project/**",
+]
+```
+
+Then `grith exec --profile my-claude-code -- claude`.
+
+## See also
+
+- [How profiles work](/docs/profiles/how-profiles-work)
+- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)
+- [Choose your agent](/docs/start/choose-your-agent) — getting-started page

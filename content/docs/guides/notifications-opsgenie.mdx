@@ -1,0 +1,63 @@
+---
+title: "Notifications: Opsgenie"
+description: "Page oncall via Atlassian Opsgenie."
+section: "guides"
+order: 11
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-opsgenie.mdx"
+---
+
+The Opsgenie integration follows the same pattern as PagerDuty — critical events
+only.
+
+## 1. Get an integration API key
+
+In Opsgenie:
+
+1. **Settings → Integrations → Add Integration → API**.
+2. Configure restrictions (recommended: limit to grith-specific actions).
+3. Copy the API key.
+
+## 2. Configure
+
+```toml
+[notifications.channels.opsgenie]
+enabled = true
+api_key = "..."
+region = "us"                          # "us" | "eu"
+team = "security-oncall"               # routing key
+events = ["canary", "capability_deny"]
+severity_map = { canary = "P1", capability_deny = "P3" }
+dedupe_window_seconds = 300
+```
+
+## 3. Test
+
+```
+grith notifications test opsgenie
+```
+
+An alert appears in the Opsgenie team queue.
+
+## Severity mapping
+
+Opsgenie uses P1–P5. Suggested mapping:
+
+| grith event | Opsgenie priority |
+| --- | --- |
+| `canary` | P1 (urgent) |
+| `capability_deny` | P3 (default) |
+| `queue` (Pro escalations only) | P4 (low) |
+
+## Auto-close
+
+Opsgenie alerts auto-close when grith records a resolution (deny + terminate,
+approve via dashboard, session end). Disable with `auto_close = false`.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)
+- [PagerDuty alternative](/docs/guides/notifications-pagerduty)

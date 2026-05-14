@@ -1,0 +1,85 @@
+---
+title: "Audit"
+description: "Browse, export, and aggregate the audit log over REST."
+section: "api"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/audit.mdx"
+---
+
+The audit log over REST. Same data as [`grith audit`](/docs/cli/audit).
+
+<ApiRouteTable group="Audit" showHeadings={false} />
+
+## Query parameters (list)
+
+| Param | Type | Default | What |
+| --- | --- | --- | --- |
+| `limit` | int | 20 | Page size (max 100). |
+| `cursor` | string | — | Pagination cursor from a previous response. |
+| `session` | uuid | — | Filter to one session. |
+| `since` | ISO 8601 / duration | — | Earliest event time (e.g. `1h`, `2026-05-13T00:00:00Z`). |
+| `decision` | `allow\|queue\|deny` | — | Filter by decision. |
+
+## Response shape
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid-...",
+      "ts": "2026-05-14T09:14:23Z",
+      "session": "abc12345-...",
+      "operation": "file_read",
+      "target": "/home/you/.ssh/config",
+      "decision": "queue",
+      "resolved": "deny",
+      "composite_score": 4.2,
+      "filters": [...],
+      "profile": "claude-code",
+      "pid": 17421,
+      "command": "claude"
+    }
+  ],
+  "next_cursor": "opaque-..."
+}
+```
+
+## Export
+
+```
+GET /audit/export?format=json
+GET /audit/export?format=csv
+```
+
+Streams the full record set (subject to `limit`, default 1000) in the requested
+format. Use for ETL into a SIEM or data warehouse.
+
+## Exfil stats
+
+```
+GET /audit/exfil-stats
+```
+
+Aggregate analytics over the recent window. Shape:
+
+```json
+{
+  "window_size": 500,
+  "top_destinations": [
+    { "host": "api.example.com", "count": 12, "decision_split": { "allow": 10, "deny": 2 } }
+  ],
+  "canary_fires": [
+    { "canary_id": "ca-7f1...", "label": "aws-prod-decoy", "ts": "..." }
+  ],
+  "top_sessions_by_queue_events": [...]
+}
+```
+
+## See also
+
+- [`grith audit`](/docs/cli/audit)
+- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)
+- [SIEM integration](/docs/enterprise/siem-integration)

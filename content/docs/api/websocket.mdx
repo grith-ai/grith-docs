@@ -1,0 +1,68 @@
+---
+title: "WebSocket /events"
+description: "Real-time stream of digest, session, audit, and notification events."
+section: "api"
+order: 11
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/websocket.mdx"
+---
+
+```
+GET ws://127.0.0.1:3141/events
+```
+
+Upgrade to a WebSocket to receive real-time events. The dashboard and the CLI
+`grith log --tail` both use this stream.
+
+## Authentication
+
+For v0.1, accept any loopback caller. When the daemon is behind a reverse proxy
+with auth, a bearer token in the `Authorization` header is required.
+
+## Subscription
+
+After upgrade, send a subscription message:
+
+```json
+{ "subscribe": ["digest", "session", "audit", "notifications"] }
+```
+
+Or subscribe to everything:
+
+```json
+{ "subscribe": ["*"] }
+```
+
+## Event shapes
+
+Each event is a single JSON message with a `type` and a payload:
+
+```json
+{ "type": "digest.created", "item": { ... } }
+{ "type": "digest.resolved", "id": "...", "decision": "approve" }
+{ "type": "session.started", "session": { ... } }
+{ "type": "session.ended", "id": "...", "reason": "exit-0" }
+{ "type": "audit.recorded", "event": { ... } }
+{ "type": "notification.delivered", "channel": "slack", "item_id": "..." }
+{ "type": "notification.failed", "channel": "email", "error": "..." }
+```
+
+## Heartbeats
+
+The server sends `{ "type": "ping" }` every 30s. Clients should respond with
+`{ "type": "pong" }` to keep the connection. Failure to respond within 90s
+results in the server closing the connection.
+
+## Reconnection
+
+On disconnect, reconnect with backoff. The stream is "best effort" — there's no
+event replay from the past. Use the REST API to fetch historical state, then
+subscribe for live updates.
+
+## See also
+
+- [`grith log --tail`](/docs/cli/log)
+- [API overview](/docs/api/overview)
+- [Notification security model](/docs/security/notification-security)

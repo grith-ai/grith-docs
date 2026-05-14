@@ -1,0 +1,67 @@
+---
+title: "Changelog"
+description: "What changed in each grith release."
+section: "resources"
+order: 4
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/changelog.mdx"
+---
+
+The changelog is also available as an [RSS feed](/changelog.xml) — subscribe
+to be notified of new releases and security advisories.
+
+## v0.1.0 — 2026-05 (launch)
+
+The initial public release.
+
+### Features
+
+- **17 filters** across 3 phases (static, pattern, context) — see
+  [Filter overview](/docs/filters/overview).
+- **Supervisor profiles** for 11 common AI agents — Claude Code, Codex, Aider,
+  Goose, Cursor, Cline, OpenClaw, Copilot, generic-cli, grith-repl, generic.
+- **Quarantine digest** with CLI review and dashboard review.
+- **Adaptive reputation** with per-shape trust accumulation.
+- **Canary tokens** in 7 formats (AWS, GitHub, Slack, SSH, JWT, hex, custom).
+- **Daemon** with REST API + WebSocket for dashboard and IPC for thin clients.
+- **10+ notification channels** — Slack, Discord, Telegram, Teams, email,
+  webhook, PagerDuty, Opsgenie, WhatsApp, desktop, WebSocket.
+- **Audit log** in SQLite with export to JSON/CSV.
+- **Pro tier** — team sync, encrypted key sync, centralised policies,
+  analytics, escalation, allow-always.
+- **Enterprise tier** — SIEM integration, compliance reporting, custom
+  filters, multi-team scope. SSO/RBAC/air-gapped on the v2.0 plan.
+
+### Platform support
+
+- Linux x86_64 with ptrace + seccomp-bpf.
+- macOS, Windows, aarch64: planned v2.0.
+
+### Known limitations
+
+- Filter 17 (semantic analysis) is a stub. Full implementation planned v1.5.
+- Profile drift detection is in the v0.1.x plan.
+- Air-gapped Enterprise deployment is in the v2.0 plan.
+
+---
+
+## Older
+
+There are no public versions prior to v0.1. Beta and internal versions used by
+the early development team are not listed.
+
+---
+
+## Subscribe
+
+- RSS: [`/changelog.xml`](/changelog.xml)
+- GitHub Releases: [github.com/grith-ai/grith/releases](https://github.com/grith-ai/grith/releases)
+- Mailing list: [grith.ai/announce](https://grith.ai/announce)
+
+## See also
+
+- [Roadmap](/docs/resources/roadmap)
+- [Release process](/docs/ops/release-process)
+- [Advisories](/docs/security/advisories)

@@ -1,114 +1,134 @@
 ---
-title: "Quarantine Digest"
-description: "Batched review of ambiguous tool calls, digest modes, review actions, and process freezing"
+title: "The quarantine digest"
+description: "Why grith routes ambiguous calls to a human review queue instead of guessing."
 section: "concepts"
-order: 4
+order: 5
 tier: "community"
-lastUpdated: "2026-02-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/quarantine-digest.mdx"
 ---
 
-When a tool call scores between the ALLOW and DENY thresholds, it enters the quarantine queue. Rather than interrupting the developer with a modal prompt for every ambiguous call, grith batches these calls into a periodic digest for review. This is inspired by enterprise email quarantine summaries — the developer reviews genuinely uncertain actions on their own schedule, without time pressure.
+The digest is grith's queue for calls that scored ambiguously. Auto-allow is for
+calls that are obviously fine. Auto-deny is for calls that are obviously not. The
+digest is for everything else — and "everything else" is where most of the actual
+security decisions get made.
 
-## Why batched review
+## The shape of the problem
 
-The alternative — per-call approval prompts — creates approval fatigue. When a developer sees dozens of "Allow this action?" dialogs in a session, they stop reading them. The twentieth prompt gets the same reflexive "yes" as the first, regardless of what it says. Security becomes a checkbox exercise.
+If you could write a function `is_this_safe(call) → bool` that was always right,
+grith wouldn't need a digest. You can't. Nobody can. Real agent workloads have:
 
-grith's quarantine digest solves this by collecting ambiguous calls and presenting them together. The developer sees a summary of what was flagged, why it was flagged, and what score it received. They make decisions with full context, not under the pressure of a blocking prompt.
+- Calls that are obviously safe (`ls`, `cat README.md`, `git status`). The filters
+  handle these — auto-allow.
+- Calls that are obviously not (`curl | sh` from an unknown host, reading
+  `~/.aws/credentials` from a session that's about to network out, anything that
+  trips canary detection). Auto-deny.
+- Calls that *could* be fine in this context but suspicious in another (`cat
+  ~/.ssh/config` — fine if you asked the agent to fix a typo there, very not fine if
+  you asked it to summarise a README). The filters can't know which context applies.
 
-<Callout type="info" title="Most calls never reach the digest">
-In a well-tuned deployment, 80–90% of tool calls auto-allow and 1–5% auto-deny. Only the genuinely ambiguous 5–15% enter the quarantine queue. The digest is not a firehose — it is a curated list of edge cases.
-</Callout>
+That last category is what the digest is for. Rather than guess, grith **freezes the
+calling process and asks**.
 
-## Digest modes
+## Process freezing
 
-grith provides two interfaces for reviewing queued calls.
+When a call lands in the queue, grith uses `ptrace(PTRACE_INTERRUPT)` to stop the
+calling thread before the syscall is committed. The thread sits there, frozen, with
+the syscall args staged in registers. It cannot proceed, but it also cannot fail —
+it's just paused.
 
-### CLI digest
+That matters because:
 
-Review queued calls directly from your terminal:
+- The agent doesn't see a permission error and decide to retry the call a different
+  way. It just hangs.
+- The OS doesn't see a partial syscall and roll back state. The syscall has not
+  started yet.
+- A human (or webhook) can take as long as they want to decide. Up to
+  `proxy.review_timeout_seconds` (default 300s = 5min), after which grith
+  auto-denies.
 
-<Terminal command="grith digest review" />
+When a decision is made, the thread either runs the original syscall (approve) or
+returns it with EACCES / equivalent failure (deny).
 
-The CLI presents each queued call with its score, the filters that fired, and the full call details. You work through items one at a time, choosing an action for each.
+## What the reviewer sees
 
-For a quick summary without entering interactive review:
+A digest item carries every piece of context the filters had plus a few they didn't:
 
-<Terminal command="grith digest list" />
+- **The call itself**: operation type, target, args, originating PID and command line.
+- **The composite score** and which threshold zone it crossed.
+- **Per-filter contributions**: each filter's emitted score and any annotations
+  (matched patterns, denied paths, taint sources).
+- **Session history**: the last N calls in the same session, for behavioural context.
+- **Reputation snapshot**: what the trust table says about the destination today.
+- **Profile**: which supervisor profile is active, and which entries got exercised.
 
-### Dashboard digest
+This is enough to make a yes/no decision in roughly the time it takes to read the
+filter list. If it isn't, something's off — usually that means the score is in the
+queue zone but the filters have nothing alarming to say. That's usually a threshold
+mis-tuning. See [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds).
 
-The grith dashboard at `localhost:3141` includes a digest panel with the same information in a visual interface. Queued calls are displayed with filter breakdowns, score visualisations, and one-click action buttons. The dashboard receives updates in real time via WebSocket, so new queued calls appear as they arrive.
+## The actions available
 
-## Review actions
+The reviewer can:
 
-When reviewing a queued call, you can take one of several actions:
+- **Approve** — let this call run.
+- **Approve + learn** — let it run, and teach the [reputation
+  system](/docs/concepts/adaptive-reputation) that this shape is okay. Similar
+  future calls will auto-allow.
+- **Approve + unlock egress** — for network calls. Allows this destination for the
+  rest of the session.
+- **Allow always** *(Pro)* — adds the call to a permanent allowlist. Sparingly.
+- **Deny** — block this call; the syscall returns EACCES.
+- **Deny + terminate** — block + kill the process tree. For confirmed exfil.
+- **Escalate** *(Pro)* — route to a teammate or channel for second opinion.
+- **Skip** — leave it queued. Useful for "I'll come back to this".
 
-| Action | Effect |
-|---|---|
-| **Approve** | Execute the call. Logged as human-approved in the audit trail. |
-| **Deny** | Block the call permanently. The tool receives an error response. |
-| **Learn** | Approve or deny and adjust the relevant filter weights so similar calls score differently in the future. |
-| **Escalate** | Flag the call for a team lead or security reviewer (enterprise feature). |
-| **Allow-always** | Approve and add a permanent allowlist rule for this pattern. |
-| **Deny-terminate** | Deny the call and terminate the tool's process. Use when the tool's behaviour is actively suspicious. |
-| **Unlock-egress** | Approve a blocked network connection and add the destination to the egress allowlist. |
+Each decision is recorded in the audit log with the user who made it (in multi-user
+team setups) and the rationale annotations from the filters.
 
-<Callout type="warning" title="Allow-always and unlock-egress are powerful">
-These actions create permanent rules that bypass future scoring for matching patterns. Use them only when you are confident the pattern is safe. Both actions are logged with full attribution in the audit trail.
-</Callout>
+## Why batching matters
 
-## Digest configuration
+In a session of any length, multiple calls will land in the digest. Most agents do
+roughly the same kinds of things, which means the digest items cluster: "this agent
+is reading config files all over my home dir." Reviewing them one by one is
+exhausting.
 
-The batch interval and queue size are configurable:
+The CLI and dashboard both let you batch-decide on related items:
 
-<ConfigExample title="Digest configuration" code={`[digest]
-# How often to surface the digest during active sessions
-interval_active = "30m"
+```
+grith digest list --filter session=abc12345
+grith digest approve --filter session=abc12345 --target '~/.config/grith/**'
+```
 
-# Maximum queued calls before forcing a review prompt
-max_queue_size = 100
+Or in the dashboard: select a group, click approve. The reputation system records
+this as a batch approval, which is stronger evidence than the same approvals one at a
+time.
 
-# Auto-deny calls that have been queued longer than this (seconds)
-review_timeout_seconds = 300
-`} />
+## Channels (Pro)
 
-When `max_queue_size` is reached (100 calls by default), grith pauses the agent and surfaces the digest immediately. This prevents runaway accumulation of unreviewed calls during long-running sessions.
+A Pro license unlocks notification channels. The digest item gets posted to Slack /
+Discord / Telegram / Teams / email / PagerDuty / Opsgenie / a webhook. The reviewer
+clicks an approve button (or replies in a thread), and the decision flows back via
+an HMAC-signed callback. See [Notification security model](/docs/security/notification-security)
+for the threat model around remote approvals.
 
-The `review_timeout_seconds` ensures that calls do not sit in quarantine indefinitely. If a queued call is not reviewed within 5 minutes (300 seconds), it is automatically denied. This fail-closed behaviour is consistent with grith's security posture.
+## When the queue is empty
 
-## Process freezing in supervisor mode
+A grith deployment with the queue mostly empty is normal — that's the goal. Most
+calls auto-allow because the filters cleared them or because reputation absorbed
+them. A queue that's never empty after a few weeks of use means either:
 
-When grith is running in supervisor mode (`grith exec`), a tool call that scores in the QUEUE zone triggers a different workflow than the built-in agent. The supervised process cannot simply "wait" for a response — it is executing native code that expects a syscall to complete.
+1. The agent is genuinely doing wild stuff, and you should look at it more closely.
+2. The scoring thresholds are too tight; relax them via
+   [`proxy.auto_allow_threshold`](/docs/config/proxy).
 
-grith handles this by freezing the process:
+A queue that's *too* empty under attack is the failure mode that matters more.
+That's what the canary and DLP filters guard against: they're hard gates, not
+contributors, so they will deny exfil regardless of whether anyone reads the digest.
 
-1. The syscall is intercepted and scores in the QUEUE zone.
-2. grith sends `SIGSTOP` to the supervised process (or uses ptrace freeze on Linux).
-3. The process is suspended. All child processes in the tracked process tree are also frozen.
-4. The call enters the quarantine queue.
-5. The developer reviews the call in the digest.
-6. On **approve**: grith thaws the process (`SIGCONT` or ptrace resume) and allows the syscall to complete.
-7. On **deny**: grith terminates the syscall with an error and optionally terminates the process.
+## See also
 
-<Callout type="tip" title="Transparent to the supervised tool">
-The freeze/thaw cycle is invisible to the supervised tool. From its perspective, the syscall simply took longer than usual. This means any CLI tool can be supervised without modification — no special API integration or awareness of grith is required.
-</Callout>
-
-## Audit trail
-
-Every digest interaction is recorded in the audit log alongside the original tool call:
-
-- The original call details and score
-- Which filters fired and their individual contributions
-- The review action taken (approve, deny, learn, etc.)
-- The reviewer identity (relevant for team and enterprise deployments)
-- The timestamp of the review
-- Any rule changes resulting from the action (allow-always, weight adjustments)
-
-This creates a complete chain of custody: what was requested, why it was flagged, who reviewed it, and what they decided.
-
-## Next steps
-
-- [Scoring Proxy](/docs/concepts/scoring-proxy) — How calls are scored and routed to the digest
-- [CLI Supervisor](/docs/concepts/cli-supervisor) — How `grith exec` manages supervised processes
-- [Syscall Interception](/docs/concepts/syscall-interception) — The OS-level mechanism behind process freezing
+- [Reviewing the digest](/docs/start/reviewing-the-digest) — workflow walkthrough
+- [grith digest](/docs/cli/digest) — CLI reference
+- [Digest API](/docs/api/digest) — REST routes

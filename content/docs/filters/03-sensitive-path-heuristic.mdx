@@ -1,0 +1,74 @@
+---
+title: "3. Sensitive path heuristic"
+description: "Pattern-based detection of credential-shaped paths the static list might miss."
+section: "filters"
+order: 12
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/03-sensitive-path-heuristic.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Static |
+| **Score range** | +1 to +4 |
+| **Module** | `crates/grith-proxy/src/filters/sensitive_path.rs` |
+
+Where the static path matcher ([2](/docs/filters/02-static-path-matching)) is a
+curated list, the sensitive path heuristic is the **fuzzy** complement. It catches
+the long tail: paths that look sensitive but aren't in any curated list.
+
+## What it catches
+
+Patterns built into the heuristic (not configurable):
+
+| Pattern | Score | Examples |
+| --- | --- | --- |
+| `**/.env*` | +3.0 | `.env`, `.env.local`, `.env.production.bak` |
+| `**/id_(rsa\|ed25519\|ecdsa\|dsa)` | +4.0 | SSH private keys, any name. |
+| `**/*credential*` | +2.5 | `aws-credentials.json`, `credentials_backup.txt`, etc. |
+| `**/secret*.{toml,yaml,json,env}` | +2.5 | Config files named for secrets. |
+| `**/.{aws,gcloud,azure,kube}/` | +3.0 | Cloud-provider config directories. |
+| `**/password*` | +2.0 | `passwords.txt`, `password_db`. |
+| `**/.{pgpass,netrc}` | +3.5 | Postgres / curl credential files. |
+| `**/.gnupg/` | +3.0 | GPG homedir. |
+
+Patterns chain: a `.env.production.bak` in a `.aws` directory contributes both. The
+filter caps its total contribution at +4.0 to keep one well-named file from
+dominating.
+
+## Why fuzzy + curated
+
+Curated lists are precise but always behind: any new credential format, any
+unusual filename someone picked up from a tutorial, slips through. The heuristic
+catches the obvious shapes that any reasonable observer would recognise as sensitive
+*even if no one's added them to a list*.
+
+The trade-off is occasional false positives — `legitimate_password_db_test.txt`
+inside a test fixture trips it. The filter is happy to be wrong sometimes; the
+digest exists to sort those out.
+
+## What it doesn't do
+
+- Doesn't read file contents. That's [secret scanning (7)](/docs/filters/07-secret-credential-scanning)
+  and [DLP (10)](/docs/filters/10-dlp-gate).
+- Doesn't consider where the path is. A `.env` inside `${PROJECT_DIR}` is treated
+  the same as a `.env` in `/home/other-user/`. Routine-path allowlisting in the
+  profile counteracts when appropriate.
+
+## Tuning
+
+The patterns aren't user-configurable in v0.1 — they're intentionally a fixed
+heuristic so a misconfigured user file can't quietly silence sensitive-path
+detection. If you have a legitimate path that matches one of these patterns, add it
+to your profile's `routine_paths` for a negative contribution that cancels out.
+
+For future versions, the heuristic registry is moving to user-extensible (planned
+v0.2).
+
+## See also
+
+- [Filter 2: Static path matching](/docs/filters/02-static-path-matching)
+- [Filter 7: Secret / credential scanning](/docs/filters/07-secret-credential-scanning)
+- [Filter 14: Taint tracking](/docs/filters/14-taint-tracking)

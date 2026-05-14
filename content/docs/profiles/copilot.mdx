@@ -1,0 +1,51 @@
+---
+title: "GitHub Copilot"
+description: "Supervisor profile for the GitHub Copilot CLI."
+section: "profiles"
+order: 7
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/copilot.mdx"
+---
+
+```
+grith exec --profile copilot -- gh copilot
+```
+
+The `copilot` profile fits GitHub Copilot CLI (`gh copilot`). It's a relatively
+narrow surface — Copilot's main tools are explain/suggest, which interact mostly
+with `gh` and don't routinely spawn other processes.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.config/gh/**`,
+  `${HOME}/.cache/gh/**`.
+- **Commands** — `gh ...` (the GitHub CLI), `git ...`, common language
+  toolchains.
+- **Destinations** — `api.github.com`, `*.githubusercontent.com`,
+  `copilot-proxy.githubusercontent.com`.
+- **Exec roots** — standard system bin + `gh` location.
+
+## Capability set
+
+- `read_project`, `write_project`, `read_home`, `write_home`.
+- `shell` — for `gh` and `git`.
+- `network` — for the GitHub APIs.
+- **No** `exec` by default — Copilot doesn't typically spawn arbitrary tools.
+
+## Tuning
+
+If you use `gh extension` to install community extensions that themselves spawn
+processes, you may need to add `exec`:
+
+```toml
+[profiles.my-copilot]
+extends = "copilot"
+capabilities += ["exec"]
+```
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)

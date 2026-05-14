@@ -1,0 +1,109 @@
+---
+title: "Writing custom filter rules"
+description: "Add your own paths, commands, hosts, and patterns to the shipping filter configs."
+section: "guides"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/writing-custom-filter-rules.mdx"
+---
+
+Each of the filter config files supports user-level overrides. The shipping
+defaults live in the install; your customisations live in `~/.config/grith/filters/`.
+
+This guide covers the four customisations you'll do most.
+
+## 1. Add a sensitive path
+
+Edit `~/.config/grith/filters/paths.toml`:
+
+```toml
+[[deny]]
+path = "${HOME}/work/customer-data/"
+score = 5.0
+reason = "customer data — never goes outbound"
+
+[[deny]]
+path = "internal-secrets.toml"     # any nested
+score = 4.0
+```
+
+After saving:
+
+```
+grith config reload   # if daemon running
+```
+
+## 2. Add an internal egress allow
+
+Edit `~/.config/grith/filters/egress.toml`:
+
+```toml
+[[allow]]
+host = "*.internal.acme.com"
+score = -2.0
+reason = "internal services"
+
+[[allow]]
+ip = "10.42.0.0/16"
+score = -2.0
+reason = "internal VPC"
+```
+
+## 3. Block a known-bad destination
+
+```toml
+# ~/.config/grith/filters/egress.toml
+[[deny]]
+host = "*.crypto-mining-pool.example"
+score = 5.0
+reason = "actually-malicious"
+```
+
+## 4. Add a team-internal secret pattern
+
+Edit `~/.config/grith/filters/secrets.toml`:
+
+```toml
+[[proxy.filters.secret_scan.custom_patterns]]
+name = "acme-internal-id"
+regex = "ACME-CID-[0-9]{8}"
+score = 4.0
+description = "internal customer ID format"
+```
+
+## How layers work
+
+User files are loaded on top of the shipping defaults. The rules:
+
+- **Allow/deny lists** — user entries are appended. Same key in both layers
+  takes the user value.
+- **Custom pattern arrays** — user-added patterns extend the set.
+- **Section toggles** — last-write-wins.
+
+You can't *remove* a shipping default — but you can override it. To effectively
+disable a built-in pattern, add a same-key entry with a score of 0 or with a
+specific allowlist annotation.
+
+## Per-team distribution
+
+For a team setup, share these files via:
+
+- A `dotfiles` repo cloned to `~/.config/grith/` (manual).
+- A Pro [centralised policy bundle](/docs/pro/centralised-policies) (automatic,
+  signed).
+
+## Testing your changes
+
+```
+grith proxy test '{"operation":"file_read","target":"/home/you/work/customer-data/foo.csv"}'
+```
+
+Check the filter contributions match what your new rule expects.
+
+## See also
+
+- [Filter config files](/docs/config/filter-config-files)
+- Per-filter pages under [Filter reference](/docs/filters/overview)
+- [`grith proxy test`](/docs/cli/proxy-test)

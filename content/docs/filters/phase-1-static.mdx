@@ -1,0 +1,58 @@
+---
+title: "Phase 1 — Static"
+description: "Six filters that run cheap structural checks on every call. Sub-millisecond budget."
+section: "filters"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/phase-1-static.mdx"
+---
+
+Phase 1 is the cheap pass. Six filters look at the structure of the call — what kind
+of operation, what path or destination, what the active profile says — without
+reading content or consulting session history. The total budget for the phase is
+**under 1ms**, and a typical call exits Phase 1 in around 100–300 microseconds.
+
+## The six filters
+
+| # | Filter | Score range | What it does |
+| --- | --- | --- | --- |
+| 1 | [Operation risk scoring](/docs/filters/01-operation-risk-scoring) | +1 to +3 | Baseline risk by operation class. |
+| 2 | [Static path matching](/docs/filters/02-static-path-matching) | +2 to +5 | Aho-Corasick scan against denylists/allowlists. |
+| 3 | [Sensitive path heuristic](/docs/filters/03-sensitive-path-heuristic) | +1 to +4 | Heuristics for `.env`, `id_rsa`, `.aws/`, similar. |
+| 4 | [Allowlist / denylist](/docs/filters/04-allowlist-denylist) | -1 to +3 | User-managed allow/deny rules. |
+| 5 | [Argument length & structure](/docs/filters/05-argument-length-structure) | 0 to +2 | Flags oddly-shaped arguments. |
+| 6 | [Capability enforcement](/docs/filters/06-capability-enforcement) | 0 or DENY | Hard gate against profile capabilities. |
+
+## What Phase 1 buys you
+
+Most calls are decisively allowed or quarantined by the time Phase 1 finishes:
+
+- A read in a project directory under the matching profile exits at score ~0.4 → auto-allow.
+- A read of `~/.ssh/id_rsa` exits at score ~5.2 → past the quarantine threshold.
+- A capability-denied operation (e.g. shell exec from a profile with no shell grant)
+  exits at DENY before Phase 2 even starts to fire.
+
+Phases 2 and 3 still run, but their contributions can only push an already-suspect
+call further into the deny zone or pull a borderline call back toward allow via the
+reputation discount.
+
+## Why these six are in Phase 1
+
+The six static filters share three properties:
+
+1. **No content scan needed.** They look at metadata (path string, operation type,
+   args length), not bytes inside files or payloads.
+2. **No session history needed.** They produce the same score for a given call
+   regardless of what happened before.
+3. **Cacheable.** Static path matching uses an Aho-Corasick automaton built once at
+   start. Capability lookup is a hashmap. Operation risk is a static table.
+
+That's what makes them fast enough to all run before Phase 2 even starts.
+
+## See also
+
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline)
+- [Phase 2 — Pattern](/docs/filters/phase-2-pattern)
+- [Phase 3 — Context](/docs/filters/phase-3-context)

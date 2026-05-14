@@ -1,0 +1,62 @@
+---
+title: "Notifications: Email"
+description: "Route grith events to email via SMTP."
+section: "guides"
+order: 8
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-email.mdx"
+---
+
+Send digest items and alerts via SMTP. Useful for digest summaries to oncall
+mailing lists.
+
+## Configure
+
+```toml
+[notifications.channels.email]
+enabled = true
+smtp_host = "smtp.example.com"
+smtp_port = 587
+smtp_user = "grith@example.com"
+smtp_pass = "..."                       # or use SMTP_PASS env var
+smtp_tls  = "starttls"                  # "starttls" | "tls" | "none"
+from = "grith@example.com"
+to   = ["oncall@example.com"]
+severity_map = { canary = "critical", queue = "warning" }
+batch_window_seconds = 300              # batch queue events into one mail
+```
+
+## Batching
+
+Email isn't a great instant-alert channel; the `batch_window_seconds` field
+collects queue events into a single digest mail. Canary fires bypass batching
+and send immediately.
+
+## Test
+
+```
+grith notifications test email
+```
+
+You should see a test mail in the recipient inbox within a minute.
+
+## Format
+
+- **Subject** — `[grith] <severity> <operation> <target>`.
+- **Body** — plain text with filter contributions, then HTML version with links
+  to the dashboard.
+- **From** — the configured `from` address.
+
+## Caveats
+
+- Email-based approvals are not supported in v0.1 (no reply-parser). Approve/deny
+  via the dashboard link.
+- If your SMTP is rate-limited (Gmail, Outlook free), use `batch_window_seconds`
+  generously to stay under quotas.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)

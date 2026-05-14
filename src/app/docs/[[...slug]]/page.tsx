@@ -31,7 +31,7 @@ export default async function DocsPage({ params }: PageProps) {
   const { slug } = await params;
 
   if (!slug) {
-    redirect('/docs/getting-started/installation');
+    redirect('/docs/start/what-is-grith');
   }
 
   const doc = getDocBySlug(slug);

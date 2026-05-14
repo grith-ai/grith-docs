@@ -1,0 +1,61 @@
+---
+title: "1. Operation risk scoring"
+description: "Baseline risk score for every call, by operation class."
+section: "filters"
+order: 10
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/01-operation-risk-scoring.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Static |
+| **Score range** | +1 to +3 |
+| **Module** | `crates/grith-proxy/src/filters/operation_risk.rs` |
+| **Config file** | — (built-in) |
+
+The operation risk filter is the foundation of the score: a small additive
+contribution based on what kind of call this is. Every call gets a contribution,
+even on the auto-allow path.
+
+## What it catches
+
+A coarse-grained "is this kind of operation inherently risky?" score:
+
+| Operation | Base | Reasoning |
+| --- | --- | --- |
+| `file_read` | +0.5 | Reads can leak; usually fine in routine paths. |
+| `file_write` | +1.5 | Writes can corrupt or implant. |
+| `shell` | +2.0 | Arbitrary code execution. |
+| `network` | +1.5 | Egress. Always interesting. |
+| `exec` (spawn process) | +2.0 | New supervised subprocess. |
+| `chmod` / `chown` | +2.0 | Privilege escalation surface. |
+| `unlink` / `rmdir` | +1.0 | Destructive. |
+| `rename` | +1.0 | Can move files out of zone. |
+| `socket bind` | +1.5 | Opens up listening sockets. |
+| `kill` | +3.0 | Signals other processes. Rare and conspicuous. |
+
+The exact numbers are tuned per operation. They're conservative enough that a single
+operation-risk score is never enough on its own to land in the queue zone; they need
+to combine with other filter contributions.
+
+## What it doesn't do
+
+This filter doesn't look at *what* the operation touches. A `file_read` of
+`/etc/passwd` and a `file_read` of `~/proj/README.md` both get the same +0.5 from
+this filter; the path-aware filters (2, 3, 9) are responsible for differentiating.
+
+## Tuning
+
+Most tuning happens via downstream filters. If you find that the auto-allow zone is
+too aggressive for a particular operation class, the cleanest knob is the threshold
+itself (`proxy.auto_allow_threshold`) rather than re-weighting this filter — the
+operation risk numbers are calibrated against the rest of the pipeline.
+
+## See also
+
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [Filter 2: Static path matching](/docs/filters/02-static-path-matching)
+- [Phase 1 — Static](/docs/filters/phase-1-static)

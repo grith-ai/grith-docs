@@ -1,0 +1,86 @@
+---
+title: "4. Allowlist / denylist"
+description: "User-managed allow and deny rules with explicit priority over static patterns."
+section: "filters"
+order: 13
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/04-allowlist-denylist.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Static |
+| **Score range** | -1 to +3 |
+| **Module** | `crates/grith-proxy/src/filters/allowlist.rs` |
+
+The user-managed allow/deny list. Edited primarily through digest decisions ("approve
++ learn", "allow always"), not by hand.
+
+## What it catches
+
+Whatever you've taught it. A `learn`-tagged approval from the digest writes an entry:
+
+```
+allowlist  file_read /home/you/.ssh/config       (per-session)
+allowlist  shell    git status                   (permanent, "allow-always")
+denylist   network  api.dangerous.example         (permanent, set by deny+block-future)
+```
+
+Entries can be:
+
+- **Per-session** — applies until the session exits. Default for "approve once" with
+  the destination unlocked.
+- **Permanent** — applies across sessions. Set by `allow-always` (Pro) or by direct
+  edit of the user allowlist file.
+
+## How it contributes
+
+For a matching call:
+
+- **Allowed** entries contribute `-1.0` (pulls toward allow).
+- **Denied** entries contribute `+3.0` (pushes toward deny). The filter doesn't return
+  hard DENY — it lets the composite drive the decision — except via the dedicated
+  capability filter for hard gates.
+
+## Editing by hand
+
+The allowlist file lives at `~/.config/grith/allowlist.toml`:
+
+```toml
+[[allow]]
+operation = "shell"
+target    = "git status"
+reason    = "always fine; learned 2026-05-12"
+scope     = "permanent"
+
+[[deny]]
+operation = "network"
+target    = "api.dangerous.example"
+reason    = "data went somewhere we couldn't audit"
+scope     = "permanent"
+```
+
+Edit, then run `grith config reload` to apply without restarting the daemon.
+
+## Inspection
+
+```
+grith digest list --filter "matched=allowlist"
+grith config show allowlist
+```
+
+## What it doesn't do
+
+Allowlist is a contribution, not an override. A canary trip or a capability deny
+will still block, even if the call is in the allowlist. That's intentional: the
+allowlist is a hint, not a bypass.
+
+## See also
+
+- [Filter 6: Capability enforcement](/docs/filters/06-capability-enforcement) — hard
+  gates
+- [Adaptive reputation](/docs/concepts/adaptive-reputation) — automated equivalent
+- [Reviewing the digest](/docs/start/reviewing-the-digest) — `learn` and
+  `allow-always` actions

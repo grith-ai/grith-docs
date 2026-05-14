@@ -1,0 +1,81 @@
+---
+title: "grith supervisor"
+description: "List and manage active supervisor sessions."
+section: "cli"
+order: 8
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/supervisor.mdx"
+---
+
+```
+grith supervisor [list | status | kill]
+```
+
+Inspect and control active supervised sessions — the process trees grith is
+currently watching.
+
+## Subcommands
+
+### `grith supervisor list`
+
+One row per active session.
+
+```
+$ grith supervisor list
+SESSION                                 PROFILE      PID    UPTIME  AGENT
+abc12345-...-7e9f                       claude-code  17421  12m4s   claude
+b8d5...-0001                            generic-cli  18910  3m20s   bash
+```
+
+`--format json` for structured output. `--detail` adds zone, supervised tree size,
+and last activity.
+
+### `grith supervisor status <SESSION_ID>`
+
+Full status of one session: profile, zone, process tree, recent calls, decision
+counts, current frozen state (if any).
+
+```
+$ grith supervisor status abc12345
+Session abc12345-...-7e9f
+  Profile:        claude-code
+  Zone:           dayjob
+  Started:        2026-05-14 09:02:13 (12m4s ago)
+  Root PID:       17421 (claude)
+  Tree size:      4 processes
+  Calls:          834 (allow 781, queue 38, deny 15)
+  Frozen now:     no
+  Last activity:  2s ago
+```
+
+### `grith supervisor kill <SESSION_ID>`
+
+Terminate the process tree. Sends SIGTERM, waits 5 seconds, then SIGKILL if anything's
+still running. Audit logs a session-killed event.
+
+```
+grith supervisor kill abc12345
+```
+
+Useful when you've discovered something in the audit log mid-session and want to stop
+the agent immediately without going through the digest. Also useful when an agent
+hangs after `--attach` and you can't reach its TUI.
+
+## Daemon requirement
+
+These commands require the daemon to be running (so it has the session registry). If
+no daemon is running and you have standalone `grith exec` invocations, each runs in
+its own process; use `ps` to find them and signal them directly.
+
+```
+grith daemon start
+grith supervisor list
+```
+
+## See also
+
+- [`grith exec`](/docs/cli/exec) — start a supervised session
+- [`grith daemon`](/docs/cli/daemon) — the daemon
+- [Supervisor API (IPC)](/docs/api/supervisor) — REST routes

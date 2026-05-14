@@ -1,0 +1,82 @@
+{
+  "commands": [
+    {
+      "description": "Execute a single task non-interactively",
+      "name": "run",
+      "variant": "Run"
+    },
+    {
+      "description": "Create default configuration",
+      "name": "init",
+      "variant": "Init"
+    },
+    {
+      "description": "Show or modify configuration",
+      "name": "config",
+      "variant": "Config"
+    },
+    {
+      "description": "Browse audit logs",
+      "name": "audit",
+      "variant": "Audit"
+    },
+    {
+      "description": "Manage digest queue",
+      "name": "digest",
+      "variant": "Digest"
+    },
+    {
+      "description": "Manage canary tokens used for exfiltration trap detection",
+      "name": "canary",
+      "variant": "Canary"
+    },
+    {
+      "description": "Security proxy commands",
+      "name": "proxy",
+      "variant": "Proxy"
+    },
+    {
+      "description": "Supervise an external CLI tool with OS-level syscall interception",
+      "name": "exec",
+      "variant": "Exec"
+    },
+    {
+      "description": "List or manage active supervisor sessions",
+      "name": "supervisor",
+      "variant": "Supervisor"
+    },
+    {
+      "description": "Manage the grith daemon (dashboard server + shared subsystems)",
+      "name": "daemon",
+      "variant": "Daemon"
+    },
+    {
+      "description": "Manage Pro plan: login, status, sync, activate, logout",
+      "name": "pro",
+      "variant": "Pro"
+    },
+    {
+      "description": "Manage notification channels",
+      "name": "notifications",
+      "variant": "Notifications"
+    },
+    {
+      "description": "View audit-backed session logs",
+      "name": "log",
+      "variant": "Log"
+    },
+    {
+      "description": "Manage supervisor profiles",
+      "name": "profile",
+      "variant": "Profile"
+    },
+    {
+      "description": "Manage the reputation system",
+      "name": "reputation",
+      "variant": "Reputation"
+    }
+  ],
+  "partial": true,
+  "schema_version": 1,
+  "source": "crates/grith-core/src/main.rs"
+}

@@ -1,0 +1,63 @@
+---
+title: "[server]"
+description: "Daemon HTTP server settings — host, port, TLS, rate limits."
+section: "config"
+order: 7
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/server.mdx"
+---
+
+The `[server]` section controls the daemon's HTTP API and dashboard server. Only
+relevant when running `grith daemon`.
+
+<ConfigKeyTable section="server" />
+
+<ConfigKeyTable section="server.rate_limit" />
+
+## TLS
+
+By default the daemon binds to `127.0.0.1` only — there is no remote attack
+surface. To expose the API beyond loopback, either configure native TLS:
+
+```toml
+[server]
+host = "0.0.0.0"
+
+[server.tls]
+cert_path = "/etc/grith/cert.pem"
+key_path  = "/etc/grith/key.pem"
+```
+
+— or front the daemon with a reverse proxy that terminates TLS. The reverse-proxy
+path is usually simpler and more secure (centralised cert management, modern
+cipher suite policies, etc).
+
+See [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
+
+## Rate limits
+
+The rate limits apply per-source-IP. Defaults are conservative; tighten for
+shared deployments, loosen for high-traffic local use:
+
+- **`general_rps`** — most GET endpoints.
+- **`write_rps`** — POST/PUT/DELETE on non-IPC routes.
+- **`proxy_test_rps`** — `/proxy/test` specifically. The dry-run endpoint is
+  cheap, so the limit can be relatively generous, but it does run the full
+  filter pipeline.
+
+IPC endpoints (`/ipc/*`) are not rate-limited at this layer; they're already
+loopback-restricted.
+
+## Dashboard
+
+`dashboard_dir` points at the static dashboard bundle. The grith binary ships with
+its dashboard at `dashboard/dist`. If you build a custom dashboard, point at
+your bundle here.
+
+## See also
+
+- [Running as a daemon](/docs/ops/running-as-a-daemon)
+- [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls)
+- [API overview](/docs/api/overview)

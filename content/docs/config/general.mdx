@@ -1,0 +1,43 @@
+---
+title: "[general]"
+description: "Daemon basics — log level, audit directory, plan tier."
+section: "config"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/general.mdx"
+---
+
+The `[general]` section holds top-level daemon settings — logging, audit storage,
+the plan tier, and a few opt-in toggles for behaviour that touches grith.ai.
+
+<ConfigKeyTable section="general" />
+
+## Notes
+
+- **`log_level`** — common choice is `info` (default). Use `debug` when tuning
+  filters; `trace` is verbose enough to slow the supervisor and shouldn't be left on.
+- **`audit_dir`** — accepts `~` and `${HOME}` expansion. Must be writable by the
+  user grith runs as.
+- **`plan_tier`** — informs feature gating. Setting to `pro` without a valid
+  license has no effect — Pro features stay locked until the license cache
+  validates.
+- **`audit_sync`** — controls whether audit summaries are synced to grith.ai for
+  team-scope analytics. Set to `false` to keep everything local; license refresh
+  checks still happen.
+
+## Environment variable mapping
+
+Any key under `[general]` can be set via env: `GRITH_GENERAL_<KEY>` (uppercase, with
+dot replaced by underscore). For example:
+
+```
+GRITH_GENERAL_LOG_LEVEL=debug grith exec -- claude
+```
+
+## See also
+
+- [Configuration overview](/docs/config/overview)
+- [Logging & audit retention](/docs/ops/logging-and-audit-retention)
+- [`grith pro`](/docs/cli/pro)

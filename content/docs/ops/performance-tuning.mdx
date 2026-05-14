@@ -1,0 +1,135 @@
+---
+title: "Performance & tuning"
+description: "Measuring grith overhead and squeezing latency out of the pipeline."
+section: "ops"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/performance-tuning.mdx"
+---
+
+grith is designed for low overhead — a typical call exits the pipeline in
+8–12ms wall-clock. This page covers measuring that and the knobs you can turn
+when it matters.
+
+## Targets
+
+| Metric | Target |
+| --- | --- |
+| Per-call pipeline latency (median) | 8–12ms |
+| Per-call pipeline latency (p99) | 15ms |
+| Supervisor overhead per syscall (intercepted) | ~50–100µs |
+| Supervisor overhead per syscall (uninteresting, seccomp-fast-path) | under 1µs |
+| Daemon idle RSS | ~30MB |
+| Daemon busy RSS | 80–150MB |
+
+## Measuring
+
+Built-in: `GET /proxy/status/full` (IPC) returns per-filter timing histograms.
+
+For p99 over time:
+
+```
+grith audit export --since 1d --format json |
+  jq '[.[] | .filter_timing_ms] | sort_by(.) | .[length*99/100]'
+```
+
+For per-filter breakdown, the trace-mode export captures filter timing per
+call:
+
+```
+grith exec --trace-syscalls-jsonl /tmp/trace.jsonl -- claude
+# ... use the agent ...
+grith profile audit --trace /tmp/trace.jsonl --report-timing
+```
+
+## Common bottlenecks
+
+### 1. Secret scanner on large payloads
+
+Symptom: p99 latency exceeds 20ms on calls with large content.
+
+Fix:
+
+```toml
+[proxy.filters.secret_scan]
+max_scan_bytes = 524288     # 512KB cap (default 1MB)
+```
+
+Trade-off: large payloads beyond the cap are sampled rather than scanned in
+full. Set this lower than your typical legitimate payload size to avoid the
+sample mode silently helping exfil.
+
+### 2. Behavioural baseline computation
+
+Symptom: latency spikes on certain calls after a long session.
+
+The behavioural filter rebuilds its smoothing window periodically. Tune:
+
+```toml
+[proxy.filters.behavioural]
+recompute_interval_seconds = 60     # less frequent = lower per-call cost
+```
+
+### 3. Audit log fsync
+
+Symptom: high disk wait, even with fast SSD.
+
+Default: fsync per audit event. For lower disk IO:
+
+```toml
+[general]
+audit_fsync = "batch"        # "per-event" (default), "batch", "none"
+audit_fsync_batch_ms = 100
+```
+
+`none` is unsafe; events can be lost on crash. `batch` is the right choice
+for high-throughput workloads.
+
+### 4. Reputation table size
+
+Symptom: daemon RSS climbs to 500MB+.
+
+The reputation table accumulates without bound by default. For very long-
+running daemons:
+
+```toml
+[reputation]
+max_entries = 50000          # cap; oldest decay first
+gc_interval_seconds = 3600
+```
+
+## Noise reduction knobs
+
+These reduce syscall *count* (not latency per call), often the bigger win:
+
+```toml
+[supervisor.noise_reduction]
+ignore_read_only = true              # skip filter pipeline for reads on open fds
+batch_rapid_reads = true             # coalesce rapid reads in same fd
+batch_window_ms = 50                 # batching window
+```
+
+Both default-on. Disable only for forensic recording.
+
+## When grith is "slow"
+
+If an agent feels noticeably slow under grith:
+
+1. Check `GET /proxy/status/full` — is the filter pipeline actually the
+   bottleneck, or is it the model latency?
+2. Check the audit log — is the agent making 10× the syscalls it would
+   without grith? Filters can't help with sheer syscall count.
+3. Try noise-reduction off vs on — sometimes coalescing reads hides
+   pathological agent behaviour worth seeing.
+
+The cost model of grith is per-syscall, not per-second. Idle agents pay
+nothing. Busy agents pay proportional to their syscall rate.
+
+## See also
+
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline)
+- [`[supervisor]` config](/docs/config/supervisor)
+- [`[proxy]` config](/docs/config/proxy)
+- [Running as a daemon](/docs/ops/running-as-a-daemon)

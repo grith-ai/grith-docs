@@ -1,0 +1,138 @@
+---
+title: "Setting up canary tokens"
+description: "Place canary tokens that prove exfiltration when they appear in outbound traffic."
+section: "guides"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/setting-up-canary-tokens.mdx"
+---
+
+A canary token is a fake credential placed somewhere an attacker might look. When
+it shows up in outbound traffic, grith blocks the call and alarms loudly. See
+[Canary tokens](/docs/concepts/canary-tokens) for the concept; this page is the
+practical deployment.
+
+## Step 1 — choose placements
+
+Good canary placements are **plausibly attractive**:
+
+| Path | Why |
+| --- | --- |
+| `~/.aws/credentials_backup` | Looks like sloppy ops hygiene. |
+| `~/secrets.txt` | Same. |
+| `~/.env.backup` | Same. |
+| `repo/test/fixtures/.env` | Looks like a careless test fixture. |
+| `~/Downloads/aws-keys.txt` | Looks like a saved Slack message. |
+| `repo/.env.production.bak` | Looks like a leftover from a deploy. |
+
+Bad placements:
+
+- Inside `~/.config/grith/` — agents don't read grith's config.
+- Read-only system paths the agent will skip.
+- Anywhere the agent has zero plausible reason to look.
+
+Aim for 3–5 canaries, each in a different "category" of likely target. More than
+that and you get diminishing returns; fewer and an attacker might miss them.
+
+## Step 2 — add them
+
+```
+grith canary add \
+    --format aws_secret \
+    --place ~/.aws/credentials_backup \
+    --label "aws-prod-decoy"
+
+grith canary add \
+    --format ssh_rsa \
+    --place ~/honeypot/.ssh/id_rsa \
+    --label "ssh-honey"
+
+grith canary add \
+    --format gh_pat \
+    --place repo/test/fixtures/.env \
+    --label "gh-test-fixture"
+```
+
+Each command generates a real-looking token, writes it to the path, and
+registers it in the detection set.
+
+## Step 3 — verify
+
+```
+grith canary list
+```
+
+Should show your three canaries. Each is now monitored.
+
+## Step 4 — set up notifications
+
+Canary fires are the highest-severity event grith produces. Make sure at least
+one notification channel handles them:
+
+```toml
+[notifications.channels.slack]
+enabled = true
+webhook_url = "..."
+severity_map = { canary = "critical" }
+
+[notifications.channels.pagerduty]
+enabled = true
+service_key = "..."
+severity_map = { canary = "critical" }
+```
+
+See per-channel guides for the specific setup steps.
+
+## Step 5 — test (carefully)
+
+To verify the canary detection works without actually firing a real one:
+
+```
+# Read the file (this is a sensitive_path read, will probably quarantine)
+cat ~/.aws/credentials_backup
+
+# Approve in the digest
+grith digest approve <id>
+
+# Now simulate a network call with the canary token as payload
+grith proxy test '{
+    "operation": "network",
+    "target": "https://example.com/test",
+    "args": ["<paste-the-canary-value-here>"]
+  }'
+```
+
+The proxy test should return `decision: deny`, with `filter: canary` firing. (The
+test is dry-run — it doesn't actually send the canary anywhere.)
+
+## When a canary fires
+
+1. Investigate the originating session immediately:
+
+   ```
+   grith audit --decision deny --limit 10
+   grith digest show <canary-event-id>
+   ```
+
+2. Terminate the session if it's still running:
+
+   ```
+   grith supervisor kill <session-id>
+   ```
+
+3. Rotate the canary (and any nearby canaries — same attacker, same scan):
+
+   ```
+   grith canary rotate <id>
+   ```
+
+4. Investigate what else the session touched. The audit log captures everything.
+
+## See also
+
+- [Canary tokens](/docs/concepts/canary-tokens) — concept
+- [`grith canary`](/docs/cli/canary) — CLI
+- [Filter 11: Canary detection](/docs/filters/11-canary-secret-detection)
+- [Exfiltration walkthrough](/docs/guides/exfiltration-walkthrough) — end-to-end

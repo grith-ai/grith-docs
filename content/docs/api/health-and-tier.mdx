@@ -1,0 +1,57 @@
+---
+title: "Health & tier"
+description: "Liveness checks, plan tier reporting, license status, config read/write."
+section: "api"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/health-and-tier.mdx"
+---
+
+Basic daemon liveness and configuration endpoints.
+
+<ApiRouteTable group="Health & tier" showHeadings={false} />
+
+## `GET /health`
+
+```
+curl http://127.0.0.1:3141/health
+{"status":"ok","version":"0.1.0","uptime_seconds":1283}
+```
+
+Use for: load balancer health checks, monitoring probes.
+
+## `GET /tier`
+
+```json
+{
+  "tier": "pro",
+  "expires_at": "2026-12-12T00:00:00Z",
+  "seats_used": 24,
+  "seats_total": 25
+}
+```
+
+For community installs, `expires_at` is null and seat fields are absent.
+
+## `GET /license/status`
+
+Detailed license validity and refresh state. Used by the dashboard to surface
+"license expiring soon" warnings.
+
+## `GET /config` / `PUT /config`
+
+Read/modify the running config. Most config keys apply on the next call; some
+(server port, supervisor mechanism) require a daemon restart.
+
+```
+curl -X PUT http://127.0.0.1:3141/config \
+  -H 'Content-Type: application/json' \
+  -d '{"proxy":{"auto_allow_threshold":3.5}}'
+```
+
+## See also
+
+- [`grith config`](/docs/cli/config) — CLI equivalent
+- [`grith pro status`](/docs/cli/pro)

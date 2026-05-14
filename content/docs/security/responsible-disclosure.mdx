@@ -1,95 +1,86 @@
 ---
-title: "Responsible Disclosure"
-description: "How to report security vulnerabilities in grith"
+title: "Responsible disclosure"
+description: "Found a vulnerability in grith? Here's how to report it."
 section: "security"
-order: 2
+order: 5
 tier: "community"
-lastUpdated: "2026-02-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/responsible-disclosure.mdx"
 ---
 
-grith is a security product. Vulnerabilities in grith can have direct consequences for the safety of AI agent operations. We take every report seriously and commit to transparent, timely resolution.
+If you've found a security vulnerability in grith, please report it privately
+rather than opening a public issue. We take security reports seriously and
+acknowledge every report.
 
-## Reporting a vulnerability
+## How to report
 
-Send vulnerability reports to **security@grith.ai**. Include as much detail as you can:
+Email **security@grith.ai** with:
 
-- **Description** of the vulnerability and its potential impact
-- **Reproduction steps** — exact commands, configurations, or sequences that trigger the issue
-- **Affected component** — which crate, filter, or subsystem is involved
-- **Environment** — OS, architecture, grith version (`grith --version`)
-- **Proof of concept** — code, scripts, or logs that demonstrate the issue (if available)
+- A description of the issue.
+- Steps to reproduce (a working exploit is helpful but not required).
+- Your assessment of impact.
+- Whether you'd like to be credited in the advisory.
 
-<Callout type="info" title="Encrypt your report">
-For sensitive disclosures, encrypt your email using our PGP key. The key is available at [grith.ai/.well-known/security.txt](https://grith.ai/.well-known/security.txt) and on major key servers under the fingerprint published there.
-</Callout>
+For sensitive details, you can encrypt to our PGP key:
+[grith.ai/security.asc](https://grith.ai/security.asc).
 
-## What happens after you report
+## What you can expect
 
-| Timeline | Action |
-|---|---|
-| Within 24 hours | We acknowledge receipt of your report |
-| Within 72 hours | We triage and assign severity |
-| Within 14 days | We provide an initial assessment and remediation plan |
-| Within 90 days | We release a fix and publish an advisory |
+| When | What |
+| --- | --- |
+| Within 24h | Acknowledgement that we've received the report. |
+| Within 5 business days | Initial triage — confirmed/duplicate/needs-info. |
+| Per the fix complexity | Patch development, often with you in the loop. |
+| Within 90 days | Public disclosure if a fix has shipped (or sooner if you prefer). |
 
-We follow a **90-day disclosure timeline**. If a fix is released before the 90-day window, we publish the advisory at the time of release. If the issue requires more than 90 days to resolve (rare, but possible for deeply architectural issues), we will negotiate an extended timeline with you and explain the reason publicly.
+We coordinate disclosure timing with you. A CVE is filed for confirmed
+vulnerabilities that warrant one.
 
 ## Scope
 
-The following components are in scope for security reports:
+In scope:
 
-| Component | Repository | Description |
-|---|---|---|
-| `grith-core` | `grith-ai/grith` | Core daemon logic, configuration loading |
-| `grith-cli` | `grith-ai/grith` | CLI entry point and command handling |
-| `grith-proxy` | `grith-ai/grith` | Security proxy, filter chain, scoring engine |
-| `grith-server` | `grith-ai/grith` | HTTP/WebSocket server, dashboard, API |
-| `grith-llm` | `grith-ai/grith` | LLM provider integration and token management |
-| `grith-supervisor` | `grith-ai/grith` | ptrace/seccomp-BPF syscall interception |
-| `grith-audit` | `grith-ai/grith` | Audit logging, hash-chaining, export |
-| `grith-digest` | `grith-ai/grith` | Quarantine queue and digest review system |
-| `grith-notify` | `grith-ai/grith` | Notification dispatch and channel management |
-| `grith-docs` | `grith-ai/grith-docs` | Documentation site (XSS, injection, etc.) |
-| `grith-website` | `grith-ai/grith-website` | Marketing site |
+- The grith binary itself.
+- The dashboard (grith.ai/dashboard, self-hosted dashboard).
+- The Pro and Enterprise services (license refresh, sync, analytics).
+- The grith-docs site (only for issues that affect user safety, e.g.
+  link-redirect attacks).
 
-### Out of scope
+Out of scope:
 
-The following are **not** in scope:
+- Reports on the public grith.ai marketing site that don't involve user data
+  or auth.
+- Reports on third-party integrations (Slack, Telegram, etc.) — report those
+  to the relevant vendor.
+- Self-XSS, theoretical issues without working PoC, missing best-practice
+  headers on non-auth pages.
 
-- **Third-party LLM providers** — Vulnerabilities in OpenAI, Anthropic, Ollama, or other provider APIs should be reported to those providers directly. grith does not control their behaviour.
-- **Denial of service** — Resource exhaustion attacks against a locally running grith instance are low-severity by design. grith runs on the same machine as the user; a local DoS is equivalent to the user killing the process.
-- **Social engineering** — Attacks that require tricking the user into running malicious commands outside grith are out of scope. grith protects agent-initiated tool calls, not user-initiated ones.
-- **Known limitations** — Issues documented in the [Threat Model](/docs/security/threat-model) under "Assumptions and limitations" are known constraints, not vulnerabilities.
+## Bug bounty
 
-## Safe harbor
+We don't currently run a paid bug bounty. We do:
 
-We will not pursue legal action against security researchers who:
+- Credit you in the advisory (if you want — anonymous is fine too).
+- Send swag / a thank-you for confirmed reports.
+- For high-severity (CVSS ≥ 7) issues, consider a discretionary reward.
 
-- Act in good faith to discover and report vulnerabilities
-- Avoid accessing, modifying, or deleting data belonging to other users
-- Do not exploit vulnerabilities beyond what is necessary to demonstrate the issue
-- Do not publicly disclose the vulnerability before the agreed timeline expires
-- Provide us reasonable time to address the issue before any public disclosure
+## What not to do
 
-If you follow these guidelines, we consider your research authorised. We will work with you to understand and resolve the issue, and we will credit you in the advisory (unless you prefer to remain anonymous).
+Please don't:
 
-## Recognition
+- Test against grith.ai infrastructure beyond the minimum needed to verify
+  a finding.
+- Test against other people's grith installs without their explicit
+  authorisation.
+- Publicly disclose the finding before we've had a chance to ship a fix.
 
-We maintain a security acknowledgements page for researchers who have reported valid vulnerabilities. If you would like to be credited, let us know in your report with your preferred name and (optionally) a URL.
+## Acknowledgements
 
-<Callout type="tip" title="Bounties">
-grith does not currently operate a formal bug bounty programme. We do offer discretionary rewards for high-severity vulnerabilities at our judgement. This may change as the project matures.
-</Callout>
+The published list of security researchers who've reported confirmed issues
+is at [grith.ai/security/acknowledgements](https://grith.ai/security/acknowledgements).
 
-## Contact
+## See also
 
-- **Email:** security@grith.ai
-- **PGP key:** [grith.ai/.well-known/security.txt](https://grith.ai/.well-known/security.txt)
-- **Response time:** 24 hours for acknowledgement
-
-For non-security bugs, use [GitHub Issues](https://github.com/grith-ai/grith/issues) instead.
-
-## Next steps
-
-- [Threat Model](/docs/security/threat-model) — Understand what grith defends against
-- [Security Advisories](/docs/security/advisories) — Published advisories and patches
+- [Advisories](/docs/security/advisories) — past CVEs and fixes.
+- [Threat model](/docs/security/threat-model)
+- [security.txt](https://grith.ai/.well-known/security.txt) — RFC 9116 contact file.

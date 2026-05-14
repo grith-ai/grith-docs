@@ -1,0 +1,60 @@
+---
+title: "Generic CLI"
+description: "Profile for plain shell sessions and unsupervised tool work."
+section: "profiles"
+order: 11
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/generic-cli.mdx"
+---
+
+```
+grith exec --profile generic-cli -- bash
+```
+
+The `generic-cli` profile is for "I'm using a regular CLI tool, not a named
+agent". Useful for:
+
+- A bare `bash` shell while you're exploring what grith does.
+- Running tools like `make`, `npm`, `cargo`, etc. directly without a wrapping
+  agent.
+- Wrapping an unfamiliar agent that doesn't have a named profile yet.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.cache/**` (with sensitive-path
+  detection still active), system readonly paths.
+- **Commands** — `git`, `npm`, `pnpm`, `yarn`, `cargo`, `python`, `pip`, `make`,
+  `gcc`, `clang`, plus the read-only `ls`, `cat`, `find`, etc.
+- **Destinations** — package registries, `github.com`, `*.githubusercontent.com`.
+  No provider APIs.
+- **Exec roots** — standard system bin + version manager paths.
+
+## Capability set
+
+- `read_project`, `write_project`.
+- `read_home`, `write_home`.
+- `shell`.
+
+Notably **no** `network` for arbitrary destinations (provider APIs aren't
+listed), **no** `exec` for arbitrary binaries.
+
+## Versus `generic`
+
+| | `generic-cli` | `generic` |
+| --- | --- | --- |
+| Home access | yes (with sensitive-path detection) | no |
+| Standard package registries | yes | no |
+| Shell | yes | no |
+| Network | only listed registries | no |
+| Use case | normal CLI work | strict exploration / hostile envs |
+
+If `generic-cli` is too permissive, drop to `generic` and explicitly approve in
+the digest.
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)
+- [Choose your agent](/docs/start/choose-your-agent)

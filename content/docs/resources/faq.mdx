@@ -1,0 +1,148 @@
+---
+title: "FAQ"
+description: "Frequently asked questions about grith."
+section: "resources"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/faq.mdx"
+---
+
+## General
+
+### Is grith a sandbox?
+
+No. grith decides whether a syscall runs; the kernel still runs it. The agent
+operates against the real filesystem, real network, real OS. Containment is
+opt-in via [zones](/docs/concepts/session-containment), but those score-based,
+not kernel-enforced.
+
+If you want hard isolation, run grith *inside* a container or user namespace.
+The two are complementary.
+
+### Does grith require root?
+
+No. grith uses ptrace, which on default Linux configurations works without
+root for processes you spawn yourself. See
+[Installation: permissions](/docs/start/installation#permissions).
+
+### Does grith slow my agent down?
+
+Not noticeably for normal interactive use. Typical pipeline latency is 8–12ms;
+agents usually wait on the model for hundreds of ms per turn. Heavy syscall
+workloads (large file scans, refactors writing many files) add measurable
+overhead — see [Performance & tuning](/docs/ops/performance-tuning).
+
+### Does grith call out to grith.ai?
+
+By default, only for:
+
+- Update checks (daily, disable with `update_check = false`).
+- Profile update checks (weekly, disable with `profile_update_check = false`).
+- License refresh (every 6 hours on Pro).
+
+It does NOT send:
+
+- Audit data (unless you opt in with `audit_sync = true`).
+- Source code, file contents, payload bytes.
+- Provider API keys.
+
+## Platforms
+
+### Does it work on macOS / Windows?
+
+Not in v0.1. The supervisor uses ptrace+seccomp, which is Linux-specific.
+macOS and Windows ports are in active development for v2.0.
+
+Until then: Linux VM, container, or Docker. grith in a container works fine.
+
+### Does it work on aarch64?
+
+Not in v0.1. The seccomp-BPF filter is x86_64-specific. aarch64 support is on
+the v0.2 roadmap.
+
+### Does it work on NixOS / Arch / Fedora / etc?
+
+Yes. grith ships as a statically-linked musl binary that works on any Linux
+x86_64 distro. The shipping install script is distro-aware for placement; the
+binary itself doesn't care.
+
+## Filters
+
+### Can I turn off a specific filter?
+
+Yes, in `~/.config/grith/config.toml`:
+
+```toml
+[proxy.filters.behavioural]
+enabled = false
+```
+
+But understand what you're losing — each filter exists for a reason. Disable
+sparingly and consider raising `auto_allow_threshold` instead.
+
+### Can I add my own filter?
+
+Custom filters are an Enterprise feature in v0.1. They're authored in Rust and
+shipped via the [centralised policy bundle](/docs/pro/centralised-policies).
+Open-source custom filter SDK is planned for v0.2.
+
+### Why does the secret scanner have so many patterns?
+
+1,600+ patterns covers a wide credential vocabulary (cloud providers, SaaS
+APIs, CI/CD, databases, crypto, etc). The cost is small — Aho-Corasick / regex
+sets are linear in content length, not in pattern count.
+
+## Pricing
+
+### How much does Pro cost?
+
+$25/user/month monthly, $21/user/month annual (≈17% off). Up to 25 users. See
+[grith.ai/pricing](https://grith.ai/pricing).
+
+### Is the community edition feature-limited?
+
+No. The community edition is the full grith product — all 17 filters, the
+supervisor, the digest, all CLI tools. Pro adds team-scope features (sync,
+shared keys, channels, analytics).
+
+### Is there a free trial?
+
+The community edition is free forever, no trial required. Pro features can
+be evaluated by signing up at grith.ai/teams — first 14 days don't bill.
+
+## Privacy / security
+
+### Where do my API keys live?
+
+Local: `~/.config/grith/keys/<provider>.key` (perms 0600). For Pro teams,
+optionally synced encrypted from the dashboard — never visible to grith.ai in
+plaintext. See [Encrypted key management](/docs/pro/encrypted-key-management).
+
+### Where does my audit log live?
+
+Local: `~/.local/share/grith/audit/*.sqlite`. By default, never leaves your
+machine. Pro analytics use summarised counts (not raw records) if you opt in.
+
+### Can grith see my source code?
+
+It sees the *fact* of file reads (paths, sizes, timestamps), not the
+contents — unless `general.audit_include_content = true` is set (off by
+default). The model that's running inside your agent sees the content; that's
+between you and your provider.
+
+### What about my chat history with the model?
+
+grith doesn't see it. The agent talks to the provider; grith only sees the
+syscalls the agent makes as a result.
+
+## Troubleshooting
+
+See [Troubleshooting](/docs/guides/troubleshooting).
+
+## Still stuck?
+
+- [GitHub Discussions](https://github.com/grith-ai/grith/discussions)
+- [Discord](https://grith.ai/discord)
+- Email support@grith.ai (Pro+).

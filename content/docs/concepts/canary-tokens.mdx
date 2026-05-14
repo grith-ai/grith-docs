@@ -1,0 +1,123 @@
+---
+title: "Canary tokens"
+description: "Fake secrets that prove exfiltration when they show up where they shouldn't."
+section: "concepts"
+order: 11
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/canary-tokens.mdx"
+---
+
+A canary token is a fake credential, deliberately seeded somewhere an attacker
+might read it, that triggers an alarm when it shows up where it shouldn't. Banks
+have used them for decades; honeypot tokens, canary URLs, and fake AWS keys are
+modern descendants.
+
+In grith, canaries are a hard gate. Any registered canary token that appears in an
+outbound payload — network send, shell argument, file write outside the zone —
+**denies the call** and raises an exfiltration alert. It bypasses scoring entirely.
+
+## Why a hard gate
+
+The whole filter pipeline is probabilistic about most things. "This looks like an
+API key" is a heuristic. "This destination is unusual" is a heuristic.
+
+Canary detection is not a heuristic. It's a direct match against a token that the
+operator put in the filesystem *and* explicitly told grith was a canary. If that
+exact string is going out, something went wrong — and the right answer is to block
+the call, not to score it.
+
+That's why filter 11 returns DENY rather than a score contribution. There is no
+amount of trust, reputation, or routine-path-discount that lets a canary token
+escape.
+
+## Adding a canary
+
+```
+grith canary add --format aws_secret \
+    --place ~/.aws/canary_creds \
+    --label "aws-canary"
+```
+
+This:
+
+1. Generates a credential of the requested **format** that looks real (AWS access
+   key shape, GitHub PAT, SSH-flavoured RSA, etc).
+2. **Places** the credential at the path you specified.
+3. **Registers** its exact value in the canary detection set.
+
+Now, if any supervised process ever reads that file AND tries to send the contents
+out, the canary filter triggers DENY and records a high-severity audit event.
+
+Supported formats:
+
+- `aws_secret`, `aws_access_key` — AWS-shaped IDs.
+- `gh_pat` — GitHub personal access token.
+- `slack_token` — `xoxb-...`-shaped.
+- `ssh_rsa` — fake RSA-formatted private key.
+- `generic_jwt` — JWT shape, signed nonsense.
+- `random_hex` — 40-char hex blob, for low-context places.
+- `custom` — provide your own value via `--value`.
+
+Each format is convincing enough to look real to an attacker scanning a filesystem,
+but obvious to anyone who decodes it (e.g. the AWS keys all start with a canary-only
+prefix in the registered string).
+
+## Listing and rotating
+
+```
+grith canary list
+grith canary rotate <id>
+grith canary remove <id>
+```
+
+Rotation generates a new token with the same format/label, updates the file in
+place, and updates the registration. Use this if you suspect a canary has been
+*leaked* (showed up in a paste, in a public log, etc.) — rotate to invalidate the
+old value while keeping the trap intact.
+
+## Where to place canaries
+
+The point of a canary is to be *plausibly* attractive to an attacker scanning the
+filesystem. Good placements:
+
+- `~/.aws/credentials_backup` — looks like a careless backup.
+- `~/secrets.txt` — looks like sloppy ops hygiene.
+- Inside repos in test fixtures (`test/fixtures/.env`).
+- Project root `.env.production.bak` — looks like a leftover.
+
+Bad placements (will never trip):
+
+- Anywhere the supervised agent doesn't have a reason to read.
+- Inside `~/.config/grith/` — agents don't look there.
+- Read-only system paths the agent will skip.
+
+The dashboard suggests good placements based on what your agents typically read.
+
+## When a canary fires
+
+A canary detection raises a high-severity audit event with:
+
+- The canary that fired (id, label, format).
+- The session that tried to send it.
+- The destination it was being sent to.
+- The full filter pipeline output (every other filter that fired, for context).
+
+The call is denied. The originating process is *not* automatically killed by default
+— but the dashboard / digest offers a one-keystroke `t` (terminate) for that
+session.
+
+If notification channels are configured, a canary fire is the kind of event that
+should page someone. The default Slack / PagerDuty mapping pages on canary fires
+regardless of other rate-limit rules.
+
+## See also
+
+- [Filter 11: Canary detection](/docs/filters/11-canary-secret-detection) — config
+  reference
+- [Setting up canary tokens](/docs/guides/setting-up-canary-tokens) — practical
+  walkthrough
+- [grith canary](/docs/cli/canary) — CLI reference
+- [Exfiltration walkthrough](/docs/guides/exfiltration-walkthrough) — start-to-finish
+  worked attack

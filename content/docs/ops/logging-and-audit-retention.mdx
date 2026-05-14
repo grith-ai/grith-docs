@@ -1,0 +1,122 @@
+---
+title: "Logging & audit retention"
+description: "Where logs live, how big they grow, and how to manage retention."
+section: "ops"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/logging-and-audit-retention.mdx"
+---
+
+grith produces two kinds of log: the **operational log** (daemon health,
+errors, configuration changes) and the **audit log** (every supervised call
+decision). They live in different places and have different retention
+characteristics.
+
+## Operational log
+
+| Location | Purpose | Format |
+| --- | --- | --- |
+| stderr (foreground daemon) | Live | Text |
+| `~/.local/share/grith/daemon.log` (detached) | Rotating | Text |
+| journald (systemd) | Live & retained | Structured |
+
+Tune verbosity:
+
+```toml
+[general]
+log_level = "info"     # "trace" | "debug" | "info" | "warn" | "error"
+```
+
+`trace` is verbose enough to noticeably slow the supervisor. Use `debug` for
+filter tuning; leave at `info` otherwise.
+
+Operational log rotation defaults: 10MB cap, 5 generations.
+
+## Audit log
+
+The big one. Lives at `~/.local/share/grith/audit/*.sqlite`. Each record is
+~200–500 bytes. A busy agent (~50 calls/minute) produces:
+
+| Window | Approx size |
+| --- | --- |
+| 1 hour | ~1.5MB |
+| 1 day | ~40MB |
+| 1 week | ~250MB |
+| 1 month | ~1GB |
+| 1 year | ~12GB |
+
+## Retention
+
+Default: **forever**. No automatic cleanup. Configure caps:
+
+```toml
+[general]
+audit_retention_days = 90          # delete records older than 90 days
+audit_max_db_mb     = 500          # cap DB size; oldest events drop first
+```
+
+When both are set, whichever triggers first applies.
+
+## Vacuuming
+
+SQLite databases don't reclaim space on row deletion until vacuumed. grith
+vacuums weekly by default; force a vacuum:
+
+```
+grith audit vacuum
+```
+
+Vacuum takes a write lock; expect 10–30s on a multi-GB DB. Run during low
+activity.
+
+## Export and offload
+
+For long-term retention, export to cold storage and remove from the live DB:
+
+```
+grith audit export --since 60d --until 30d --format json > 2026-04.jsonl
+grith audit prune --until 30d
+```
+
+Or stream to a SIEM continuously (Enterprise):
+[SIEM integration](/docs/enterprise/siem-integration).
+
+## What's in an audit record
+
+```json
+{
+  "id": "uuid-...",
+  "ts": "...",
+  "session": "...",
+  "operation": "file_read",
+  "target": "...",
+  "decision": "allow|queue|deny",
+  "resolved": "allow|deny|null",
+  "composite_score": 4.2,
+  "filters": [{ "name": "...", "score": ... }, ...],
+  "profile": "...",
+  "pid": 17421,
+  "command": "claude",
+  "user": "alice",        // for multi-user setups
+  "annotations": {...}    // free-form, e.g. from filter contributions
+}
+```
+
+Sensitive content (file bytes, payload contents) is **not** stored by default.
+For forensic mode, `general.audit_include_content = true` captures bytes —
+high storage cost, only for security investigations.
+
+## Privacy
+
+The audit log captures *what the agent did*. By design it doesn't include
+prompts, model outputs, or human-typed messages. For full session capture
+(e.g. for compliance), see Pro's session-recording feature (planned v0.2).
+
+## See also
+
+- [`grith audit`](/docs/cli/audit) — CLI for browsing/exporting
+- [Audit API](/docs/api/audit)
+- [`[general]` config](/docs/config/general)
+- [SIEM integration](/docs/enterprise/siem-integration)

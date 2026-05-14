@@ -1,0 +1,134 @@
+---
+title: "The three-phase pipeline"
+description: "Why filters run in three phases — static, pattern, context — and what each phase contributes."
+section: "concepts"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/three-phase-pipeline.mdx"
+---
+
+Every supervised call goes through 17 filters. They're arranged in three phases that
+run in order. Within a phase, filters run in parallel. The total budget is roughly
+**15ms** wall-clock — fast enough that a typical agent doesn't notice.
+
+```
+        ┌────────────────── Phase 1: static ──────────────────┐
+        │  <1ms · 6 filters · cheap structural checks         │
+syscall ┤──→ run                                              │
+        │   ┌──────────── Phase 2: pattern ────────────────┐  │
+        │   │ ~3ms · 5 filters · regex + parser + signatures│  │
+        │   ├──→ run                                        │  │
+        │   │  ┌──────── Phase 3: context ────────────────┐ │  │
+        │   │  │ ~5ms · 6 filters · session + history     │ │  │
+        │   │  ├──→ run                                   │ │  │
+        │   │  │                                          │ │  │
+        │   │  └──────────────────────────────────────────┘ │  │
+        │   │                                                │  │
+        │   └────────────────────────────────────────────────┘  │
+        └──────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                       composite scoring
+                              │
+                              ▼
+                ┌─────────────┼─────────────┐
+                ▼             ▼             ▼
+            auto-allow      queue       auto-deny
+            (<3.0)         (3.0–8.0)    (>8.0)
+```
+
+## Why three phases
+
+Each phase has a different shape of work. Mixing them would make the slow phases
+slow down the whole pipeline:
+
+- **Static** filters check structural properties of the call. Fast. Cheap. Cacheable.
+- **Pattern** filters do real string work — regex, tokenisation, parsing. Slower.
+- **Context** filters look up state from the running session and historical baseline.
+  Mostly cheap, but a single context filter (like behavioural) wants to be the last
+  word, after the cheap stuff has already informed the score.
+
+If a static filter assigns enough score to land the call in DENY (e.g. a hard
+capability deny), grith still finishes the cheap phases for completeness but doesn't
+need to short-circuit — the work is so small that running them all in parallel is
+cheaper than maintaining short-circuit machinery.
+
+The hard-gate filters (capability, canary) can override the composite at any phase
+and force DENY regardless.
+
+## Phase 1: static (under 1ms)
+
+Six filters operate purely on the structure of the call — the operation type, the
+path string, the argument shape — without scanning content or looking up history.
+
+- [1. Operation risk scoring](/docs/filters/01-operation-risk-scoring)
+- [2. Static path matching](/docs/filters/02-static-path-matching)
+- [3. Sensitive path heuristic](/docs/filters/03-sensitive-path-heuristic)
+- [4. Allowlist / denylist](/docs/filters/04-allowlist-denylist)
+- [5. Argument length & structure](/docs/filters/05-argument-length-structure)
+- [6. Capability enforcement](/docs/filters/06-capability-enforcement)
+
+These set the call's baseline score. A normal file read in a project directory exits
+Phase 1 around `0.4`. A read of `~/.ssh/id_rsa` exits Phase 1 around `4.5` — already
+past the auto-allow threshold.
+
+## Phase 2: pattern (~3ms)
+
+Five filters scan the content / arguments for signatures of trouble.
+
+- [7. Secret / credential scanning](/docs/filters/07-secret-credential-scanning) — 1,600+ regex patterns
+- [8. Command structure analysis](/docs/filters/08-command-structure-analysis) — shell parser
+- [9. Egress policy](/docs/filters/09-egress-policy) — destination domains
+- [10. DLP gate](/docs/filters/10-dlp-gate) — outbound payload scan
+- [11. Canary secret detection](/docs/filters/11-canary-secret-detection) — exfil trap tokens
+
+This phase is where the pattern-matching cost lives. A read of a 2MB log file that
+happens to contain an API key string triggers secret scanning here; the filter adds
+score and tags the call with the matched pattern category.
+
+## Phase 3: context (~5ms)
+
+Six filters reach into the session's running state and the historical baseline.
+
+- [12. Destination reputation](/docs/filters/12-destination-reputation)
+- [13. Behavioural anomaly](/docs/filters/13-behavioural-anomaly)
+- [14. Taint tracking](/docs/filters/14-taint-tracking)
+- [15. Session containment](/docs/filters/15-session-containment)
+- [16. Rate limiting](/docs/filters/16-rate-limiting)
+- [17. Semantic analysis](/docs/filters/17-semantic-analysis) (stub for v0.1)
+
+Context is where "this call is fine in isolation, but suspicious *now*" gets
+detected. A request to api.example.com is fine on its own. The same request, two
+syscalls after reading `~/.aws/credentials`, is tainted — Phase 3 picks that up.
+
+## Composite scoring
+
+After all three phases, every filter has contributed a number. Composite scoring
+applies weights and ceilings, factors in reputation, and produces a single composite
+score. The threshold model routes it.
+
+See [Composite scoring](/docs/concepts/composite-scoring) for the math.
+
+## Why this is fast enough
+
+The 17 filters look like a lot. They aren't, in practice:
+
+- Within a phase, they run concurrently — so the phase's cost is the cost of the
+  *slowest* filter, not the sum.
+- Most filters short-circuit on the cheap path. Filter 7 (secret scan) only does its
+  expensive regex pass if the call carries content; for a `file_read` with no body
+  yet, it's a no-op.
+- The implementations are written for the hot path: Aho-Corasick for static path
+  matching, compiled regex sets for secret scanning, BTreeMap lookups for routine
+  destinations.
+
+A typical call exits the pipeline in **8–12ms** on a modern x86_64 desktop. Worst
+case is roughly **15ms**, dominated by the secret scanner on large payloads.
+
+## See also
+
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [Filter overview](/docs/filters/overview) — the full filter list with scores
+- [Performance & tuning](/docs/ops/performance-tuning) — measuring and squeezing the pipeline

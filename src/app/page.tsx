@@ -6,41 +6,52 @@ import Button from '@/components/shared/Button';
 
 const sections = [
   {
-    title: 'Getting Started',
-    description: 'Install grith, configure providers, and run your first secure agent task.',
-    href: '/docs/getting-started/installation',
+    title: 'Start here',
+    description: 'Install grith, pick your agent, run your first supervised session.',
+    href: '/docs/start/what-is-grith',
     icon: '→',
   },
   {
     title: 'Concepts',
-    description:
-      'Understand the architecture: zero-trust model, scoring proxy, quarantine digest.',
-    href: '/docs/concepts/architecture',
+    description: 'The threat model, the pipeline, the scoring — how it all fits together.',
+    href: '/docs/concepts/threat-model',
     icon: '◈',
   },
   {
-    title: 'Reference',
-    description: 'CLI commands, configuration keys, filter reference, and REST API.',
-    href: '/docs/reference/cli',
+    title: 'CLI reference',
+    description: 'Every command, every flag, every example.',
+    href: '/docs/cli/overview',
     icon: '⌘',
   },
   {
-    title: 'Guides',
-    description: 'Filter tuning, supervisor profiles, reverse proxy setup, and more.',
-    href: '/docs/guides/filter-tuning',
+    title: 'Filter reference',
+    description: 'The 17 filters in detail — what they catch, what they cost.',
+    href: '/docs/filters/overview',
     icon: '▤',
   },
   {
-    title: 'Security',
-    description: 'Threat model, responsible disclosure, and security advisories.',
-    href: '/docs/security/threat-model',
+    title: 'Configuration',
+    description: 'Every config section and key, with shipping defaults.',
+    href: '/docs/config/overview',
+    icon: '⚙',
+  },
+  {
+    title: 'API reference',
+    description: 'REST endpoints, WebSocket events, IPC routes.',
+    href: '/docs/api/overview',
+    icon: '{}',
+  },
+  {
+    title: 'Supervisor profiles',
+    description: '11 built-in profiles for Claude Code, Codex, Aider and more.',
+    href: '/docs/profiles/built-in-profiles',
     icon: '◆',
   },
   {
-    title: 'API Reference',
-    description: 'REST endpoints, WebSocket events, and error handling.',
-    href: '/docs/reference/api-rest',
-    icon: '{}',
+    title: 'Guides',
+    description: 'Step-by-step walkthroughs for tuning, notifications, exfil response.',
+    href: '/docs/guides/tuning-scoring-thresholds',
+    icon: '▦',
   },
 ];
 
@@ -49,30 +60,33 @@ export default function Home() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1">
-        <div className="mx-auto max-w-4xl px-6 py-20">
+        <div className="mx-auto max-w-5xl px-6 py-20">
           <div className="mb-16 text-center">
-            <h1 className="font-heading text-5xl font-extrabold tracking-tight text-text">
-              grith<span className="text-green">.ai</span>{' '}
-              <span className="text-text-secondary font-bold">docs</span>
+            <p className="font-label text-xs uppercase tracking-[0.18em] text-text-dim">
+              docs.grith.ai
+            </p>
+            <h1 className="mt-3 font-heading text-5xl font-extrabold tracking-tight text-text">
+              Zero trust for AI agents.
             </h1>
-            <p className="mx-auto mt-4 max-w-2xl text-lg text-text-secondary">
-              Documentation for grith — the security-first local AI agent platform. Everything you
-              need to install, configure, and operate zero-trust security for AI agents.
+            <p className="mx-auto mt-5 max-w-2xl text-lg text-text-secondary">
+              grith intercepts every action an AI agent takes on your machine and verifies it
+              before execution. These docs cover install, concepts, every CLI command, every
+              config key, every filter, every API route.
             </p>
             <div className="mx-auto mt-5 max-w-2xl rounded-lg border border-green-border bg-green-light px-4 py-3 text-sm text-green-dark">
-              Linux is supported for the current launch. macOS and Windows support is coming very soon.
+              v0.1 ships for Linux x86_64. macOS and Windows builds are next.
             </div>
             <div className="mt-8 flex items-center justify-center gap-4">
-              <Button href="/docs/getting-started/installation" size="lg">
-                Get Started
+              <Button href="/docs/start/installation" size="lg">
+                Get started
               </Button>
-              <Button href="/docs/reference/cli" variant="secondary" size="lg">
-                CLI Reference
+              <Button href="/docs/cli/overview" variant="secondary" size="lg">
+                CLI reference
               </Button>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {sections.map((section) => (
               <Link key={section.href} href={section.href}>
                 <Card hover className="h-full">

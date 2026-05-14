@@ -1,0 +1,113 @@
+---
+title: "grith audit"
+description: "Browse and export the audit log of every filter decision."
+section: "cli"
+order: 5
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/audit.mdx"
+---
+
+```
+grith audit [list | show | export | exfil-stats]
+```
+
+The audit log is the persistent record of every decision grith made — including
+auto-allows. It lives in a SQLite database under `~/.local/share/grith/audit/`.
+
+## Subcommands
+
+| Subcommand | What it does |
+| --- | --- |
+| (default) / `list` | Print recent events, newest first. |
+| `show <id>` | Full record for one event. |
+| `export --format json` | Dump records as JSON (stdout or file). |
+| `export --format csv` | Same, as CSV. |
+| `exfil-stats` | Aggregate exfiltration analytics over the recent window. |
+
+## Common queries
+
+```
+grith audit                      # last 50 events
+grith audit --limit 500          # last 500
+grith audit --session abc1234... # one session
+grith audit --decision deny      # only denials
+grith audit --since 1h           # last hour
+```
+
+`--since` accepts duration shorthand (`30s`, `15m`, `1h`, `7d`) or absolute ISO 8601
+timestamps.
+
+## Export
+
+```
+grith audit export --format json > audit.json
+grith audit export --format csv --since 24h --output today.csv
+```
+
+JSON output is one record per array element. CSV uses a fixed column order
+documented in [Reporting & exports](/docs/pro/analytics-and-cost) for Pro analytics
+parity.
+
+## Exfil stats
+
+```
+grith audit exfil-stats
+```
+
+Aggregates the recent window (last `EXFIL_STATS_RECENT_COUNT` events, default 500)
+into a small report:
+
+- Most-frequent denied destinations
+- Most-frequent canary fires (if any)
+- Top destinations by data-volume estimate
+- Sessions with the most queue events
+
+Useful for the weekly review.
+
+## What a record looks like
+
+```json
+{
+  "id": "uuid-...",
+  "ts": "2026-05-14T09:14:23Z",
+  "session": "abc12345-...",
+  "operation": "file_read",
+  "target": "/home/you/.ssh/config",
+  "decision": "queue",
+  "resolved": "deny",
+  "composite_score": 4.2,
+  "filters": [
+    { "name": "sensitive_path", "score": 3.5 },
+    { "name": "path_match",     "score": 1.2 }
+  ],
+  "profile": "claude-code",
+  "pid": 17421,
+  "command": "claude"
+}
+```
+
+`decision` is what the pipeline returned (allow / queue / deny). `resolved` is what
+ultimately happened (auto-allows have no resolved transition; queues resolve to
+allow/deny via review or timeout).
+
+## Storage and retention
+
+The SQLite DB grows monotonically. Default retention is forever — no automatic
+cleanup. For storage-bounded deployments, tune:
+
+```toml
+[general]
+audit_retention_days = 90        # delete events older than 90 days
+audit_max_db_mb     = 500        # cap DB size; oldest events drop first
+```
+
+See [Logging & audit retention](/docs/ops/logging-and-audit-retention) for the trade-
+offs.
+
+## See also
+
+- [Audit API](/docs/api/audit) — same data, REST
+- [Analytics overview (Pro)](/docs/pro/analytics-and-cost)
+- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)

@@ -1,0 +1,63 @@
+---
+title: "[supervisor]"
+description: "OS-level supervisor settings — interception mechanism, default profile, noise reduction."
+section: "config"
+order: 6
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/supervisor.mdx"
+---
+
+The `[supervisor]` section controls how `grith exec` intercepts syscalls and how
+noisy a session looks to the filters.
+
+<ConfigKeyTable section="supervisor" />
+
+<ConfigKeyTable section="supervisor.platform" />
+
+<ConfigKeyTable section="supervisor.noise_reduction" />
+
+<ConfigKeyTable section="supervisor.dns_inspection" />
+
+## Notes
+
+- **`enabled`** — when `false`, `grith exec` falls back to a no-op pass-through
+  (useful for testing wrapper compatibility without enforcing). Audit log still
+  records calls.
+- **`default_profile`** — applied when `--profile` isn't passed to `grith exec`.
+  Conservative default: `generic`.
+- **`freeze_timeout_seconds`** — how long a frozen process can wait for a digest
+  decision before grith auto-denies. Should match (or be slightly less than)
+  `[proxy] review_timeout_seconds`.
+- **`max_concurrent_sessions`** — soft cap on simultaneous supervised sessions.
+  Exceeding it returns an error from `grith exec` rather than degrading
+  performance.
+- **`pty_forwarding`** — required for interactive agents. Disabling breaks
+  agent TUIs.
+- **`require_sandbox`** — when `true`, refuses to supervise unless the process is
+  running inside a container or user namespace. Belt-and-braces.
+
+## Platform mechanisms
+
+The supervisor uses different OS mechanisms per platform. v0.1 supports
+**ptrace + seccomp on Linux x86_64**; other platforms ship in v2.0. See
+[Syscall interception](/docs/concepts/syscall-interception) for mechanism details.
+
+## Noise reduction
+
+The most useful knobs are:
+
+- **`ignore_read_only`** — skip filter pipeline for `read` syscalls on already-open
+  fds (the `open` was already scored). Default `true`.
+- **`batch_rapid_reads`** — coalesce rapid reads from the same fd into a single
+  filter pass per `batch_window_ms`. Default 50ms window.
+
+Both are safe to leave on. Disable only for forensic recording where you want
+every syscall captured raw (use `--trace-syscalls-jsonl` on `grith exec` for that).
+
+## See also
+
+- [Syscall interception](/docs/concepts/syscall-interception)
+- [Supervisor profiles](/docs/concepts/supervisor-profiles)
+- [`grith exec`](/docs/cli/exec)

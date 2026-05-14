@@ -1,0 +1,39 @@
+---
+title: "Cursor"
+description: "Supervisor profile for Cursor's CLI / agent-mode helpers."
+section: "profiles"
+order: 8
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/cursor.mdx"
+---
+
+```
+grith exec --profile cursor -- cursor --headless
+```
+
+The `cursor` profile fits Cursor's CLI helpers and agent-mode subprocesses.
+Cursor runs many small helper processes — language servers, indexers, MCP-like
+tool runners — and the profile accommodates all of them.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.cursor/**`,
+  `${HOME}/.config/Cursor/**`, `${HOME}/.cache/cursor/**`, `/tmp/cursor-**`.
+- **Commands** — toolchains + Cursor's indexer / language-server family.
+- **Destinations** — Cursor's API hosts, the provider APIs the user has
+  configured, the package registries.
+- **Exec roots** — standard plus Cursor's bundled tool directory under its app
+  bundle.
+
+## Note on the GUI app
+
+The profile is calibrated for `cursor`-as-CLI. The full Cursor GUI app, when
+launched outside grith, isn't supervised — grith only sees what you spawn under
+`grith exec`. For supervised use, run Cursor's headless agent mode.
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)

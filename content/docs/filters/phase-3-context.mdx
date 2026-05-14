@@ -1,0 +1,50 @@
+---
+title: "Phase 3 — Context"
+description: "Six filters that look at session history and accumulated state. ~5ms budget."
+section: "filters"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/phase-3-context.mdx"
+---
+
+Phase 3 is where the score gets sharpened by everything the pipeline has learned —
+both about this session in flight and about the world over time. Six filters reach
+into running state and accumulated history. Budget is **~5ms**, mostly absorbed by
+the behavioural and taint filters when they have a baseline to compare against.
+
+## The six filters
+
+| # | Filter | Score range | What it does |
+| --- | --- | --- | --- |
+| 12 | [Destination reputation](/docs/filters/12-destination-reputation) | -1 to +4 | Trust accumulated over observed destinations. |
+| 13 | [Behavioural anomaly](/docs/filters/13-behavioural-anomaly) | +1 to +3 | Deviation from session baseline. |
+| 14 | [Taint tracking](/docs/filters/14-taint-tracking) | +0 to +5 | Sensitive-source-to-sink correlation. |
+| 15 | [Session containment](/docs/filters/15-session-containment) | +0 to +5 | Zone-boundary enforcement. |
+| 16 | [Rate limiting](/docs/filters/16-rate-limiting) | 0 / queue / DENY | Per-minute caps on operation classes. |
+| 17 | [Semantic analysis](/docs/filters/17-semantic-analysis) | +0 to +0 | Stub for v0.1; planned v1.5. |
+
+## What Phase 3 catches that Phases 1 and 2 don't
+
+The first two phases are stateless: a call is scored the same regardless of what
+came before it. That's a huge win for predictability, but it leaves attacks-in-time
+poorly defended:
+
+- A single network call to api.example.com is fine. The same call ten seconds after
+  reading `~/.aws/credentials` is suspicious. **Taint catches this.**
+- A `cat /etc/hosts` is fine. The 200th `cat` in 30 seconds is suspicious. **Rate
+  limiting catches this.**
+- Reading from `${PROJECT_DIR}` is routine. Reading from a *different* project's
+  directory in the same session is out of zone. **Session containment catches this.**
+- Talking to api.anthropic.com is routine. Talking to a brand-new look-alike
+  domain is suspect. **Destination reputation lowers trust for new hosts.**
+
+Each Phase 3 filter trades a small amount of latency for context that Phases 1 and 2
+can't have.
+
+## See also
+
+- [Phase 1 — Static](/docs/filters/phase-1-static)
+- [Phase 2 — Pattern](/docs/filters/phase-2-pattern)
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline)

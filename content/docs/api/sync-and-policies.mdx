@@ -1,0 +1,66 @@
+---
+title: "Sync & policies"
+description: "Pro sync state and centralised policy CRUD."
+section: "api"
+order: 9
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/sync-and-policies.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+<ApiRouteTable group="Sync & policies" showHeadings={false} />
+
+## Sync state
+
+`GET /sync/status` reports the device's view of the team-managed config bundle:
+
+```json
+{
+  "last_pull": "2026-05-14T09:00:00Z",
+  "last_push": "2026-05-13T18:30:00Z",
+  "pending_changes": 0,
+  "bundle_id": "..."
+}
+```
+
+`GET /sync/configs` lists synced configs (profiles, filter configs, channel
+configs, scoring overrides).
+
+`POST /sync/configs` applies a sync bundle. Body is signed by the dashboard;
+signature is verified before any state is mutated.
+
+## Policies
+
+Policies are reusable named bundles of (threshold overrides, filter configs,
+profile, allowed channels). Listed and managed via the dashboard, exposed here
+for automation.
+
+```
+GET    /policies              # list
+GET    /policies/{name}       # fetch one
+POST   /policies              # create
+PUT    /policies/{name}       # update
+DELETE /policies/{name}       # delete
+```
+
+A policy shape:
+
+```json
+{
+  "name": "tight-prod",
+  "description": "Hardened for production sessions",
+  "thresholds": { "auto_allow": 2.0, "auto_deny": 6.0 },
+  "profile_override": "minimal",
+  "filter_configs": { "egress": "policies/tight-prod/egress.toml" },
+  "channels_allowed": ["pagerduty", "slack-prod"]
+}
+```
+
+## See also
+
+- [Team sync (Pro)](/docs/pro/team-sync)
+- [Centralised policies (Pro)](/docs/pro/centralised-policies)
+- [`grith pro sync`](/docs/cli/pro)

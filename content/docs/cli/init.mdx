@@ -1,0 +1,54 @@
+---
+title: "grith init"
+description: "Generate a default configuration file in the user config directory."
+section: "cli"
+order: 14
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/init.mdx"
+---
+
+```
+grith init
+```
+
+Generate `~/.config/grith/config.toml` from the shipping defaults. Run once after
+install.
+
+The file is the same as `config/default.toml` in the grith repo, including all
+inline comments. Edit freely; layers and precedence work normally
+(see [`grith config`](/docs/cli/config) for the layering model).
+
+## Behaviour
+
+- Creates `~/.config/grith/` if it doesn't exist (perms `0700`).
+- Writes `config.toml` with perms `0600`.
+- Won't overwrite an existing file unless `--force` is passed.
+
+```
+grith init              # safe, errors if config exists
+grith init --force      # overwrite anything that's there
+grith init --print      # write to stdout instead of disk
+```
+
+## What's in the generated file
+
+The full default config — every section with shipping defaults and inline comments.
+Sections include:
+
+- `[general]` — daemon basics (log level, audit dir, plan tier).
+- `[proxy]` — scoring thresholds and filter sub-configs.
+- `[reputation]` — trust table parameters.
+- `[digest]` — queue behaviour.
+- `[llm]` — provider configuration (Ollama by default).
+- `[supervisor]` — interception parameters, default profile.
+- `[server]` — daemon HTTP server settings.
+
+See [Configuration overview](/docs/config/overview) for what each section does.
+
+## See also
+
+- [`grith config`](/docs/cli/config)
+- [Installation](/docs/start/installation)
+- [Quickstart](/docs/start/quickstart)

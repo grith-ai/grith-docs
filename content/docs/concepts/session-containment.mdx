@@ -1,0 +1,120 @@
+---
+title: "Session containment"
+description: "Per-session isolation zones — keeping an agent in its lane."
+section: "concepts"
+order: 10
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/session-containment.mdx"
+---
+
+A supervised session has a **zone** — the set of paths, networks, and resources it's
+supposed to use. The session containment filter ([15](/docs/filters/15-session-containment))
+scores calls based on whether they stay inside that zone.
+
+This is a softer kind of policy than the static path filter. Path matching enforces
+"do not read this". Containment enforces "this session is about project A; project B's
+files don't belong here, even if the path itself is fine".
+
+## Why zones
+
+A laptop runs many concurrent projects. Two agents running side by side — one for
+your day-job repo, one for an open-source side project — each have legitimate access
+to *their* files. They mostly shouldn't have access to each other's. Mixing them is
+how an attack against one project escalates into a breach of the other.
+
+Zones make that mixing explicit. The day-job session is in zone `dayjob`; the side-
+project session is in zone `oss`. A call from `dayjob` that opens a file under the
+`oss` project's directory is *in policy* (paths look fine) but *out of zone* — and
+that gets score.
+
+## Zone definition
+
+Zones live in `config/filters/containment.toml`:
+
+```toml
+[zones.dayjob]
+paths = ["${HOME}/work/dayjob/**"]
+network = ["dayjob-vpn-host", "github.com/your-org/**"]
+description = "Day job project"
+
+[zones.oss]
+paths = ["${HOME}/oss/**"]
+network = ["github.com/grith-ai/**"]
+description = "Side projects"
+
+[zones.experiments]
+paths = ["${HOME}/scratch/**", "/tmp/scratch-**"]
+network = []
+description = "Disposable, no network"
+```
+
+A zone has:
+
+- **paths** — globs of where the session can read/write.
+- **network** — hostnames the session can reach.
+- **description** — for the dashboard.
+
+## Binding a session to a zone
+
+```
+grith exec --profile claude-code --zone dayjob -- claude
+```
+
+`--zone` sets the session's zone. Without it, the session uses the default zone
+(empty / matches everything, then containment scoring is a no-op).
+
+The dashboard's "new session" UI also lets you pick a zone.
+
+## Cross-zone calls
+
+A call that escapes the session's zone (writes to a path outside, opens a connection
+to a host not listed) doesn't auto-deny — it gets *scored*. The containment filter
+contributes positive score, weighted by:
+
+- How far outside the zone (one directory over vs. a totally unrelated home).
+- The risk level of the operation (writing out is heavier than reading out).
+- Whether the cross-zone target overlaps another zone (e.g. dayjob writing into oss
+  is heavier than dayjob writing into a non-zoned temp dir).
+
+A cross-zone call that crosses the auto-deny threshold blocks. One that lands in the
+queue is shown with the "out of zone" annotation, so the reviewer knows immediately
+what's interesting about it.
+
+## Unlocking a destination
+
+If a call legitimately needs to cross zones, the digest offers an "unlock egress"
+action (for network) or a routine "approve" (for paths). Unlock-egress adds the
+destination to the session's accepted set for the remainder of the session only — no
+permanent zone change.
+
+For permanent additions, edit `containment.toml` and reload (`grith config reload`).
+
+## What this is not
+
+Zones are **not a sandbox**. The kernel is still doing the operations; the filter
+just contributes score. A determined call across a permissive zone with enough
+trust-table credit will run.
+
+If you want hard isolation, run grith inside a container or behind a Linux user
+namespace. Zones are a logical organisation tool, not a kernel boundary.
+
+## Typical use
+
+The two patterns we see most:
+
+1. **One zone per project**, declared once in `containment.toml`, referenced from
+   `--zone` on every `grith exec`. The agent stays focused.
+2. **No zones, just routine paths in the profile**. Smaller setups don't need the
+   ceremony; the path filter does most of the work.
+
+If you find yourself unlocking the same cross-zone destination over and over, that's
+a sign the destination should be in the zone definition. The dashboard surfaces
+"frequently unlocked" entries as candidates for zone-edit.
+
+## See also
+
+- [Filter 15: Session containment](/docs/filters/15-session-containment)
+- [grith exec](/docs/cli/exec) — `--zone` flag
+- [Supervisor profiles](/docs/concepts/supervisor-profiles) — profiles vs zones

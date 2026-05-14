@@ -1,0 +1,68 @@
+---
+title: "What's in Pro"
+description: "Team-scope features on top of the community core."
+section: "pro"
+order: 1
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/whats-in-pro.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+The community edition is the full grith product. Pro adds team-scope features on top:
+shared policy, team-wide analytics, encrypted key sharing, and notification channels.
+
+## Headline features
+
+- **Team sync** — centrally-managed profiles, scoring thresholds, and filter
+  configs distributed signed to every team device.
+- **Encrypted team key sync** — share OpenAI / Anthropic / OpenRouter API keys
+  across the team without leaking them anywhere.
+- **Centralised policies** — author policies once in the dashboard, apply to
+  any subset of the team.
+- **Usage analytics** — per-developer cost, decision split, session timelines.
+- **Cost tracking** — provider spend by model, by user, by project.
+- **Notification channels** — full set (Slack, Discord, Telegram, Teams,
+  email, webhook, PagerDuty, Opsgenie, WhatsApp). Community gets a subset.
+- **Adaptive scoring** — Bayesian learning across team approvals.
+- **Extended audit retention** — synced summaries kept on the dashboard for
+  team-scope analytics.
+- **Escalation** — route a digest item to another team member from the CLI or
+  channel.
+
+## Pricing
+
+- **$25/user/month**, billed monthly.
+- **$21/user/month**, billed annually (≈17% off, two months free).
+- Up to 25 users.
+- Email support.
+
+For more than 25 users or compliance-grade needs, see
+[Enterprise](/docs/enterprise/whats-in-enterprise).
+
+## What stays the same
+
+The community core is unchanged on Pro:
+
+- All 17 filters with all the same scoring.
+- Local-first by default. Audit data stays local unless `audit_sync = true`.
+- Per-device reputation table.
+- BYOK model access.
+
+## Sign up
+
+```
+grith pro login
+```
+
+Walks the device-auth flow in a browser. After approval the device joins your
+team. See [Authentication](/docs/pro/authentication).
+
+## See also
+
+- [Authentication](/docs/pro/authentication)
+- [License lifecycle](/docs/pro/license-lifecycle)
+- [Team setup](/docs/guides/team-setup)
+- [Enterprise tier](/docs/enterprise/whats-in-enterprise)

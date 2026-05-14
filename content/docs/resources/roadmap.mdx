@@ -1,0 +1,81 @@
+---
+title: "Roadmap"
+description: "What's coming next in grith."
+section: "resources"
+order: 5
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/roadmap.mdx"
+---
+
+The roadmap is necessarily speculative — dates slip, priorities shift. But here's
+the public-facing plan as of v0.1.0 launch.
+
+## v0.1.x — stabilisation (Q3 2026)
+
+- **Profile drift detection** continuous monitoring.
+- **Profile signing UX** improvements.
+- **Performance** — squeeze the secret scanner; aim for p99 under 12ms.
+- **Audit log integrity** — append-only / WORM option.
+
+## v0.2 — platform expansion (Q4 2026)
+
+- **aarch64 Linux** — register backend + seccomp-bpf for ARM.
+- **Custom filter SDK** — open-source Rust API for authoring user filters,
+  shipped via Pro policy bundle.
+- **Versioned docs UI** — version selector on docs.grith.ai.
+- **Reproducible builds** — bit-for-bit reproducible release artefacts.
+
+## v1.5 — semantic analysis (Q1 2027)
+
+- **Filter 17 fully implemented** — local embedding model, intent
+  classification.
+- **Cross-session taint analytics** — Pro feature.
+- **Behavioural baseline export** — share baselines across team members
+  optionally.
+
+## v2.0 — multi-platform (Q2-Q3 2027)
+
+- **macOS supervisor** — Endpoint Security framework.
+- **Windows supervisor** — ETW + minifilter.
+- **SSO / SAML** — Okta, Azure AD, Google Workspace.
+- **RBAC** — full role-based access control on the dashboard.
+- **Air-gapped Enterprise** — offline license activation, self-hosted
+  dashboard, manual policy distribution.
+- **Discord bot integration** — interactive approve/deny in Discord (parity
+  with Slack/Telegram).
+- **Microsoft Teams interactive cards** — parity for Adaptive Cards.
+
+## v2.x — broader scope
+
+- **Browser-extension supervisor** — for browser-based agents.
+- **Mobile agent supervision** — for the inevitable mobile agent runtimes.
+- **Federated reputation** — opt-in cross-organisation trust sharing for
+  enterprise consortiums.
+
+## How to influence
+
+The roadmap is informed by community feedback. The strongest signal:
+
+- **GitHub issues** with the `enhancement` label, sorted by reactions.
+- **GitHub Discussions** for design conversations.
+- **Pro / Enterprise customer requests** — taken seriously, but balanced
+  against the open-source community's needs.
+
+We don't bias toward paying customers' wishes on architectural decisions; we
+do bias toward them on prioritisation of work already-planned.
+
+## Things we will not do
+
+- **Tie the community edition to a grith.ai service.** The community edition
+  is and remains usable offline indefinitely.
+- **Add LLM-based decision-making to the filter pipeline.** Filters stay
+  deterministic.
+- **Add a marketplace.** Filters are policy; we won't run a "Filter Store".
+
+## See also
+
+- [Changelog](/docs/resources/changelog)
+- [What's in Pro](/docs/pro/whats-in-pro)
+- [What's in Enterprise](/docs/enterprise/whats-in-enterprise)

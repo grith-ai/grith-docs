@@ -1,0 +1,89 @@
+---
+title: "grith config"
+description: "Show or modify configuration values from the command line."
+section: "cli"
+order: 13
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/config.mdx"
+---
+
+```
+grith config [set <KEY> <VALUE>]
+```
+
+Show the current configuration, or set a single value.
+
+## Show
+
+With no subcommand, prints the merged configuration:
+
+```
+$ grith config
+[general]
+log_level = "info"
+audit_dir = "/home/you/.local/share/grith/audit"
+plan_tier = "community"
+...
+```
+
+Use `--format json` for structured output, useful in scripts:
+
+```
+grith config --format json | jq '.proxy.auto_allow_threshold'
+```
+
+## Set
+
+```
+grith config set <KEY> <VALUE>
+```
+
+Set a single key. Dotted notation walks into sections.
+
+Examples:
+
+```
+grith config set general.log_level debug
+grith config set proxy.auto_allow_threshold 3.5
+grith config set supervisor.default_profile claude-code
+```
+
+The change is written to the user config (`~/.config/grith/config.toml`) and takes
+effect on the next call (or after daemon restart for server-affecting keys like
+`server.port`).
+
+## Where values come from
+
+Layered, highest priority first:
+
+1. CLI flags (`--config`, `--log-level`, etc.)
+2. `GRITH_*` environment variables (e.g. `GRITH_LOG_LEVEL=debug`)
+3. Project-local `.grith/config.toml` (if present)
+4. User config `~/.config/grith/config.toml`
+5. Built-in defaults (`config/default.toml` in the grith repo)
+
+`grith config` shows the merged result. To see only the user layer:
+
+```
+grith config --layer user
+```
+
+## Reset
+
+Delete the user config to revert to defaults:
+
+```
+rm ~/.config/grith/config.toml
+grith init
+```
+
+`grith init` writes a copy of the default config back to the user path with the
+shipping comments intact.
+
+## See also
+
+- [`grith init`](/docs/cli/init)
+- [Configuration overview](/docs/config/overview)
+- [Configuration sections](/docs/config/general)

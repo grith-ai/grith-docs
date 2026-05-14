@@ -1,0 +1,40 @@
+---
+title: "Cline"
+description: "Supervisor profile for Cline (Claude Dev) and similar extension CLIs."
+section: "profiles"
+order: 9
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/cline.mdx"
+---
+
+```
+grith exec --profile cline -- cline
+```
+
+The `cline` profile fits Cline (formerly Claude Dev) and its CLI mode. Cline has
+broad tool-calling capabilities — file editing, terminal access, browser
+automation via MCP — so the profile is moderately generous.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.cline/**`,
+  `${HOME}/.config/cline/**`, `${HOME}/.cache/cline/**`.
+- **Commands** — language toolchains plus the terminal-tool subprocess
+  shell pattern Cline uses.
+- **Destinations** — provider APIs (Anthropic, OpenAI, OpenRouter as
+  configured), `github.com`, `*.githubusercontent.com`, MCP server hosts.
+- **Exec roots** — standard plus the location Cline downloads helper tools to.
+
+## Browser tool
+
+Cline's browser-automation tool spawns headless Chrome / Playwright. If you use
+that capability, the profile permits `chrome`, `chromium`, `playwright`, and
+related binaries via `routine_exec_roots`. For a custom Chrome install path,
+extend the profile.
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)

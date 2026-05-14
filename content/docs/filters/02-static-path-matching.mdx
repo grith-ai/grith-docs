@@ -1,0 +1,88 @@
+---
+title: "2. Static path matching"
+description: "Fast Aho-Corasick scan of paths against curated denylists and allowlists."
+section: "filters"
+order: 11
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/02-static-path-matching.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Static |
+| **Score range** | +2 to +5 |
+| **Module** | `crates/grith-proxy/src/filters/path_match.rs` |
+| **Config file** | `config/filters/paths.toml` |
+
+Path matching is the hot path: every file operation passes through it. The
+implementation is an Aho-Corasick automaton compiled once at start, so matching
+against thousands of patterns is a single linear pass over the path bytes.
+
+## What it catches
+
+Curated lists of "obviously sensitive" and "obviously routine" paths:
+
+```toml
+# config/filters/paths.toml
+[[deny]]
+path = "/etc/shadow"
+score = 5.0
+reason = "system password database"
+
+[[deny]]
+path = "/.ssh/"          # any nested
+score = 3.0
+
+[[deny]]
+path = ".aws/credentials"
+score = 4.0
+
+[[allow]]
+path = "${PROJECT_DIR}/"
+score = -1.0
+```
+
+The shipping defaults cover the common sensitive paths on Linux: system password
+files, SSH directories, cloud credential locations, browser saved-passwords,
+keyrings, GPG home, kubectl config, dotenv files in non-project locations.
+
+## Allowlist contributions
+
+Routine paths can score *negative*, pulling the composite down. The profile system
+populates this layer with `routine_paths` from the active profile — see
+[Supervisor profiles](/docs/concepts/supervisor-profiles).
+
+## Override patterns
+
+Users add patterns in `~/.config/grith/filters/paths.toml`. The user file is layered
+on top of the shipping defaults; entries with the same `path` replace defaults.
+
+```toml
+# ~/.config/grith/filters/paths.toml
+[[allow]]
+path = "/etc/internal-cert/"
+score = -2.0
+reason = "company-internal cert store, OK to read"
+```
+
+## Performance
+
+Aho-Corasick is sub-microsecond per path against thousands of patterns. The filter
+is essentially free at the rates real agents hit it.
+
+## Tuning
+
+- **Too noisy** — usually the cause is patterns that match more than intended (e.g.
+  `.env` matching `something.env.example`). Tighten patterns.
+- **Too quiet** — add patterns. The DLP gate ([10](/docs/filters/10-dlp-gate)) and
+  secret scanner ([7](/docs/filters/07-secret-credential-scanning)) compensate for
+  content-based detection, but path matching is the cheap first line.
+
+## See also
+
+- [`config/filters/paths.toml`](/docs/config/filter-config-files)
+- [Filter 3: Sensitive path heuristic](/docs/filters/03-sensitive-path-heuristic) —
+  a fuzzier complement
+- [Supervisor profiles](/docs/concepts/supervisor-profiles)

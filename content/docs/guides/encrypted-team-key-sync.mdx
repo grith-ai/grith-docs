@@ -1,0 +1,92 @@
+---
+title: "Encrypted team key sync"
+description: "Share provider API keys across a team without leaking them to grith.ai."
+section: "guides"
+order: 19
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/encrypted-team-key-sync.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+Sharing OpenAI / Anthropic / OpenRouter API keys across a team is normally
+either painful (paste them in chat) or insecure (commit to a repo). Pro's
+encrypted key sync is the third path: keys live in the dashboard, encrypted at
+rest with a key only the team holds, and devices pull them on demand.
+
+## How it works
+
+1. A team admin generates a **team encryption key** in the dashboard. Stored
+   client-side; grith.ai never sees it.
+2. The admin enters provider API keys into the dashboard. The dashboard
+   encrypts them in the browser with the team key, uploads the ciphertext.
+3. Each developer's device, on `grith pro sync`, pulls the ciphertext and
+   decrypts locally with the team key (also fetched on first login, encrypted
+   to that developer's device public key).
+4. Decrypted keys are written to `~/.config/grith/keys/` with perms 0600,
+   used by the LLM provider modules.
+
+The grith.ai service stores ciphertext only. A compromise of grith.ai can't
+recover keys — the encryption is end-to-end between team admins and team
+devices.
+
+## Setup
+
+### Team admin
+
+In the dashboard:
+
+1. **Settings → Team key**. Click **Generate**. Save the recovery passphrase
+   somewhere safe (this is the only way to recover access if all team
+   browsers lose state).
+2. **Keys → Add key**. Pick provider, paste key, save.
+3. Repeat for each provider.
+
+### Per developer
+
+```
+grith pro login                       # if not already
+grith pro sync                        # pulls encrypted keys, decrypts locally
+grith config show llm                 # provider sections now show keys present
+```
+
+The developer doesn't see the raw key value in the CLI output (only
+`api_key = "<from-team-keystore>"`) but the grith provider modules use them
+transparently.
+
+## Rotating
+
+To rotate a provider key:
+
+1. Admin updates the key in the dashboard. New ciphertext is uploaded.
+2. Every device, on next sync (or `grith pro sync` manual), picks up the new
+   value.
+3. The old value is invalidated on rotate; no grace period.
+
+If the team encryption key itself is compromised (laptop lost, team browser
+state stolen):
+
+1. Admin **rotates** the team key in the dashboard. All key ciphertext is
+   re-encrypted under the new team key.
+2. Each device, on next sync, gets re-authorised to the new team key.
+3. The lost laptop loses access immediately.
+
+## Boundaries
+
+- The team key is **never** sent to grith.ai. It lives in the team admin's
+  browser (and on each developer's device for decryption).
+- A developer with a sync'd key on their device can read the raw value from
+  `~/.config/grith/keys/`. The key sync isn't HSM-level isolation — it's
+  trusted-team-device sharing.
+- For higher-assurance setups (hardware-backed key storage), the Enterprise
+  plan adds Yubikey / TPM integration. See
+  [Enterprise SSO/SAML (planned)](/docs/enterprise/sso-saml).
+
+## See also
+
+- [What's in Pro](/docs/pro/whats-in-pro)
+- [Encrypted key management (Pro)](/docs/pro/encrypted-key-management)
+- [Team setup](/docs/guides/team-setup)
+- [Connect a model](/docs/start/connect-a-model)

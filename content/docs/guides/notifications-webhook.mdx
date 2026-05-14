@@ -1,0 +1,102 @@
+---
+title: "Notifications: Webhook"
+description: "Generic HMAC-signed webhook receiver — the most flexible delivery channel."
+section: "guides"
+order: 9
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/notifications-webhook.mdx"
+---
+
+The generic webhook channel POSTs JSON to your endpoint with an HMAC-SHA-256
+signature. Use it for custom integrations: paging your own SOC tool, posting to
+an internal ticketing system, triggering automation.
+
+## Configure
+
+```toml
+[notifications.channels.my-webhook]
+enabled = true
+type = "webhook"
+url = "https://hooks.your-tool.example/grith"
+secret = "<32-byte-random-hex>"       # used for signing
+method = "POST"                       # default
+headers = { "X-Source" = "grith" }    # optional extras
+events = ["queue", "canary", "capability_deny"]
+include_filter_breakdown = true
+callback_url = "https://dashboard.grith.local/digest/{id}/webhook-review"
+```
+
+`secret` is shared between grith and your receiver — keep it private. Used to
+sign every payload.
+
+## Payload shape
+
+```json
+{
+  "event_type": "digest.created",
+  "ts": "2026-05-14T09:14:23Z",
+  "item": {
+    "id": "7d1f-...",
+    "session": "abc12345-...",
+    "operation": "file_read",
+    "target": "/home/you/.ssh/config",
+    "composite_score": 4.2,
+    "decision_zone": "queue",
+    "filters": [
+      { "name": "sensitive_path", "score": 3.5, "annotations": ["ssh-config"] }
+    ]
+  }
+}
+```
+
+The full body is signed; the signature is in the `X-Grith-Signature` header as
+`sha256=<hex>`.
+
+## Verify the signature
+
+Pseudo-code for a receiver:
+
+```python
+import hmac, hashlib
+
+def verify(body_bytes, signature_header, secret):
+    expected = "sha256=" + hmac.new(secret.encode(), body_bytes,
+                                    hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature_header)
+```
+
+If verification fails: respond `403`, log, do not act.
+
+## Callback approvals
+
+If `callback_url` is set, the digest item includes an `approval_callback` shape
+your receiver can use to POST a decision back to grith:
+
+```json
+{
+  "approval_callback": {
+    "url": "https://dashboard.grith.local/digest/7d1f-.../webhook-review",
+    "method": "POST"
+  }
+}
+```
+
+Your receiver makes the human review and POSTs back:
+
+```json
+{
+  "decision": "approve",
+  "signature": "sha256=...",         // same shared secret
+  "ts": "2026-05-14T09:15:00Z"
+}
+```
+
+Grith verifies the signature and applies the decision.
+
+## See also
+
+- [`grith notifications`](/docs/cli/notifications)
+- [Notification security model](/docs/security/notification-security)
+- [Digest API](/docs/api/digest)

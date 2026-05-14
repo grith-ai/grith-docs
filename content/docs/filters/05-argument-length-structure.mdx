@@ -1,0 +1,62 @@
+---
+title: "5. Argument length & structure"
+description: "Flags suspiciously-shaped arguments — oversized payloads, encoded blobs, unusual metacharacters."
+section: "filters"
+order: 14
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/05-argument-length-structure.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Static |
+| **Score range** | 0 to +2 |
+| **Module** | `crates/grith-proxy/src/filters/argument.rs` |
+
+A small, low-confidence contribution: how weird does the argument look?
+
+## What it catches
+
+Argument shapes that don't typically appear in legitimate calls:
+
+- **Oversized** — a single argument longer than 4KB (e.g. an entire file's content
+  passed as an arg).
+- **Base64-shaped** — a long contiguous base64 alphabet run. Often a sign of
+  smuggled payloads.
+- **Hex-shaped** — same, with hex.
+- **Heavy escape sequences** — repeated `\x`, `\u`, or shell metachar runs in a place
+  they normally wouldn't be.
+- **Null bytes** — anywhere in a string argument.
+- **Unusual placement of metacharacters** — backticks, `$()`, `&&` in arguments that
+  shouldn't have them (e.g. a filename arg to `ls`).
+
+Each contributes a small score (+0.5 to +1.0), capped at +2.0 total. The filter is
+deliberately a soft signal — false positives are common, but it nudges the composite
+in the right direction when combined with other heuristics.
+
+## Why it's useful despite being soft
+
+Most prompt-injection attacks that try to use shell execution sneak the payload
+through an arg that doesn't look like a normal arg. A `git clone` argument is
+usually a URL. A `git clone` argument that's 2KB of base64 is, at minimum,
+interesting.
+
+## Tuning
+
+The thresholds are constants. If your agent legitimately passes large arguments
+(e.g. it's invoking a tool that takes inline content), you'll see this filter fire
+on legitimate calls. Either:
+
+- Route the large content through a temp file instead (better hygiene).
+- Adjust `proxy.auto_allow_threshold` upward slightly so a +1.5 base score doesn't
+  tip into queue.
+- Add a routine-command entry in the profile that absorbs the contribution.
+
+## See also
+
+- [Filter 8: Command structure analysis](/docs/filters/08-command-structure-analysis) —
+  parser-level companion
+- [Filter 7: Secret / credential scanning](/docs/filters/07-secret-credential-scanning) —
+  for credential-shaped content

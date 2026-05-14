@@ -1,0 +1,110 @@
+---
+title: "Centralised policies"
+description: "Author and distribute named policy bundles from the dashboard."
+section: "pro"
+order: 5
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/centralised-policies.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+A **policy** is a named bundle of (scoring thresholds, filter configs, profile
+overrides, channel mappings) that can be applied to any subset of the team. Use
+policies to manage different security postures across roles, projects, or
+environments without editing each developer's local config.
+
+## Anatomy
+
+A policy declares:
+
+- **Profile override** — which supervisor profile to use as the baseline.
+- **Threshold overrides** — `proxy.auto_allow_threshold`, `auto_deny_threshold`.
+- **Filter overrides** — paths.toml, egress.toml, etc. (any subset).
+- **Channel allowlist** — which notification channels can be used.
+- **Capability tightening** — narrow the capability set beyond the profile default.
+
+Example policy bundle from the dashboard:
+
+```toml
+[policy.tight-prod]
+description = "Hardened policy for production-touching sessions"
+
+[policy.tight-prod.thresholds]
+auto_allow_threshold = 2.0
+auto_deny_threshold  = 6.0
+
+[policy.tight-prod.profile]
+override = "minimal"
+
+[policy.tight-prod.filters.egress]
+content = """
+[[deny]]
+host = "*"
+score = 5.0
+[[allow]]
+host = "internal.acme.com"
+score = -2.0
+"""
+
+[policy.tight-prod.channels]
+allowed = ["pagerduty", "slack-prod"]
+```
+
+## Applying
+
+In the dashboard, policies are applied either:
+
+- **By default** — every device in the team gets it as the baseline.
+- **By role** — assigned to a tag, applied to devices with that tag.
+- **By session** — devices pick the policy at `grith exec` time with
+  `--policy <name>`.
+
+## Session-time selection
+
+```
+grith exec --profile claude-code --zone dayjob --policy tight-prod -- claude
+```
+
+The `--policy` overlay applies on top of the resolved profile + zone. Useful
+for "this is a production-touching session, tighten everything".
+
+If `--policy` isn't passed, the device's default policy is used.
+
+## Lifecycle
+
+Policies are versioned in the dashboard:
+
+- Edit → save as draft → preview → publish.
+- Published policies replace the prior version on next device sync.
+- Rollback to a prior version is one click in the dashboard; the device picks it
+  up on next sync.
+
+## Use cases
+
+- **Per-environment policies** — `dev`, `staging`, `prod` with progressively
+  tighter scoring.
+- **Per-role policies** — `engineer` vs. `oncall` vs. `incident-responder`,
+  each with different notification + threshold settings.
+- **Compliance policies** — `pci-touching` policy that auto-denies anything
+  egressing to non-allowlisted destinations.
+
+## Auditing policy changes
+
+Every policy edit is recorded in the dashboard's audit log:
+
+- Who edited.
+- When.
+- What changed (diff vs. prior version).
+
+For Enterprise compliance setups, this audit is exportable as part of
+[Compliance reporting](/docs/enterprise/compliance-reporting).
+
+## See also
+
+- [Team sync](/docs/pro/team-sync)
+- [Team setup](/docs/guides/team-setup)
+- [`grith exec --policy`](/docs/cli/exec)
+- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)

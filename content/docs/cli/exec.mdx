@@ -1,0 +1,116 @@
+---
+title: "grith exec"
+description: "Supervise an external CLI tool with OS-level syscall interception."
+section: "cli"
+order: 2
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/exec.mdx"
+---
+
+```
+grith exec [OPTIONS] -- <COMMAND> [ARGS...]
+```
+
+Spawn `<COMMAND>` (or attach to an existing PID) under grith's syscall-level
+supervisor. Every interesting syscall the process tree makes routes through the
+filter pipeline before execution.
+
+This is the workhorse command — almost every real grith session starts with
+`grith exec`.
+
+## Synopsis
+
+```
+grith exec [--profile <NAME>] [--zone <NAME>]
+           [--attach <PID>]
+           [--syscall-log <FILE>] [--trace-syscalls-jsonl <FILE>]
+           -- <COMMAND> [ARGS...]
+```
+
+The double-dash (`--`) is required when the supervised command has its own flags. It
+tells `grith` where its options stop and the target command's begin.
+
+## Options
+
+| Flag | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--profile <NAME>` | string | `generic` | Supervisor profile to use. See [Choose your agent](/docs/start/choose-your-agent). |
+| `--zone <NAME>` | string | none | Bind the session to a [containment zone](/docs/concepts/session-containment). |
+| `--attach <PID>` | u32 | — | Attach to an existing process by PID instead of spawning. Useful for already-running agents. |
+| `--syscall-log <FILE>` | path | — | Log every syscall request and decision to a file (human-readable). |
+| `--trace-syscalls-jsonl <FILE>` | path | — | Write raw pre-filter syscall forensics to a JSONL file. Heavyweight; use for forensics. |
+
+## Examples
+
+Spawn Claude Code with the matching profile:
+
+```
+grith exec --profile claude-code -- claude
+```
+
+Wrap a plain bash session:
+
+```
+grith exec --profile generic-cli -- bash
+```
+
+Attach to an already-running Python REPL:
+
+```
+grith exec --attach 17421
+```
+
+(The target must be a descendant of a process you can ptrace. See
+[Installation: permissions](/docs/start/installation#permissions).)
+
+Forensic record-and-replay:
+
+```
+grith exec \
+    --profile claude-code \
+    --trace-syscalls-jsonl ~/.cache/grith/last.jsonl \
+    -- claude
+
+# Later, audit the recorded session against the profile:
+grith profile audit --profile claude-code --trace ~/.cache/grith/last.jsonl
+```
+
+Use a containment zone:
+
+```
+grith exec --profile claude-code --zone dayjob -- claude
+```
+
+## What it does, in order
+
+1. Connects to the local daemon if one is running (thin-client mode). Otherwise runs
+   the filter pipeline in-process.
+2. `fork()` the target process; child sets up its own seccomp filter.
+3. `ptrace(PTRACE_SEIZE)` from the parent to attach without a stop.
+4. Child `execve()`s the target binary; the supervisor takes over.
+5. Every interesting syscall (configured set: file ops, exec, sockets, network) traps
+   to the supervisor.
+6. The call shape is sent through the filter pipeline.
+7. Decision (`ALLOW` / `QUEUE` / `DENY`) is applied via `ptrace(PTRACE_SYSCALL)` or
+   register rewriting.
+
+## PTY forwarding
+
+For interactive targets (REPLs, shells, TUI agents) grith allocates a PTY pair and
+shuttles bytes transparently. Input editing, ANSI escapes, and signals (Ctrl-C,
+Ctrl-Z) work exactly as if grith weren't in the loop.
+
+## Exit behaviour
+
+- Exits with the target's exit code when the target exits normally.
+- Sends SIGTERM to the supervised tree on Ctrl-C; SIGKILL after a 5s grace period.
+- Records the session-end event in the audit log.
+
+## See also
+
+- [Supervisor profiles](/docs/concepts/supervisor-profiles)
+- [Syscall interception](/docs/concepts/syscall-interception)
+- [`grith supervisor list`](/docs/cli/supervisor) — see active sessions
+- [`grith profile audit`](/docs/cli/profile-audit) — forensic review

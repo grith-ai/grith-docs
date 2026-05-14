@@ -1,152 +1,124 @@
 ---
-title: "Adaptive Reputation"
-description: "How grith learns to trust repeated operations using Bayesian scoring"
+title: "Adaptive reputation"
+description: "How grith gets quieter over time by learning which call shapes you trust."
 section: "concepts"
-order: 7
+order: 8
 tier: "community"
-version: "1.5"
-lastUpdated: "2026-03-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/adaptive-reputation.mdx"
 ---
 
-## Overview
+A grith install on day one is loud. The filters know what looks suspicious but
+not what's typical for *your* setup. A week in, you've approved a hundred calls
+that the filters scored as ambiguous. The reputation system folds those approvals
+into a per-shape trust score that quietens the digest going forward.
 
-Every time grith evaluates a tool call, it records the outcome. Over time, patterns emerge: `git status` in the project directory is always allowed, `npm install` always passes, reading `package.json` never triggers a deny. The adaptive reputation system uses these observations to build a Bayesian trust model for each distinct operation, enabling auto-allow decisions for operations that have been consistently safe.
+## What "reputation" tracks
 
-This reduces friction for developers without weakening security. Operations that have never been denied accumulate trust. Operations that have been denied — even once — see their trust erode.
+The trust table keys are tuples of:
 
-## Bayesian trust model
+- **Operation** (`file_read`, `network`, `shell`, …)
+- **Destination shape** (path prefix, domain, command head)
+- **Profile context** (which profile was active)
 
-Each distinct operation (identified by the combination of tool call type, target path or destination, and profile) maintains two parameters:
+For each key, the table holds:
 
-| Parameter | Meaning |
-|---|---|
-| `alpha` | Count of positive outcomes (allow decisions) |
-| `beta` | Count of negative outcomes (deny or queue decisions) |
+- `observations` — how many times this shape has been seen.
+- `denials` — how many times it was denied (manually or auto).
+- `trust` — a smoothed score in [0, 1], roughly "how often this shape was approved".
+- `last_seen` — for decay.
 
-The trust score is computed as:
+A new call's filter score gets adjusted by the trust value: if `trust ≥
+reputation.auto_allow_trust` (default `0.92`) **and** `observations ≥
+reputation.auto_allow_min_observations` (default `8`), the composite gets a
+reduction up to `reputation.max_score_reduction` (default `4.0`).
 
-<CodeBlock
-  code={`trust_score = alpha / (alpha + beta)`}
-  language="text"
-/>
+The cap matters. A high-trust shape can still escape into the digest if a different
+filter (DLP, canary, taint) lights it up. Trust is a *discount*, not a *bypass*.
 
-A new, unseen operation starts with `alpha = 1, beta = 1` (uniform prior), giving a trust score of 0.5. As the operation is repeatedly allowed, `alpha` increases and the trust score approaches 1.0. A single deny causes `beta` to increase, pulling the trust score down.
+## How trust changes
 
-### Example: trust evolution
+- **Approve** in the digest → trust nudges up.
+- **Approve + learn** → trust jumps faster; this is the deliberate "yes, please
+  remember this" signal.
+- **Deny** → trust drops, weighted by `reputation.deny_weight` (default `3.0`,
+  meaning denials are worth 3× as much as approvals in the smoothing).
+- **Auto-allow** (the call was already auto-allowed by score) → trust nudges up
+  very slightly. The system shouldn't be calibrated by easy approvals.
+- **Auto-deny** → trust drops.
+- **Time** → trust decays toward neutral via `reputation.decay_lambda` (default
+  `0.98`, applied per save cycle, default 5 minutes). Trust earned six months ago
+  matters less than trust earned yesterday.
 
-| Observation | alpha | beta | trust_score |
-|---|---|---|---|
-| Prior (no data) | 1 | 1 | 0.500 |
-| Allowed | 2 | 1 | 0.667 |
-| Allowed | 3 | 1 | 0.750 |
-| Allowed | 4 | 1 | 0.800 |
-| Allowed | 5 | 1 | 0.833 |
-| Allowed | 6 | 1 | 0.857 |
-| Allowed | 7 | 1 | 0.875 |
-| Allowed | 8 | 1 | 0.889 |
-| Allowed | 9 | 1 | 0.900 |
-| Allowed | 10 | 1 | **0.909** |
-| Allowed | 11 | 1 | **0.917** |
+## Why decay
 
-After 10 allow observations (11 total with the prior), the trust score crosses 0.92 and the operation becomes eligible for auto-allow.
+Without decay, a one-time bad approval would mark a destination "trusted" forever.
+Decay lets old signals fade so the trust table reflects recent behaviour, not your
+worst day from a year ago. The default `0.98` per save cycle works out to roughly
+half-life of 30 days under typical usage; tighter agents (more frequent calls) decay
+faster in elapsed time.
 
-## Auto-allow threshold
+## What it can't do
 
-An operation is auto-allowed when both conditions are met:
+The reputation system **cannot promote a call past a hard gate**:
 
-1. **Trust score >= 0.92** — the operation has a strong track record of safe outcomes
-2. **Observation count >= 8** — enough data points exist for the trust score to be meaningful
+- A canary detection denies, full stop, regardless of trust.
+- A capability deny is enforced regardless of trust.
+- The `max_score_reduction` cap ensures even a perfectly-trusted shape can't push the
+  composite below 0 in the presence of other strong contributions.
 
-When both conditions hold, the operation bypasses the full scoring pipeline and is allowed immediately. This is logged in the audit trail with the decision source `reputation_auto_allow`.
+The reputation system also doesn't share state between sessions started by different
+users (in multi-user team setups) by default — see
+[Team sync](/docs/pro/team-sync) for the Pro flow that does.
 
-<Callout type="info" title="Auto-allow is not permanent">
-A single deny observation resets the auto-allow status. If `beta` increases, the trust score drops below 0.92 and the operation returns to full proxy evaluation. Trust must be re-earned through subsequent allow observations.
-</Callout>
+## Adversarial robustness
 
-## Temporal decay
+A natural worry: what if the agent (or attacker controlling it) does a hundred
+benign reads to build up reputation, then sneaks one bad call through? Two
+mitigations:
 
-Older observations matter less than recent ones. grith applies an exponential decay with lambda = 0.98 to all observations. Each evaluation cycle, existing alpha and beta values are multiplied by the decay factor:
+1. **Only human approvals move the needle fast.** Auto-allow contributions are
+   intentionally tiny (`reputation.auto_allow_trust_increment` ≈ 0.001). An attacker
+   would need *years* of pure auto-allow to flip a shape from neutral to fully
+   trusted.
+2. **Strong filters bypass reputation.** Even a fully-trusted destination gets the
+   secret scan, DLP gate, canary detection, and taint inheritance done on every call.
+   Reputation only knocks the composite down; it doesn't make the filter blind.
 
-<CodeBlock
-  code={`alpha = alpha * 0.98
-beta  = beta  * 0.98`}
-  language="text"
-/>
+The system is designed so that the only way to teach grith something *significantly*
+wrong is to keep explicitly approving wrong things in the digest. Which is a
+different problem.
 
-This means an operation that was trusted six months ago but has not been seen since will gradually lose its auto-allow status. An operation must continue to be observed (and allowed) to maintain trust. The decay rate of 0.98 per evaluation means observations have a half-life of approximately 34 evaluation cycles.
+## Inspecting the trust table
 
-## Per-profile scoping
+```
+grith reputation show
+```
 
-Reputation data is scoped by profile name. An operation trusted under the `claude-code` profile does not inherit trust under the `codex` profile or the `generic` profile. This prevents a permissive profile from contaminating the trust model of a more restrictive one.
+Lists shapes with their trust, observation count, and last-seen time. Sorted by
+recency by default; `--sort trust` shows your most-trusted shapes (sometimes
+surprising).
 
-<CodeBlock
-  code={`# These are tracked independently:
-# Profile: claude-code, Operation: fs.read → /home/user/project/src/main.rs
-# Profile: codex,       Operation: fs.read → /home/user/project/src/main.rs`}
-  language="text"
-/>
+```
+grith reputation reset
+```
 
-## CLI commands
+Wipes the table. Useful when starting fresh — for example, after switching agents
+or after a security audit.
 
-### View reputation data
+## Persistence
 
-<Terminal command="grith reputation show" />
+The trust table is held in memory and flushed to
+`~/.cache/grith/reputation/<profile>.bin` every `reputation.save_interval_seconds`
+(default 300s). Atomic write-rename, so a crash mid-flush doesn't corrupt. The file
+is binary CBOR; safe to delete if it gets corrupted (you'll lose accumulated trust,
+but nothing in the audit log or pending digest).
 
-<CodeBlock
-  code={`Reputation entries (claude-code profile):
+## See also
 
-  Operation                                    Alpha    Beta    Trust    Auto-allow
-  fs.read → $PROJECT_DIR/**                    142.3    1.0     0.993   yes
-  fs.write → $PROJECT_DIR/src/**               87.1     1.0     0.989   yes
-  net.connect → api.anthropic.com              56.8     1.0     0.983   yes
-  exec → git *                                 201.4    1.0     0.995   yes
-  fs.read → ~/.ssh/config                      3.0      1.0     0.750   no
-  net.connect → unknown-api.example.com        2.0      2.0     0.500   no`}
-  language="text"
-/>
-
-### Reset reputation
-
-Reset all reputation data for a profile, or reset a specific operation:
-
-<Terminal command="grith reputation reset --profile claude-code" />
-
-<CodeBlock
-  code={`[grith] Reset 847 reputation entries for profile "claude-code".`}
-  language="text"
-/>
-
-To reset a single operation:
-
-<Terminal command='grith reputation reset --profile claude-code --operation "fs.read → ~/.ssh/config"' />
-
-## Cloud sync
-
-<Badge variant="pro">Pro</Badge>
-
-Reputation data is included in the `grith pro sync` upload when audit sync is enabled. This powers the team dashboard's reputation analytics, showing which operations are trusted across the team and which are frequently denied.
-
-Reputation data is uploaded as aggregated statistics, not individual observations. The cloud receives trust scores and observation counts per operation, not the raw alpha/beta parameters or the specific file paths involved.
-
-<ConfigExample
-  title="Enable reputation sync"
-  code={`[pro.sync]
-upload_audit = true         # reputation data included in audit summary
-upload_frequency = "daily"  # sync reputation snapshots daily`}
-/>
-
-## Relationship to other systems
-
-| System | Interaction |
-|---|---|
-| Scoring pipeline | Reputation provides a score reduction (-1.0 to -2.0) for trusted operations, or bypasses the pipeline entirely for auto-allowed operations |
-| Session allowlist | Session allowlist entries bypass reputation entirely (they are allowed before reputation is consulted) |
-| Noise reduction | Noise-filtered syscalls are never observed by reputation (they are filtered before the reputation check) |
-| Forensic tracing | Auto-allowed operations appear in forensic traces with `stage: reputation_auto_allow` |
-
-## Next steps
-
-- [Scoring Proxy](/docs/concepts/scoring-proxy) — How the multi-filter pipeline works
-- [Filter Tuning](/docs/guides/filter-tuning) — Adjust filter weights and thresholds
-- [Supervisor Profiles](/docs/reference/supervisor-profiles) — Profile-scoped security policies
-- [Forensic Tracing](/docs/guides/forensic-tracing) — Capture raw syscall traces for analysis
+- [Composite scoring](/docs/concepts/composite-scoring) — where the trust discount
+  is applied
+- [The quarantine digest](/docs/concepts/quarantine-digest) — where approvals are
+  recorded
+- [grith reputation](/docs/cli/reputation) — CLI for inspecting and resetting

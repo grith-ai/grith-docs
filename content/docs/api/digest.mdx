@@ -1,0 +1,88 @@
+---
+title: "Digest"
+description: "REST endpoints for the quarantine queue — list, inspect, decide."
+section: "api"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/digest.mdx"
+---
+
+The quarantine queue over REST.
+
+<ApiRouteTable group="Digest" showHeadings={false} />
+
+## `GET /digest`
+
+List pending items.
+
+```json
+{
+  "items": [
+    {
+      "id": "7d1f-...",
+      "ts": "2026-05-14T09:14:23Z",
+      "session": "abc12345-...",
+      "operation": "file_read",
+      "target": "/home/you/.ssh/config",
+      "composite_score": 4.2,
+      "filters_fired": [...]
+    }
+  ]
+}
+```
+
+## `GET /ipc/digest/items/{id}`
+
+Full forensics on a single item (IPC-only). Includes the session's recent history
+and reputation context — useful for the dashboard.
+
+## Decision endpoints
+
+All decision endpoints are `POST` with an optional JSON body for annotations:
+
+```
+POST /digest/{id}/approve
+POST /digest/{id}/deny
+POST /digest/{id}/learn
+POST /digest/{id}/escalate           (Pro)
+POST /digest/{id}/unlock-egress
+POST /digest/{id}/deny-terminate
+POST /digest/{id}/allow-always       (Pro)
+POST /digest/{id}/webhook-review
+```
+
+Body shape (optional):
+
+```json
+{
+  "annotations": "user-provided note",
+  "annotation_tags": ["false-positive", "legitimate-ssh-fix"]
+}
+```
+
+Response: `204 No Content` on success.
+
+## `POST /digest/{id}/webhook-review`
+
+For asynchronous review flows — a notification channel delivered the item, the
+reviewer clicked an approve link, and the receiving webhook now POSTs the decision
+back. Body:
+
+```json
+{
+  "decision": "approve | deny | learn",
+  "signature": "hmac-sha256-...",
+  "ts": "..."
+}
+```
+
+The signature is verified against the channel's shared secret; mismatched signatures
+return `403 SIGNATURE_INVALID`.
+
+## See also
+
+- [The quarantine digest](/docs/concepts/quarantine-digest)
+- [`grith digest`](/docs/cli/digest)
+- [Notification security model](/docs/security/notification-security)

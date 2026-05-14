@@ -1,0 +1,38 @@
+---
+title: "[reputation]"
+description: "Adaptive trust parameters — decay, denial weight, auto-allow gates."
+section: "config"
+order: 3
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/reputation.mdx"
+---
+
+The reputation system's tunables. See [Adaptive reputation](/docs/concepts/adaptive-reputation)
+for what these knobs do.
+
+<ConfigKeyTable section="reputation" />
+
+## Tuning intent
+
+| Knob | Higher means | Lower means |
+| --- | --- | --- |
+| `decay_lambda` (closer to 1.0) | Trust persists longer; old signals matter more. | Trust ages out faster; reactive. |
+| `deny_weight` | Denials count much more than approvals; conservative. | Approvals and denials balanced; more permissive. |
+| `auto_allow_trust` | Requires very high trust before discounting. | Easier for shapes to earn discount. |
+| `auto_allow_min_observations` | More data needed before trust applies. | Less data needed; quicker to ease off prompts. |
+| `max_score_reduction` | Trust can knock more points off; quieter digest. | Trust has smaller effect; safer when trust is wrong. |
+| `ceiling_filter_threshold` | Single filters can push score higher; sharper teeth. | Tighter per-filter cap; smoother composite. |
+
+## Storage
+
+The trust table is held in memory by the scoring engine and flushed to disk every
+`save_interval_seconds` (default 300s). Persisted at
+`~/.cache/grith/reputation/<profile>.bin`.
+
+## See also
+
+- [Adaptive reputation](/docs/concepts/adaptive-reputation)
+- [`grith reputation`](/docs/cli/reputation)
+- [Composite scoring](/docs/concepts/composite-scoring)

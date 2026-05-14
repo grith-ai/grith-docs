@@ -1,0 +1,101 @@
+---
+title: "10. DLP gate"
+description: "Outbound payload scanning. Catches credentials, PII, and large file contents leaving the box."
+section: "filters"
+order: 19
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/10-dlp-gate.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Pattern |
+| **Score range** | +3 to +5 |
+| **Module** | `crates/grith-proxy/src/filters/dlp_gate.rs` |
+| **Config file** | `config/filters/dlp.toml` |
+
+DLP — Data Loss Prevention — is the content-aware companion to egress policy. Where
+egress scores the *destination*, DLP scores the *payload*. Together they catch
+"this destination is fine but you're sending things you shouldn't" and vice versa.
+
+## What it catches
+
+Patterns specifically targeting things you don't want flowing out of the machine,
+even to legitimate destinations:
+
+- **Credential-shaped content** — same pattern set as the secret scanner, but DLP
+  applies stricter weights when the destination is non-routine.
+- **Structured PII** — credit card shapes (Luhn-checked), SSN-shapes, e-mail address
+  lists with > N entries, phone-number runs.
+- **Large file contents** — payloads that look like an entire file's bytes (high
+  diversity, long, contiguous) rather than a discrete API call. Often a sign of
+  exfil-by-uploading.
+- **Encoded payloads** — base64 / hex of any of the above. The DLP filter decodes
+  one layer of common encodings.
+- **Configured custom patterns** — your team can add internal data shapes (employee
+  IDs, customer numbers, internal URLs).
+
+## Config
+
+```toml
+# config/filters/dlp.toml
+[dlp]
+enabled = true
+max_payload_bytes = 1048576    # 1MB scan cap
+decode_base64 = true
+decode_hex    = true
+
+[[deny]]
+name = "credit-card"
+regex = "(?:\\d[ -]*?){13,19}"    # broad; Luhn-validated post-match
+score = 5.0
+luhn_validate = true
+
+[[deny]]
+name = "internal-customer-id"
+regex = "ACME-CID-[0-9]{8}"
+score = 4.0
+
+[[allow]]
+name = "expected-anthropic-output"
+host = "api.anthropic.com"
+applies_to_credentials = false   # don't soften credit-card detection on this host
+```
+
+## How it composes with other filters
+
+- **Egress policy + DLP** — destination scores baseline, DLP scores payload. Both
+  contribute to the same composite.
+- **Secret scanning + DLP** — overlap, intentional. Secret scanner runs on the
+  *content of the call* regardless; DLP runs specifically on egress paths with
+  destination-aware weights.
+- **Canary + DLP** — canary is hard DENY for registered tokens; DLP is score-based
+  for credential-shaped content broadly.
+
+## What it doesn't do
+
+- **Doesn't decrypt TLS.** If the agent encrypts a payload client-side before
+  `sendto`, DLP sees ciphertext. Mitigate with payload inspection at known
+  TLS-terminating proxies; or accept that an agent that goes through this much
+  trouble to evade is doing something you'd want to see flagged behaviourally too.
+- **Doesn't track partial sends.** A 10MB credential blob split across 10 sendto
+  calls of 1MB each is each scanned independently. Mitigated by taint tracking
+  noticing the session pattern.
+
+## Tuning
+
+- **False positives on legitimate API traffic** — narrow patterns to the specific
+  shapes used (avoid broad regexes).
+- **Want to soften for a specific known-good host** — use the per-host allow
+  pattern with `applies_to_credentials = false` carefully.
+- **Add team-internal shapes** — easiest path. The custom-pattern syntax is the same
+  as for the deny list.
+
+## See also
+
+- [`config/filters/dlp.toml`](/docs/config/filter-config-files)
+- [Filter 7: Secret / credential scanning](/docs/filters/07-secret-credential-scanning)
+- [Filter 14: Taint tracking](/docs/filters/14-taint-tracking)
+- [Exfiltration walkthrough](/docs/guides/exfiltration-walkthrough)

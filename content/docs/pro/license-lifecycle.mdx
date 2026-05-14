@@ -1,148 +1,117 @@
 ---
-title: "License Lifecycle"
-description: "License activation, validation, renewal, grace periods, and expiry behaviour in grith Pro"
+title: "License lifecycle"
+description: "How Pro licenses are issued, refreshed, and revoked."
 section: "pro"
 order: 3
 tier: "pro"
-lastUpdated: "2026-02-24"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/license-lifecycle.mdx"
 ---
 
-<Badge variant="pro">Pro</Badge>
+<PlanBadge tier="pro" />
 
-grith Pro licenses are validated locally and refreshed periodically from the license server. This page covers the full lifecycle: activation, ongoing validation, offline grace periods, renewal, and expiry.
+Pro licenses are signed (Ed25519) by grith.ai's release key and stored locally
+under `~/.config/grith/licenses/`. Every Pro feature gates on a valid local
+license file; the grith.ai service only sees a refresh ping every few hours, not
+the actual feature usage.
 
-## Activation
+## Lifecycle states
 
-After authenticating with `grith pro login`, activate your license:
+```
+   not-enrolled  ──login──▶  active  ──expires-soon──▶  active (warn)
+                                │
+                                ├──6h refresh window──▶  refreshed
+                                │
+                                ├──refresh-fails──▶  cached (24h grace)
+                                │
+                                └──revoked-by-admin──▶ revoked  ──fallback──▶ community
+```
 
-<Terminal command="grith pro activate" />
+| State | Behaviour |
+| --- | --- |
+| `not-enrolled` | No license file. Pro features locked; community features fine. |
+| `active` | License valid. Pro features work. |
+| `active (warn)` | Within 14 days of expiry. Dashboard shows a warning. |
+| `cached` | License is valid but the most recent refresh failed (network). 24h grace before downgrade. |
+| `revoked` | License invalidated by team admin. Falls back to community tier on next call. |
 
-<CodeBlock
-  code={`[grith] Validating license with server...
-[grith] License activated.
-[grith] Plan: Pro (25 seats)
-[grith] Valid until: 2027-02-24
-[grith] License file written to ~/.config/grith/license.json`}
-  language="text"
-/>
+## Refresh
 
-If you received a license key directly (e.g., from a sales order), activate it by passing the key:
+The daemon refreshes the license in the background every 6 hours.
+What gets sent to grith.ai on refresh:
 
-<Terminal command="grith pro activate GRITH-PRO-XXXX-XXXX-XXXX" />
+- Team ID
+- Device fingerprint (hash of stable hardware IDs)
+- Current license signature
+- Grith version
 
-The license file at `~/.config/grith/license.json` contains a signed JWT with your plan details, seat count, and expiry date. grith validates this file on every startup.
+What gets returned:
 
-<Callout type="info" title="License file structure">
-The license file is a signed JSON Web Token. It cannot be modified without invalidating the signature. grith verifies the signature using a public key embedded in the binary.
-</Callout>
+- New signed license (with extended `valid_until`)
+- Or `revoked: true` if the team admin has revoked this device
 
-## Validation on startup
+The refresh does NOT send:
 
-Every time grith starts, it validates the local license:
+- Audit data
+- Reputation state
+- Any session content
 
-1. **Check file exists** — `~/.config/grith/license.json` must be present
-2. **Verify signature** — the JWT signature is checked against the embedded public key
-3. **Check expiry** — the `exp` claim must be in the future
-4. **Check grace period** — if the license is expired, a grace period may apply (see below)
+Force refresh:
 
-If validation passes, Pro features are available. If validation fails, grith falls back to Community tier with a warning message.
+```
+grith pro refresh
+```
 
-<CodeBlock
-  code={`[grith] License validation failed: expired 3 days ago.
-[grith] Grace period active: 7 days remaining.
-[grith] Pro features are available during the grace period.
-[grith] Run 'grith pro sync' to renew.`}
-  language="text"
-/>
+## Expiry
 
-## License refresh
+When a license approaches expiry:
 
-grith refreshes the license automatically during `grith pro sync`:
+- **14 days out** — dashboard shows a warning banner.
+- **48 hours out** — daemon emits an `info` audit event each day.
+- **at expiry** — features lock out *only after* a final refresh attempt fails.
+  If refresh succeeds at expiry minute (because billing has been renewed), no
+  interruption.
 
-<Terminal command="grith pro sync" />
+## Revocation
 
-The sync command contacts the license server, validates your subscription status, and downloads a fresh license file if your subscription is active. This also pulls the latest team policies.
+A team admin can revoke a device's seat from the dashboard. The next refresh
+returns `revoked: true`; grith locks out Pro features and switches the device
+to community-tier behaviour without interrupting in-flight sessions.
 
-Automatic refresh occurs:
+## Offline / network-restricted operation
 
-- On `grith pro sync` (explicit)
-- On `grith pro login` (during authentication)
-- On startup, if the license will expire within 7 days and the server is reachable
+If a device can't reach grith.ai for refresh:
 
-<Callout type="tip" title="Sync regularly">
-Run `grith pro sync` at least once per week to keep your license fresh and pull the latest team policies. In a CI environment, add it to your setup step.
-</Callout>
+- 0–24h after the last successful refresh: full Pro features still work
+  (cached state).
+- 24h+ without refresh: Pro features lock out, community continues to work.
 
-## Offline grace period
+For genuinely air-gapped environments, see [Air-gapped deployment](/docs/enterprise/air-gapped-deployment)
+(Enterprise feature, planned).
 
-grith is designed to work offline. When the license server is unreachable, grith uses the locally cached license file. If the license expires while offline, a grace period applies:
+## License file format
 
-| Situation | Grace period | Behaviour |
-|---|---|---|
-| License expired, server reachable | None — renews immediately if subscription is active | Pro features continue |
-| License expired, server unreachable | 14 days | Pro features continue with a warning |
-| Grace period expired, server unreachable | None | Falls back to Community tier |
-| License revoked by admin | None | Immediately falls back to Community tier |
+The local license file is a signed CBOR blob. Schema:
 
-During the grace period, grith shows a warning on every command:
+```json
+{
+  "version": 1,
+  "team_id": "...",
+  "device_id": "...",
+  "plan": "pro | enterprise",
+  "seats": 25,
+  "features": ["team-sync", "encrypted-keys", "analytics", ...],
+  "issued_at": "2026-05-01T00:00:00Z",
+  "valid_until": "2026-05-15T00:00:00Z",
+  "next_refresh": "2026-05-14T06:00:00Z"
+}
+```
 
-<CodeBlock
-  code={`[grith] WARNING: License expired. Grace period: 11 days remaining.
-[grith] Connect to the internet and run 'grith pro sync' to renew.`}
-  language="text"
-/>
+Plus an Ed25519 signature over the canonical CBOR.
 
-After the grace period expires, grith falls back to Community tier. No data is lost — your local configuration, audit history, and filter tunings are preserved. Pro-only features (team dashboard, centralised policies, shared configs) become unavailable until the license is renewed.
+## See also
 
-## Expiry behaviour
-
-When a Pro license expires and the grace period is exhausted, grith degrades gracefully:
-
-| Feature | Behaviour after expiry |
-|---|---|
-| Security proxy | Continues with local configuration (Community tier) |
-| All 17 filters | Continue working with local weights |
-| Quarantine queue | Continues locally |
-| Audit log | Continues locally |
-| Local dashboard | Continues at localhost:3141 |
-| Team dashboard | Unavailable |
-| Centralised policies | Last-synced policies remain active, no new updates |
-| Shared filter configs | Last-synced configs remain, cannot pull new ones |
-| Team sync | `grith pro sync` attempts renewal; fails if subscription lapsed |
-| Usage analytics (team) | Unavailable |
-
-<Callout type="warning" title="Last-synced policies persist">
-If your team admin pushed a strict policy before the license expired, that policy remains active on your machine even after fallback to Community tier. This is by design — security policies should not silently weaken when a billing issue occurs. Override manually with `grith config set` if needed.
-</Callout>
-
-## Billing management
-
-<Terminal command="grith pro billing" />
-
-This opens the billing portal in your browser where you can:
-
-- Update payment method
-- Switch between monthly and annual billing
-- View invoices and payment history
-- Cancel or downgrade your subscription
-- Add or remove seats
-
-## License file location
-
-The license file is stored at:
-
-| Platform | Path |
-|---|---|
-| Linux | `~/.config/grith/license.json` |
-
-macOS and Windows license-path documentation will be added when those platform releases ship.
-
-<Callout type="danger" title="Do not share your license file">
-The license file is tied to your account and contains a signed JWT. Sharing it with others does not grant them Pro access (the signature is validated against the account), but it does expose your account metadata. Treat it as confidential.
-</Callout>
-
-## Next steps
-
-- [Authentication](/docs/pro/authentication) — Authentication methods and token storage
-- [Team Sync and Policy](/docs/pro/team-sync-and-policy) — What sync uploads and downloads
-- [Pro Overview](/docs/pro/overview) — Full feature comparison
+- [Authentication](/docs/pro/authentication)
+- [`grith pro`](/docs/cli/pro)
+- [Air-gapped deployment](/docs/enterprise/air-gapped-deployment)

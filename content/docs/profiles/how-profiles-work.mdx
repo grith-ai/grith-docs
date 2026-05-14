@@ -1,0 +1,135 @@
+---
+title: "How profiles work"
+description: "What's in a supervisor profile and how it shapes scoring."
+section: "profiles"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/how-profiles-work.mdx"
+---
+
+A supervisor profile is a small TOML document. It tells grith what an agent
+*routinely* does — paths it reads, commands it runs, hosts it talks to — so that
+those calls auto-allow quietly while everything else gets normal scoring.
+
+See [Supervisor profiles concept](/docs/concepts/supervisor-profiles) for the
+"why". This page is the *what* and *how*.
+
+## File location
+
+Built-in profiles ship at `config/supervisor/profiles.toml` inside the grith
+install. User-defined profiles live at `~/.config/grith/profiles/<name>.toml`
+(one file per profile).
+
+When you run:
+
+```
+grith exec --profile claude-code -- claude
+```
+
+grith looks up `claude-code` in (1) user dir, (2) built-in. First match wins.
+
+## Anatomy
+
+```toml
+[profiles.claude-code]
+extends = "generic"
+
+routine_paths = [
+    "${PROJECT_DIR}/**",
+    "${HOME}/.cache/claude/**",
+]
+
+routine_commands = [
+    "git status",
+    "git diff",
+    "npm install",
+]
+
+routine_destinations = [
+    "api.anthropic.com",
+    "registry.npmjs.org",
+]
+
+routine_exec_roots = [
+    "/usr/bin",
+    "${HOME}/.cargo/bin",
+]
+
+readonly_paths = [
+    "/etc/resolv.conf",
+]
+
+capabilities = [
+    "read_project", "write_project",
+    "read_home", "write_home",
+    "shell", "network", "exec",
+]
+```
+
+| Field | What |
+| --- | --- |
+| `extends` | Parent profile (defaults to `generic`). Sets and capabilities are unioned with parent. |
+| `routine_paths` | Globs of paths the agent legitimately reads/writes. Negative-score contribution. |
+| `routine_commands` | Shell commands the agent runs frequently. Negative-score contribution from filter 8. |
+| `routine_destinations` | Hostnames the agent talks to. Negative-score contribution from filter 9. |
+| `routine_exec_roots` | Directories of trusted binaries (`exec`-allowed). |
+| `readonly_paths` | Paths the agent can read but not write. |
+| `capabilities` | Hard-gated capability classes (filter 6). |
+
+## Variable expansion
+
+Profile values expand `${HOME}`, `${USER}`, and `${PROJECT_DIR}` at session start:
+
+- `${HOME}` — the user's home directory.
+- `${USER}` — login name.
+- `${PROJECT_DIR}` — the working directory at `grith exec` invocation (or
+  overridden by `--project`).
+
+Globs use `**` for recursion. Patterns are case-sensitive.
+
+## Composition
+
+Every profile (built-in or custom) implicitly extends `generic`, which sets the
+strict floor. A profile can chain via `extends`:
+
+```toml
+[profiles.acme-claude]
+extends = "claude-code"
+# adds team-specific routine paths on top of claude-code's
+routine_paths = [
+    "${HOME}/.config/acme/**",
+]
+routine_destinations = [
+    "acme-internal-registry.example",
+]
+```
+
+The union of all parent + child entries is the effective profile.
+
+## Capabilities
+
+`capabilities` is special — it's not a union, it's the resolved capability set
+that this profile grants. A profile that omits `capabilities` inherits its
+parent's. A profile that declares `capabilities = []` strictly forbids everything
+its parent allowed.
+
+Available capabilities are listed in [Filter 6](/docs/filters/06-capability-enforcement).
+
+## Signed profiles
+
+Profiles shipped with grith are signed (Ed25519) by the grith.ai release key. The
+signature is verified at start; tampered profiles refuse to load. User-defined
+profiles are unsigned by default — they live in your home dir, so the kernel
+process model protects them at the same level as everything else.
+
+For Pro teams, the [Centralised policies](/docs/pro/centralised-policies) flow
+signs and distributes profiles to all team members. See
+[Profile audit](/docs/profiles/profile-audit) for forensic review tooling.
+
+## See also
+
+- [Supervisor profiles (concept)](/docs/concepts/supervisor-profiles)
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)

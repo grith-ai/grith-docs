@@ -1,0 +1,47 @@
+---
+title: "Goose"
+description: "Supervisor profile for Block's Goose agent."
+section: "profiles"
+order: 6
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/goose.mdx"
+---
+
+```
+grith exec --profile goose -- goose
+```
+
+The `goose` profile fits Block's Goose agent. Goose has rich native tool calling
+and MCP integration; the profile accommodates that with broader exec capability
+and a generous routine path set.
+
+## What it routinely allows
+
+- **Paths** — `${PROJECT_DIR}/**`, `${HOME}/.config/goose/**`,
+  `${HOME}/.local/share/goose/**`, `${HOME}/.cache/goose/**`, `/tmp/goose-**`.
+- **Commands** — language toolchains, git, plus MCP-style helper subprocess
+  spawns.
+- **Destinations** — provider APIs as configured. Goose is provider-agnostic.
+- **Exec roots** — `/usr/bin`, `/usr/local/bin`, `${HOME}/.local/bin`, version
+  manager paths.
+
+## MCP server interaction
+
+Goose's MCP integration spawns helper processes that themselves talk to APIs.
+Those subprocesses inherit Goose's supervised session — they run under the same
+ptrace, scored by the same profile. The profile allows the common MCP helper
+locations, but custom MCP servers in unusual locations may need to be added to
+`routine_exec_roots`.
+
+```toml
+[profiles.my-goose]
+extends = "goose"
+routine_exec_roots = ["${HOME}/code/my-mcp-server/bin"]
+```
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [How profiles work](/docs/profiles/how-profiles-work)

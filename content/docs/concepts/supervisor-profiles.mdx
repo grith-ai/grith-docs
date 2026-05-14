@@ -1,0 +1,152 @@
+---
+title: "Supervisor profiles"
+description: "What a profile is, how it shapes scoring, and why every supervised session needs one."
+section: "concepts"
+order: 7
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/supervisor-profiles.mdx"
+---
+
+A supervisor profile is a small TOML document that describes what an agent **routinely
+needs**. Routine paths it reads. Routine commands it runs. Routine network
+destinations it talks to.
+
+Profiles are not allowlists. They're hints to the scoring engine that say "this call
+shape is expected for this kind of agent" — which translates to negative score
+contributions from path-match, egress-policy, and reputation. Calls outside the
+routine set go through normal scoring; the profile just changes the baseline.
+
+## Why a profile is necessary
+
+Without a profile, grith uses the strict `generic` defaults: project-local files
+only, no shell, no network. That's correct for a paranoid first session, and you'll
+get a chatty digest. Useful for understanding what the agent does.
+
+With a profile, the same agent's routine work auto-allows quietly. The digest shows
+only the *new* or *unusual* things — which is what a digest is supposed to be for.
+
+## Profile anatomy
+
+```toml
+# config/supervisor/profiles.toml
+[profiles.claude-code]
+extends = "generic"
+
+routine_paths = [
+    "${PROJECT_DIR}/**",
+    "${HOME}/.cache/claude/**",
+    "${HOME}/.config/claude/**",
+    "/tmp/claude-**",
+]
+
+routine_commands = [
+    "git status",
+    "git diff",
+    "git log",
+    "npm install",
+    "cargo build",
+    "python -m venv",
+]
+
+routine_destinations = [
+    "api.anthropic.com",
+    "registry.npmjs.org",
+    "pypi.org",
+    "github.com",
+]
+
+routine_exec_roots = [
+    "/usr/bin",
+    "/usr/local/bin",
+    "${HOME}/.local/bin",
+    "${HOME}/.cargo/bin",
+]
+
+readonly_paths = [
+    "/etc/resolv.conf",
+    "/etc/ssl/certs",
+]
+```
+
+`${PROJECT_DIR}`, `${HOME}`, and `${USER}` are expanded at supervisor start. `**` is
+glob recursion. Order doesn't matter; routine sets are unioned.
+
+`extends` chains profiles. Every shipping profile extends `generic`, which sets the
+absolute floor. You can write a profile that extends `claude-code` to add team-
+specific routine paths without re-declaring the Anthropic baseline.
+
+## How a profile affects scoring
+
+Three filters consult the active profile:
+
+- [Filter 2: Static path matching](/docs/filters/02-static-path-matching) — a
+  routine path returns a *negative* score contribution.
+- [Filter 9: Egress policy](/docs/filters/09-egress-policy) — a routine destination
+  is treated as allowlisted and contributes negative score.
+- [Filter 15: Session containment](/docs/filters/15-session-containment) — the
+  profile defines the session's zone; calls leaving the zone get scored harder.
+
+The other filters don't change behaviour. A sensitive-path read still scores high;
+a credential leak still triggers DLP; a canary token in an outbound payload is still
+hard DENY. The profile only changes the baseline for routine work.
+
+## Profile drift
+
+Profiles age. A new version of an agent might pull from a different CDN, write
+cache to a new directory, or use a different command. Grith ships profile updates
+as part of the regular `grith` release cadence; the `grith profile audit` command
+helps you measure whether your current profile still fits what the agent actually
+does.
+
+```
+grith profile audit --profile claude-code --trace ~/.cache/grith/last.jsonl
+```
+
+Output shows which routine entries were hit, which weren't (candidates for
+trimming), and which calls escaped the routine set and went through full scoring
+(candidates for adding).
+
+## Built-in profiles
+
+The shipping set covers the popular agents:
+
+- `claude-code` — Anthropic API + standard dev toolchains + GitHub.
+- `codex` — OpenAI Codex CLI.
+- `aider` — git-heavy workflow.
+- `goose` — Block's agent.
+- `copilot` — GitHub Copilot CLI.
+- `cursor` — Cursor's helper subprocesses.
+- `cline` — Claude Dev / Cline extension CLI.
+- `openclaw` — community fork.
+- `generic-cli` — standard CLI tools, no agent specifics.
+- `grith-repl` — the built-in REPL itself.
+- `generic` — strictest. Project-only.
+
+Each is documented on its own page; see [Built-in profiles](/docs/profiles/built-in-profiles).
+
+## Writing your own
+
+Two paths:
+
+1. **Extend a built-in.** Copy a profile to `~/.config/grith/profiles/` and add to
+   it. Useful for "claude-code, plus our internal package registry".
+2. **From scratch.** Start with `extends = "generic"` and add what you need.
+   Useful for a bespoke or in-house agent.
+
+See [Writing a custom profile](/docs/profiles/writing-a-custom-profile) for the
+end-to-end workflow.
+
+## Profile signing (advanced)
+
+Profiles distributed as part of `grith` are signed (Ed25519). Custom profiles in
+`~/.config/grith/profiles/` are unsigned by default. For team distribution, the Pro
+[Centralised policies](/docs/pro/centralised-policies) flow signs and distributes
+profiles atomically.
+
+## See also
+
+- [Built-in profiles](/docs/profiles/built-in-profiles)
+- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)
+- [Profile audit](/docs/profiles/profile-audit)

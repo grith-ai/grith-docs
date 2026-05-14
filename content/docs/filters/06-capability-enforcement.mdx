@@ -1,0 +1,100 @@
+---
+title: "6. Capability enforcement"
+description: "Hard gate. Profile capabilities determine what an agent is allowed to do at all."
+section: "filters"
+order: 15
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/06-capability-enforcement.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Static |
+| **Score range** | 0 or **DENY** |
+| **Module** | `crates/grith-proxy/src/filters/capability.rs` |
+| **Config file** | `config/filters/capabilities.toml` |
+
+A hard gate. The active supervisor profile declares which capability classes it
+holds; calls that need a missing capability are denied outright. No score, no
+queue — DENY.
+
+## Capability classes
+
+| Capability | Scope |
+| --- | --- |
+| `read_project` | File reads inside `${PROJECT_DIR}` |
+| `write_project` | File writes inside `${PROJECT_DIR}` |
+| `read_home` | File reads inside `${HOME}` outside project |
+| `write_home` | File writes inside `${HOME}` outside project |
+| `read_system` | File reads in `/etc`, `/usr`, `/opt`, etc. |
+| `write_system` | File writes in system paths (rare; usually denied) |
+| `shell` | Spawning shell processes (`sh`, `bash`, `zsh`, ...) |
+| `network` | Outbound network sockets |
+| `bind` | Listening sockets |
+| `exec` | Spawning arbitrary processes |
+| `signal` | Sending signals to processes |
+
+## Where capabilities are declared
+
+```toml
+# config/supervisor/profiles.toml
+[profiles.minimal]
+extends = "generic"
+capabilities = ["read_project", "write_project"]
+```
+
+A profile with no `capabilities` key inherits from `extends`, which defaults via the
+`generic` baseline to `["read_project", "write_project"]` — read-write inside the
+project, nothing else.
+
+The built-in `claude-code` profile, by contrast, declares:
+
+```toml
+capabilities = [
+    "read_project", "write_project",
+    "read_home", "write_home",
+    "read_system",
+    "shell", "network", "exec",
+]
+```
+
+— because Claude Code legitimately needs all of those.
+
+## Why DENY and not score
+
+The composite scoring system is for ambiguous cases. Capability denial is not
+ambiguous: the profile said "this agent doesn't do network", and now the agent
+opened a socket. There is no score that makes that OK.
+
+Returning DENY also bypasses every later filter, every reputation discount, and the
+auto-allow threshold. This is intentional. Capability denial is the strongest
+guarantee grith makes.
+
+## When a capability deny fires
+
+The audit log gets a `decision: deny, reason: capability` record. The originating
+process gets `EACCES` on the syscall. If notifications are configured, the
+capability deny is one of the events that escapes default rate-limiting (canaries
+are the other).
+
+## Tuning
+
+The two knobs:
+
+1. **Edit the profile.** Grant a capability that's missing. Be deliberate — adding
+   `network` to a profile that didn't have it should be a considered choice, not a
+   reflex to silence a deny.
+2. **Use a different profile.** Switch to one that already declares the capability.
+
+For one-off overrides ("just this once, let it network out"), the digest's "approve
++ unlock-egress" action is the right tool — it bypasses the capability check for
+that single call without changing the profile.
+
+## See also
+
+- [Supervisor profiles](/docs/concepts/supervisor-profiles)
+- [`config/filters/capabilities.toml`](/docs/config/filter-config-files)
+- [Profile audit](/docs/profiles/profile-audit) — find which capabilities a session
+  actually uses

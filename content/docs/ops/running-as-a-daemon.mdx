@@ -1,0 +1,130 @@
+---
+title: "Running as a daemon"
+description: "Operations guide for long-running grith deployments — systemd, logging, restarts."
+section: "ops"
+order: 1
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-05-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/running-as-a-daemon.mdx"
+---
+
+For multi-session, dashboard, or team deployments, run grith as a long-lived
+daemon. This guide covers process supervision, logging, and lifecycle.
+
+## Quick start
+
+```
+grith daemon start --detach
+grith daemon status
+```
+
+That's it for personal use. For production, use a process supervisor.
+
+## systemd
+
+A shipping unit file lives at `contrib/systemd/grith.service` in the grith repo:
+
+```ini
+[Unit]
+Description=grith — Zero Trust for AI Agents
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/grith daemon start
+ExecStop=/usr/local/bin/grith daemon stop
+User=%i
+Group=%i
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+```
+
+User-level:
+
+```
+mkdir -p ~/.config/systemd/user
+cp contrib/systemd/grith.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now grith
+```
+
+System-level (for shared deployments — uncommon for a per-user product):
+
+```
+sudo cp contrib/systemd/grith.service /etc/systemd/system/grith@.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now grith@alice
+```
+
+Use `grith@<user>` to template per-user instances.
+
+## Bind & TLS
+
+The daemon binds to `127.0.0.1:3141` by default. For LAN exposure, front it
+with a reverse proxy — see [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
+
+To bind to all interfaces with native TLS:
+
+```toml
+[server]
+host = "0.0.0.0"
+
+[server.tls]
+cert_path = "/etc/grith/cert.pem"
+key_path  = "/etc/grith/key.pem"
+```
+
+## Logging
+
+| Location | What |
+| --- | --- |
+| stderr (when foreground) | Live logs at `general.log_level`. |
+| `~/.local/share/grith/daemon.log` (detached) | Rotating, 10MB cap, 5 generations. |
+| `~/.local/share/grith/audit/*.sqlite` | Audit records (structured). |
+
+For systemd-managed daemons, logs go to journald:
+
+```
+journalctl --user -u grith -f
+```
+
+## Restart safety
+
+The daemon flushes reputation and audit state before exit. A clean stop (SIGTERM)
+takes 1–5s typically. SIGKILL can drop the most recent reputation updates (the
+audit log is fsync'd per-event by default).
+
+In-flight digest items survive across restarts on Pro (state checkpointed to
+SQLite). On community, in-flight digest items expire via the thin-client's
+`review_timeout_seconds` (default 300s).
+
+## Resource usage
+
+Typical idle daemon (no active sessions): ~30MB RSS, ~0.5% CPU.
+
+Under a single busy session: ~80–120MB RSS depending on filter activity, ~5%
+CPU.
+
+The biggest consumer is the SQLite audit log; for storage-bounded deployments,
+see [Logging & audit retention](/docs/ops/logging-and-audit-retention).
+
+## Health checks
+
+For load balancers / monitoring:
+
+```
+curl http://127.0.0.1:3141/health
+```
+
+Returns `200 OK` with daemon version and uptime. Use as a liveness probe.
+
+## See also
+
+- [`grith daemon`](/docs/cli/daemon)
+- [`[server]` config](/docs/config/server)
+- [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls)
+- [Performance & tuning](/docs/ops/performance-tuning)
