@@ -6,6 +6,15 @@
 # pipeline: gen:llms → next build → gen:pagefind, all triggered by
 # `npm run build` in package.json.
 #
+# ⚠ Console-side prerequisite: the Amplify app's "Frontend framework"
+# / "Hosting platform" must be set to "Next.js - SSG" (Web Hosting),
+# NOT "Next.js - SSR" (Web Compute). Amplify's auto-detection often
+# guesses SSR for any Next.js project and the build then fails with
+# `CustomerError: Can't find required-server-files.json` AFTER the
+# build itself succeeds — that file is only produced for SSR
+# deployments, and we deliberately don't ship one. Toggle the
+# framework in App settings → General configuration → Framework.
+#
 # Companion docs/console steps live in README.md (section
 # "Deployment to docs.grith.ai").
 version: 1

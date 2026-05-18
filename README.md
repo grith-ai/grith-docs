@@ -85,6 +85,15 @@ The site is deployed via **AWS Amplify** (same provider as
 3. Amplify auto-detects the `amplify.yml` build spec. Confirm:
    - **Build command:** `npm run build`
    - **Build output directory:** `out`
+   - **Frontend framework:** must be set to **"Next.js - SSG"**
+     (Web Hosting), NOT "Next.js - SSR" (Web Compute). Amplify's
+     auto-detection guesses SSR for any Next.js project and the
+     build then fails with
+     `CustomerError: Can't find required-server-files.json` *after*
+     the build itself succeeds (that file is only produced for SSR
+     deployments; we use `output: 'export'`). If your first build
+     fails with that error, toggle the framework under
+     **App settings → General configuration → Framework**.
 4. Save and deploy. The first build takes ~3-5 minutes.
 5. Once deployed, add the custom domain `docs.grith.ai` under **Domain
    management → Add domain**. Amplify will give you a CNAME target
