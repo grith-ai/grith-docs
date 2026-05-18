@@ -1,0 +1,33 @@
+# AWS Amplify build spec for docs.grith.ai.
+#
+# Next.js is configured for static export (`output: 'export'` in
+# next.config.ts), so Amplify hosts the contents of `out/` directly —
+# no SSR runtime, no server functions, no env vars at runtime. Build
+# pipeline: gen:llms → next build → gen:pagefind, all triggered by
+# `npm run build` in package.json.
+#
+# Companion docs/console steps live in README.md (section
+# "Deployment to docs.grith.ai").
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - nvm install 22
+        - nvm use 22
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    # `next build` emits to `.next/` (cached) and `next export` (run
+    # via `output: 'export'`) writes the deployable static tree to
+    # `out/`. The `gen:pagefind` step appends the search index under
+    # `out/pagefind/`.
+    baseDirectory: out
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
