@@ -17,10 +17,11 @@ Commands:
   proxy          Security proxy commands
   exec           Supervise an external CLI tool with OS-level syscall interception
   supervisor     List or manage active supervisor sessions
-  dashboard      Manage the web dashboard server
+  daemon         Manage the grith daemon (dashboard server + shared subsystems)
   pro            Manage Pro plan: login, status, sync, activate, logout
   notifications  Manage notification channels
   log            View audit-backed session logs
+  reputation     Manage the reputation system
   help           Print this message or the help of the given subcommand(s)
 
 Options:
@@ -174,13 +175,24 @@ Arguments:
   [COMMAND]...  The command and arguments to supervise (after --)
 
 Options:
-      --config <CONFIG>        Path to configuration file
-      --profile <PROFILE>      Tool profile to use (e.g., claude-code, codex, aider, generic)
-      --attach <ATTACH>        Attach to an existing process by PID instead of spawning
-      --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
-      --no-color               Disable colored output
-      --project <PROJECT>      Override the project name (defaults to current directory name)
-  -h, --help                   Print help
+      --config <CONFIG>
+          Path to configuration file
+      --profile <PROFILE>
+          Tool profile to use (e.g., claude-code, codex, aider, generic)
+      --attach <ATTACH>
+          Attach to an existing process by PID instead of spawning
+      --log-level <LOG_LEVEL>
+          Log level (trace, debug, info, warn, error)
+      --no-color
+          Disable colored output
+      --syscall-log <SYSCALL_LOG>
+          Log every syscall request and decision to a file for post-session review
+      --project <PROJECT>
+          Override the project name (defaults to current directory name)
+      --trace-syscalls-jsonl <TRACE_SYSCALLS_JSONL>
+          Write raw pre-filter syscall forensics records to a JSONL file
+  -h, --help
+          Print help
 ```
 
 ## `grith supervisor --help`
@@ -204,17 +216,17 @@ Options:
   -h, --help                   Print help
 ```
 
-## `grith dashboard --help`
+## `grith daemon --help`
 
 ```text
-Manage the web dashboard server
+Manage the grith daemon (dashboard server + shared subsystems)
 
-Usage: grith dashboard [OPTIONS] <COMMAND>
+Usage: grith daemon [OPTIONS] <COMMAND>
 
 Commands:
-  start   Start the dashboard server as a background process
-  stop    Stop the running dashboard server
-  status  Check if the dashboard is running
+  start   Start the daemon (dashboard server + shared subsystems) as a background process
+  stop    Stop the running daemon
+  status  Check if the daemon is running
   help    Print this message or the help of the given subcommand(s)
 
 Options:
@@ -284,6 +296,26 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --session <SESSION>      Session filter: UUID session_id or session name (task context)
       --limit <LIMIT>          Max records to read per poll / view [default: 100]
+      --no-color               Disable colored output
+      --project <PROJECT>      Override the project name (defaults to current directory name)
+  -h, --help                   Print help
+```
+
+## `grith reputation --help`
+
+```text
+Manage the reputation system
+
+Usage: grith reputation [OPTIONS] <COMMAND>
+
+Commands:
+  show   Show the learned reputation table with trust scores
+  reset  Reset all learned reputation data
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+      --config <CONFIG>        Path to configuration file
+      --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
   -h, --help                   Print help
