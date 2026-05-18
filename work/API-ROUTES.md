@@ -11,9 +11,9 @@
 | GET | `/api/analytics/cost` |
 | GET | `/api/analytics/summary` |
 | GET | `/api/audit` |
+| GET | `/api/audit/:id` |
 | GET | `/api/audit/exfil-stats` |
 | GET | `/api/audit/export` |
-| GET | `/api/audit/:id` |
 | GET | `/api/canaries` |
 | GET | `/api/config` |
 | GET | `/api/digest` |

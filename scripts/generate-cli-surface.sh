@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Force POSIX locale so any internal sort orders bytes deterministically
+# across user locales (otherwise the docs-drift CI flags trivial
+# locale-collation reorderings).
+export LC_ALL=C
+
 GRITH_ROOT="${1:-../grith}"
 MANIFEST_PATH="$GRITH_ROOT/Cargo.toml"
 DEBUG_BIN="$GRITH_ROOT/target/debug/grith"

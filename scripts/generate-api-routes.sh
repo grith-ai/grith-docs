@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Force POSIX locale so `sort` orders bytes the same on every machine.
+# Without this the script produces different output under en_US.UTF-8
+# vs CI's POSIX locale and the docs-drift check fails on trivial sort
+# reorderings (e.g. `/api/audit/:id` placement around `/api/audit/export`).
+export LC_ALL=C
+
 ROOT_DIR="${1:-../grith}"
 ROUTES_MOD="$ROOT_DIR/crates/grith-server/src/routes/mod.rs"
 SUPERVISOR_ROUTES="$ROOT_DIR/crates/grith-server/src/supervisor.rs"
