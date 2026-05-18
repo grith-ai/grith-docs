@@ -21,6 +21,7 @@ Commands:
   pro            Manage Pro plan: login, status, sync, activate, logout
   notifications  Manage notification channels
   log            View audit-backed session logs
+  profile        Manage supervisor profiles
   reputation     Manage the reputation system
   help           Print this message or the help of the given subcommand(s)
 
@@ -248,6 +249,7 @@ Commands:
   login     Authenticate with grith.ai (device auth by default, API key optional)
   status    Show plan status, license expiry, team info
   activate  Fetch and activate a fresh license
+  refresh   Force an on-demand license refresh against grith.ai
   logout    Remove credentials and license
   sync      Upload audit records to cloud and pull team policies
   upgrade   Open the upgrade/pricing page in the default browser
@@ -296,6 +298,25 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --session <SESSION>      Session filter: UUID session_id or session name (task context)
       --limit <LIMIT>          Max records to read per poll / view [default: 100]
+      --no-color               Disable colored output
+      --project <PROJECT>      Override the project name (defaults to current directory name)
+  -h, --help                   Print help
+```
+
+## `grith profile --help`
+
+```text
+Manage supervisor profiles
+
+Usage: grith profile [OPTIONS] <COMMAND>
+
+Commands:
+  audit  Audit a forensic trace file against a profile
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+      --config <CONFIG>        Path to configuration file
+      --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
   -h, --help                   Print help

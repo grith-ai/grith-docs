@@ -21,6 +21,7 @@
 | GET | `/api/ipc/digest/items/:id` |
 | GET | `/api/ipc/sessions` |
 | GET | `/api/ipc/sessions/:id` |
+| GET | `/api/license/status` |
 | GET | `/api/notifications/channels` |
 | GET | `/api/notifications/status` |
 | GET | `/api/policies` |
@@ -48,6 +49,7 @@
 | POST | `/api/ipc/digest/expire` |
 | POST | `/api/ipc/digest/items` |
 | POST | `/api/ipc/digest/items/:id/status` |
+| POST | `/api/ipc/events` |
 | POST | `/api/ipc/sessions` |
 | POST | `/api/ipc/sessions/:id/kill` |
 | POST | `/api/notifications/test/:channel` |
