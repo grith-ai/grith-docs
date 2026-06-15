@@ -216,6 +216,19 @@
       ],
       "summary": "(no metadata entry for module `egress_rate`)",
       "unmapped": true
+    },
+    {
+      "config_file": null,
+      "module": "outbound_binaries",
+      "name": "Outbound Binaries",
+      "ordinal": 0,
+      "phase": "unknown",
+      "score_range": [
+        0.0,
+        0.0
+      ],
+      "summary": "(no metadata entry for module `outbound_binaries`)",
+      "unmapped": true
     }
   ],
   "schema_version": 1,

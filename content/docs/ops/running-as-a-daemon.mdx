@@ -1,12 +1,12 @@
 ---
-title: "Running as a daemon"
-description: "Operations guide for long-running grith deployments — systemd, logging, restarts."
-section: "ops"
+title: 'Running as a daemon'
+description: 'Operations guide for long-running grith deployments — systemd, logging, restarts.'
+section: 'ops'
 order: 1
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/running-as-a-daemon.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/running-as-a-daemon.mdx'
 ---
 
 For multi-session, dashboard, or team deployments, run grith as a long-lived
@@ -15,10 +15,11 @@ daemon. This guide covers process supervision, logging, and lifecycle.
 ## Quick start
 
 ```
-grith daemon start --detach
-grith daemon status
+grith dashboard start
+grith dashboard status
 ```
 
+`grith dashboard start` runs the daemon in the background and returns immediately.
 That's it for personal use. For production, use a process supervisor.
 
 ## systemd
@@ -80,11 +81,11 @@ key_path  = "/etc/grith/key.pem"
 
 ## Logging
 
-| Location | What |
-| --- | --- |
-| stderr (when foreground) | Live logs at `general.log_level`. |
+| Location                                     | What                               |
+| -------------------------------------------- | ---------------------------------- |
+| stderr (when foreground)                     | Live logs at `general.log_level`.  |
 | `~/.local/share/grith/daemon.log` (detached) | Rotating, 10MB cap, 5 generations. |
-| `~/.local/share/grith/audit/*.sqlite` | Audit records (structured). |
+| `~/.local/share/grith/audit/*.sqlite`        | Audit records (structured).        |
 
 For systemd-managed daemons, logs go to journald:
 

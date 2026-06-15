@@ -23,6 +23,7 @@ Commands:
   log            View audit-backed session logs
   profile        Manage supervisor profiles
   reputation     Manage the reputation system
+  completions    Generate a shell completion script for grith
   help           Print this message or the help of the given subcommand(s)
 
 Options:
@@ -228,6 +229,7 @@ Commands:
   start   Start the daemon (dashboard server + shared subsystems) as a background process
   stop    Stop the running daemon
   status  Check if the daemon is running
+  pair    Authorise a browser for the dashboard (mints a single-use pairing link)
   help    Print this message or the help of the given subcommand(s)
 
 Options:
@@ -333,6 +335,24 @@ Commands:
   show   Show the learned reputation table with trust scores
   reset  Reset all learned reputation data
   help   Print this message or the help of the given subcommand(s)
+
+Options:
+      --config <CONFIG>        Path to configuration file
+      --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
+      --no-color               Disable colored output
+      --project <PROJECT>      Override the project name (defaults to current directory name)
+  -h, --help                   Print help
+```
+
+## `grith completions --help`
+
+```text
+Generate a shell completion script for grith
+
+Usage: grith completions [OPTIONS] <SHELL>
+
+Arguments:
+  <SHELL>  Target shell (bash, zsh, fish, elvish, powershell) [possible values: bash, elvish, fish, powershell, zsh]
 
 Options:
       --config <CONFIG>        Path to configuration file

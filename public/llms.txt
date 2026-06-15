@@ -44,7 +44,7 @@ Site: https://docs.grith.ai
 - [grith log](https://docs.grith.ai/docs/cli/log) — Tail the audit-backed session log, like a live feed of decisions.
 - [grith canary](https://docs.grith.ai/docs/cli/canary) — Create and manage canary tokens for exfiltration trap detection.
 - [grith supervisor](https://docs.grith.ai/docs/cli/supervisor) — List and manage active supervisor sessions.
-- [grith daemon](https://docs.grith.ai/docs/cli/daemon) — Manage the long-running daemon that owns the shared subsystems.
+- [grith daemon](https://docs.grith.ai/docs/cli/daemon) — Manage the long-running daemon that owns the shared subsystems and web dashboard.
 - [grith profile audit](https://docs.grith.ai/docs/cli/profile-audit) — Post-session forensics: audit a recorded syscall trace against a profile.
 - [grith reputation](https://docs.grith.ai/docs/cli/reputation) — Inspect and reset the adaptive trust table that quiets the digest over time.
 - [grith notifications](https://docs.grith.ai/docs/cli/notifications) — Manage notification channels — Slack, Discord, Telegram, Teams, email, webhook, and more.

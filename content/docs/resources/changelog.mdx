@@ -1,16 +1,49 @@
 ---
-title: "Changelog"
-description: "What changed in each grith release."
-section: "resources"
+title: 'Changelog'
+description: 'What changed in each grith release.'
+section: 'resources'
 order: 4
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/changelog.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/changelog.mdx'
 ---
 
 The changelog is also available as an [RSS feed](/changelog.xml) — subscribe
 to be notified of new releases and security advisories.
+
+## v0.1.4 — 2026-06
+
+### Dashboard
+
+- **Local authentication & CSRF hardening.** The dashboard binds loopback-only
+  and is now also gated by a per-server token, even on `127.0.0.1`. Browser-
+  facing mutations and sensitive reads require it; low-sensitivity status stays
+  open. WebSocket streams are origin-checked and token-gated. See
+  [Browser authorisation](/docs/cli/daemon#browser-authorisation) and
+  [Trust boundaries](/docs/security/trust-boundaries).
+- **Frictionless browser pairing.** `grith dashboard start` (and `grith run` /
+  `grith exec`) auto-open the dashboard pre-authorised; the token is never
+  printed. Headless/SSH sessions get a **single-use pairing link**, and
+  [`grith dashboard pair`](/docs/cli/daemon) mints a fresh one on demand. Toggle
+  with [`server.auto_open_dashboard`](/docs/config/server).
+- **Redesigned home** — a security-posture hero (calls inspected, allow/review/
+  deny split, live agents, filters), **sessions led by the project name** the
+  agent is supervising, a filter-pipeline view, and a **Share stats** button that
+  exports a branded PNG (aggregate counts only — safe to post).
+- `grith dashboard start` now runs in the **background** by default and persists
+  until `grith dashboard stop` (no more foreground log spam).
+
+### Supervisor
+
+- **`Ctrl+T` select mode** in the `grith exec` TUI — drop mouse capture and
+  freeze the screen to drag-select and copy text, then resume scrolling. See
+  [PTY forwarding](/docs/cli/exec#scrolling-and-copy-paste).
+- **Fewer false-positive prompts.** Source files whose names merely contain a
+  credential word (`AccessToken.php`, `Tokenizer.ts`, `OAuth2Client.java`) are
+  no longer treated as sensitive — reading a vendored OAuth/SDK library no longer
+  floods the digest. Real secret files (`.env`, keys, credential dirs) are
+  unaffected.
 
 ## v0.1.0 — 2026-05 (launch)
 

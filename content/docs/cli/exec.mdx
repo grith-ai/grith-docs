@@ -1,12 +1,12 @@
 ---
-title: "grith exec"
-description: "Supervise an external CLI tool with OS-level syscall interception."
-section: "cli"
+title: 'grith exec'
+description: 'Supervise an external CLI tool with OS-level syscall interception.'
+section: 'cli'
 order: 2
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/exec.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/exec.mdx'
 ---
 
 ```
@@ -34,13 +34,13 @@ tells `grith` where its options stop and the target command's begin.
 
 ## Options
 
-| Flag | Type | Default | Description |
-| --- | --- | --- | --- |
-| `--profile <NAME>` | string | `generic` | Supervisor profile to use. See [Choose your agent](/docs/start/choose-your-agent). |
-| `--zone <NAME>` | string | none | Bind the session to a [containment zone](/docs/concepts/session-containment). |
-| `--attach <PID>` | u32 | — | Attach to an existing process by PID instead of spawning. Useful for already-running agents. |
-| `--syscall-log <FILE>` | path | — | Log every syscall request and decision to a file (human-readable). |
-| `--trace-syscalls-jsonl <FILE>` | path | — | Write raw pre-filter syscall forensics to a JSONL file. Heavyweight; use for forensics. |
+| Flag                            | Type   | Default   | Description                                                                                  |
+| ------------------------------- | ------ | --------- | -------------------------------------------------------------------------------------------- |
+| `--profile <NAME>`              | string | `generic` | Supervisor profile to use. See [Choose your agent](/docs/start/choose-your-agent).           |
+| `--zone <NAME>`                 | string | none      | Bind the session to a [containment zone](/docs/concepts/session-containment).                |
+| `--attach <PID>`                | u32    | —         | Attach to an existing process by PID instead of spawning. Useful for already-running agents. |
+| `--syscall-log <FILE>`          | path   | —         | Log every syscall request and decision to a file (human-readable).                           |
+| `--trace-syscalls-jsonl <FILE>` | path   | —         | Write raw pre-filter syscall forensics to a JSONL file. Heavyweight; use for forensics.      |
 
 ## Examples
 
@@ -101,6 +101,24 @@ grith exec --profile claude-code --zone dayjob -- claude
 For interactive targets (REPLs, shells, TUI agents) grith allocates a PTY pair and
 shuttles bytes transparently. Input editing, ANSI escapes, and signals (Ctrl-C,
 Ctrl-Z) work exactly as if grith weren't in the loop.
+
+### Scrolling and copy-paste
+
+The supervisor TUI captures the mouse so the **scroll wheel** drives grith's
+scrollback (otherwise the host terminal turns the wheel into arrow keys that
+agents reject). Mouse capture also means a plain click-drag selection is owned by
+grith, so the keys below switch between scrolling and selecting:
+
+| Key                         | Action                                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Shift+PgUp` / `Shift+PgDn` | Scroll the terminal scrollback.                                                                                                            |
+| `Ctrl+T`                    | **Toggle select mode** — drops mouse capture and freezes the screen so you can drag-select and copy text. Press again to resume scrolling. |
+| `Ctrl+L`                    | Toggle the audit-log panel.                                                                                                                |
+
+While select mode is on, the footer shows
+`SELECT MODE — drag to copy · wheel-scroll paused`, and repaints are frozen so
+your selection isn't wiped by live output. A permission prompt overrides the
+freeze so a queued decision is never hidden.
 
 ## Exit behaviour
 

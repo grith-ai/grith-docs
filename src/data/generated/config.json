@@ -5,6 +5,18 @@
       "description": null,
       "keys": [
         {
+          "default": "spawns",
+          "description": "Completeness tier for the audit log. Higher tiers add forensic / analytics value at the cost of DB growth and supervisor-thread overhead.  decisions = only proxy-evaluated events (today's historical behaviour). spawns    = + a compact row for every routine ProcessSpawn short- circuit (find, grep, ls, base64, …). Answers \"what binaries did this session execute?\" with modest write volume. Default. io        = + compact rows for routine file reads / writes. Forensic- ish; ~+100 MB/day under typical dev workloads. all       = + compact rows for noise-path events (/proc/, /dev/null, /var/cache/, CA cert dirs, …). Best for compliance / SIEM exports; requires retention tuning (~+500 MB/day).  Compact rows omit filter_results / filter_scores / composite_score and carry only the call type, supervised pid + tool, and a short argument summary. The dashboard hides them by default; toggle \"Show routine activity\" on the audit page to reveal them.",
+          "name": "completeness",
+          "type": "string"
+        }
+      ],
+      "path": "audit"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
           "default": "cli",
           "description": null,
           "name": "delivery",
@@ -388,6 +400,36 @@
       "description": null,
       "keys": [
         {
+          "default": true,
+          "description": "Gate the rate_limit filter's volume penalties (burst/per-minute/approaching) on per-op risk, so a burst of untainted routine file churn (~/.cache, .git/ internals, build outputs) never escalates. The supervisor's target-aware mass-destruction signal backfills the one case this drops (an untainted destructive spree). See work/futurework/rate-limit-burst-redesign.md.  ON by default (rollout step 4). Setting this false restores the legacy frequency-blind burst counter and also forfeits the scratch/~/.cache/.git exemptions (retired in favour of this gate) — expect routine-churn prompts.",
+          "name": "risk_gated_burst",
+          "type": "boolean"
+        }
+      ],
+      "path": "proxy.rate_limit"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": false,
+          "description": "Keep both spawn prompt-reduction signals off by default until operators review telemetry/profile inventory for their environment.",
+          "name": "routine_provenance_signal",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Data-flow taint-on-spawn (PR 2). Default ON (FP research §5.2): the legacy \"any session taint → +3.0 on every spawn/connect\" flagged read-credential-then-use-credential (~/.npmrc → npm, ~/.kube/config → kubectl). The data-flow rule still catches genuine exfil.",
+          "name": "taint_data_flow_only",
+          "type": "boolean"
+        }
+      ],
+      "path": "proxy.spawn"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
           "default": 8,
           "description": null,
           "name": "auto_allow_min_observations",
@@ -448,6 +490,12 @@
       "description": null,
       "keys": [
         {
+          "default": true,
+          "description": "Open the dashboard in your browser on startup, handing off the auth token via the URL fragment (never printed to the terminal). Auto-skipped on headless/SSH sessions. When false or unavailable, the CLI prints a single-use pairing URL instead. Override per-run with GRITH_AUTO_OPEN_DASHBOARD=0.",
+          "name": "auto_open_dashboard",
+          "type": "boolean"
+        },
+        {
           "default": "dashboard/dist",
           "description": null,
           "name": "dashboard_dir",
@@ -507,6 +555,12 @@
     {
       "description": null,
       "keys": [
+        {
+          "default": "traceme",
+          "description": "Linux attach mechanism: \"traceme\" (shipped) | \"seize\" (work in progress — selecting it currently aborts with a clear error). See work/futurework/ptrace-seize-migration.md.",
+          "name": "attach_mode",
+          "type": "string"
+        },
         {
           "default": "generic",
           "description": null,

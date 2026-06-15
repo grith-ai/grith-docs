@@ -1,12 +1,12 @@
 ---
-title: "Reviewing the digest"
-description: "Approve, deny, learn, escalate — the digest workflow from CLI and dashboard."
-section: "start"
+title: 'Reviewing the digest'
+description: 'Approve, deny, learn, escalate — the digest workflow from CLI and dashboard.'
+section: 'start'
 order: 6
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/reviewing-the-digest.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/reviewing-the-digest.mdx'
 ---
 
 The digest is grith's review queue: ambiguous calls that scored between
@@ -27,16 +27,16 @@ grith digest review
 This is interactive. You see one item at a time, with the full context from the filter
 pipeline, and a single keystroke applies a decision. The keystrokes:
 
-| Key | Action | What it does |
-| --- | --- | --- |
-| `a` | approve | Allow this call once. |
-| `l` | learn | Allow + train reputation so similar future calls auto-allow. |
-| `d` | deny | Block this call. Process gets EACCES (or the syscall-appropriate failure). |
-| `t` | deny + terminate | Block + kill the originating process tree. Use for clear exfil. |
-| `u` | unlock-egress | Approve and whitelist the destination for this session. |
-| `e` | escalate | (Pro) route to a teammate or channel for second opinion. |
-| `s` | skip | Move on without deciding. Item remains queued. |
-| `q` | quit | Exit review mode. Pending items stay queued. |
+| Key | Action           | What it does                                                               |
+| --- | ---------------- | -------------------------------------------------------------------------- |
+| `a` | approve          | Allow this call once.                                                      |
+| `l` | learn            | Allow + train reputation so similar future calls auto-allow.               |
+| `d` | deny             | Block this call. Process gets EACCES (or the syscall-appropriate failure). |
+| `t` | deny + terminate | Block + kill the originating process tree. Use for clear exfil.            |
+| `u` | unlock-egress    | Approve and whitelist the destination for this session.                    |
+| `e` | escalate         | (Pro) route to a teammate or channel for second opinion.                   |
+| `s` | skip             | Move on without deciding. Item remains queued.                             |
+| `q` | quit             | Exit review mode. Pending items stay queued.                               |
 
 For non-interactive use:
 
@@ -59,9 +59,14 @@ the same queue with richer context: filter scores plotted on a number line, the
 session's recent call history, and the calling agent's full process tree.
 
 ```
-grith daemon start
-# Visit http://127.0.0.1:3141 in a browser
+grith dashboard start
+# Opens (and authorises) the dashboard in your browser
 ```
+
+`grith dashboard start` opens the browser for you, pre-authorised. If you open the
+URL manually in a fresh browser you'll be asked to pair — run
+`grith dashboard pair` and reload. See
+[`grith dashboard`](/docs/cli/daemon#browser-authorisation).
 
 Decisions made in the dashboard apply immediately and unfreeze the originating
 process. Multiple reviewers can connect simultaneously; decisions are atomic.

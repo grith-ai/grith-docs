@@ -18,6 +18,7 @@
 | GET | `/api/config` |
 | GET | `/api/digest` |
 | GET | `/api/health` |
+| GET | `/api/inventory/:session_id` |
 | GET | `/api/ipc/digest/items/:id` |
 | GET | `/api/ipc/sessions` |
 | GET | `/api/ipc/sessions/:id` |
@@ -29,6 +30,7 @@
 | GET | `/api/proxy/status` |
 | GET | `/api/proxy/status/full` |
 | GET | `/api/reputation/table` |
+| GET | `/api/sessions/:session_id/listener-rewrites` |
 | GET | `/api/supervisor/sessions` |
 | GET | `/api/supervisor/sessions/:id` |
 | GET | `/api/sync/configs` |
@@ -36,6 +38,7 @@
 | GET | `/api/tier` |
 | POST | `/api/canaries` |
 | POST | `/api/canaries/:id/rotate` |
+| POST | `/api/dashboard/pair` |
 | POST | `/api/digest/:id/allow-always` |
 | POST | `/api/digest/:id/approve` |
 | POST | `/api/digest/:id/deny` |
@@ -44,13 +47,15 @@
 | POST | `/api/digest/:id/learn` |
 | POST | `/api/digest/:id/unlock-egress` |
 | POST | `/api/digest/:id/webhook-review` |
-| POST | `/api/events` |
 | POST | `/api/ipc/audit/ingest` |
+| POST | `/api/ipc/dashboard/pair-code` |
 | POST | `/api/ipc/digest/expire` |
 | POST | `/api/ipc/digest/items` |
 | POST | `/api/ipc/digest/items/:id/status` |
 | POST | `/api/ipc/events` |
+| POST | `/api/ipc/inventory/install` |
 | POST | `/api/ipc/sessions` |
+| POST | `/api/ipc/sessions-prune` |
 | POST | `/api/ipc/sessions/:id/kill` |
 | POST | `/api/notifications/test/:channel` |
 | POST | `/api/policies` |

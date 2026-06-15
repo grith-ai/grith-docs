@@ -1,12 +1,12 @@
 ---
-title: "[server]"
-description: "Daemon HTTP server settings — host, port, TLS, rate limits."
-section: "config"
+title: '[server]'
+description: 'Daemon HTTP server settings — host, port, TLS, rate limits.'
+section: 'config'
 order: 7
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/server.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/server.mdx'
 ---
 
 The `[server]` section controls the daemon's HTTP API and dashboard server. Only
@@ -56,8 +56,33 @@ loopback-restricted.
 its dashboard at `dashboard/dist`. If you build a custom dashboard, point at
 your bundle here.
 
+### Auto-open & browser authorisation
+
+`auto_open_dashboard` (default `true`) controls whether `grith dashboard start`,
+`grith run`, and `grith exec` open the dashboard in your browser on startup. The
+auth token is handed off through the URL fragment and **never printed to the
+terminal**; auto-open is skipped automatically on headless / SSH sessions, where
+the CLI prints a single-use pairing link instead.
+
+```toml
+[server]
+auto_open_dashboard = false   # never auto-open; always print a pairing link
+```
+
+Override for a single run with the environment variable:
+
+```bash
+GRITH_AUTO_OPEN_DASHBOARD=0 grith dashboard start
+```
+
+The dashboard is authenticated on loopback by a per-server token even though it
+binds `127.0.0.1` only — see
+[`grith dashboard` → Browser authorisation](/docs/cli/daemon#browser-authorisation)
+and [Trust boundaries](/docs/security/trust-boundaries).
+
 ## See also
 
+- [`grith dashboard`](/docs/cli/daemon)
 - [Running as a daemon](/docs/ops/running-as-a-daemon)
 - [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls)
 - [API overview](/docs/api/overview)

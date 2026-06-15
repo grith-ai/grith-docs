@@ -1,12 +1,12 @@
 ---
-title: "Your first supervised session"
-description: "Worked example: start a session under grith, trigger a quarantine, and decide."
-section: "start"
+title: 'Your first supervised session'
+description: 'Worked example: start a session under grith, trigger a quarantine, and decide.'
+section: 'start'
 order: 5
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/first-supervised-session.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/first-supervised-session.mdx'
 ---
 
 This page walks through one full supervised session, from spawn to deciding on a
@@ -30,9 +30,13 @@ mkdir -p ~/.local/share/grith/audit
 Start the daemon in another terminal (optional, but it gives you the dashboard):
 
 ```
-grith daemon start
-# Listening on http://127.0.0.1:3141
+grith dashboard start
+# Dashboard started: http://127.0.0.1:3141  (opened in your browser)
 ```
+
+On a desktop session this opens the dashboard in your browser, already
+authorised. Over SSH it prints a one-time `#pair=…` link to open instead — see
+[`grith dashboard`](/docs/cli/daemon#browser-authorisation).
 
 ## Spawn the agent under grith
 
@@ -48,7 +52,7 @@ You're now in a normal-feeling shell, but every syscall is being intercepted. Ve
 grith is supervising:
 
 <Terminal>
-{`$ grith supervisor list
+  {`$ grith supervisor list
 SESSION                                 PROFILE     PID    UPTIME
 abc12345-...-7e9f                        generic-cli  17421  4s`}
 </Terminal>
@@ -58,14 +62,14 @@ abc12345-...-7e9f                        generic-cli  17421  4s`}
 Do something routine:
 
 <Terminal>
-{`$ ls
+  {`$ ls
 README.md  src  package.json  ...`}
 </Terminal>
 
 If you tail the audit log in a third terminal:
 
 <Terminal>
-{`$ grith log --tail
+  {`$ grith log --tail
 [09:14:01] file_read package.json     → score 0.6 → allow
 [09:14:01] file_read src/             → score 0.4 → allow
 ... (lots of these for the listing)`}
@@ -79,7 +83,7 @@ a routine read.
 Now read a sensitive file:
 
 <Terminal>
-{`$ cat ~/.ssh/config
+  {`$ cat ~/.ssh/config
 [grith] quarantined — paused
 (your shell hangs)`}
 </Terminal>
@@ -93,7 +97,7 @@ a decision.
 
 ## Review and decide
 
-In your *other* terminal, run:
+In your _other_ terminal, run:
 
 ```
 grith digest review
@@ -104,18 +108,16 @@ You'll see something like:
 <Terminal>
 {`Pending review (1)
 
-  [7d1f...]  file_read  ~/.ssh/config
-             composite: 4.6 (queue)
-             filters fired:
-               - sensitive_path  +3.5  "ssh config in user home"
-               - path_match      +1.2  "static deny pattern .ssh/"
-               - egress_policy    0    "no network in this call"
-             session: abc12345-...
-             pid:     17421 (bash)
+[7d1f...] file_read ~/.ssh/config
+composite: 4.6 (queue)
+filters fired: - sensitive_path +3.5 "ssh config in user home" - path_match +1.2 "static deny pattern .ssh/" - egress_policy 0 "no network in this call"
+session: abc12345-...
+pid: 17421 (bash)
 
-  [a]pprove   [l]earn   [d]eny   [t]erminate   [u]nlock-egress   [?]
+[a]pprove [l]earn [d]eny [t]erminate [u]nlock-egress [?]
 
 > `}
+
 </Terminal>
 
 Press:
@@ -125,7 +127,7 @@ Press:
   similar future reads auto-allow.
 - `d` to deny — the syscall returns EACCES, your `cat` prints "Permission denied", the
   shell continues.
-- `t` to deny + kill — the syscall is denied *and* the bash process tree is
+- `t` to deny + kill — the syscall is denied _and_ the bash process tree is
   terminated. Use this when something looks like exfil.
 
 Pick one. The frozen process resumes (or dies). The decision is recorded in the audit
@@ -154,7 +156,7 @@ grith audit export --format json | jq '.[0]'
   "composite_score": 4.6,
   "filters": [
     { "name": "sensitive_path", "score": 3.5, "annotations": ["ssh-config"] },
-    { "name": "path_match",     "score": 1.2 }
+    { "name": "path_match", "score": 1.2 }
   ],
   "session": "abc12345-...",
   "profile": "generic-cli",

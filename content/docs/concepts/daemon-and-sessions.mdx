@@ -1,12 +1,12 @@
 ---
-title: "Daemon and thin-client sessions"
-description: "Why grith optionally runs as a daemon, and what changes when it does."
-section: "concepts"
+title: 'Daemon and thin-client sessions'
+description: 'Why grith optionally runs as a daemon, and what changes when it does.'
+section: 'concepts'
 order: 12
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/daemon-and-sessions.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/daemon-and-sessions.mdx'
 ---
 
 The simplest way to use grith is one-shot per session: `grith exec` spawns the agent,
@@ -85,19 +85,21 @@ grith exec --profile claude-code -- claude
 
 The supervisor (ptrace machinery) still runs in the thin-client process — it has to,
 because that's the process attached to the agent. But the filter pipeline runs in
-the daemon, which means scoring decisions can use *global* context (other sessions'
+the daemon, which means scoring decisions can use _global_ context (other sessions'
 recent behaviour, the central reputation table) that the thin client wouldn't have.
 
 ## Starting and stopping the daemon
 
 ```
-grith daemon start         # foreground
-grith daemon start --detach # background, writes pid file
-grith daemon status
-grith daemon stop
+grith dashboard start   # background; prints connection details + opens/pairs the browser
+grith dashboard status
+grith dashboard pair     # (re)authorise a browser
+grith dashboard stop
 ```
 
-Logs go to stderr (foreground) or `~/.local/share/grith/daemon.log` (detached).
+`grith dashboard start` spawns the daemon in the background and returns. It's
+also auto-started for you by `grith run` and `grith exec` (those instances
+idle-shut-down with the session; an explicit start persists until you stop it).
 
 The daemon is local-only by default — binds to `127.0.0.1:3141`. To expose it (for
 the dashboard from another machine, or for a webhook receiver), either configure
@@ -119,14 +121,22 @@ When you'd want a daemon:
 
 ## The auth model
 
-For v0.1, IPC routes (`/ipc/*`) accept any caller from loopback. Public routes
-(`/health`, `/digest`, `/proxy/test`, etc.) are also loopback-only. Exposing beyond
-loopback requires explicit TLS configuration *and* turning on the auth flag — the
-HTTP API does not authenticate by default because the default deployment doesn't
-expose it.
+The daemon binds loopback-only, but loopback reachability is not treated as
+authorisation:
 
-For team setups, the Pro plan adds short-lived bearer tokens issued by the dashboard
-for cross-machine review. See [Notification security](/docs/security/notification-security).
+- **IPC routes** (`/ipc/*`, `/server/shutdown`) require the daemon bearer token
+  (`~/.config/grith/daemon.token`, `0600`), constant-time compared.
+- **Browser routes** require the per-server dashboard token — mutations and
+  sensitive reads on every request, gated via the `x-grith-csrf` header (or
+  `?token=` for WebSockets). Low-sensitivity status stays open. The browser
+  receives the token through the [pairing flow](/docs/cli/daemon#browser-authorisation),
+  never the terminal.
+
+Exposing beyond loopback additionally requires TLS (or a reverse proxy). For team
+setups, the Pro plan adds short-lived bearer tokens issued by the dashboard for
+cross-machine review. See
+[Trust boundaries](/docs/security/trust-boundaries) and
+[Notification security](/docs/security/notification-security).
 
 ## See also
 
