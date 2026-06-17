@@ -1,6 +1,6 @@
 ---
 title: "Filter overview"
-description: "The 17 filters grith runs on every supervised call, organised into three phases."
+description: "The 18 filters grith runs on every supervised call, organised into three phases."
 section: "filters"
 order: 0
 tier: "community"
@@ -9,7 +9,7 @@ lastUpdated: "2026-05-14"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/overview.mdx"
 ---
 
-Every call your agent makes is run past **17 filters**, organised into three phases.
+Every call your agent makes is run past **18 filters**, organised into three phases.
 A filter's only job is to contribute a number to the composite score. The threshold
 table at the end of the pipeline routes the call to one of three outcomes:
 
@@ -20,7 +20,7 @@ table at the end of the pipeline routes the call to one of three outcomes:
 Filters within a phase run in parallel. Phases run in order: static → pattern → context.
 The budget is roughly &lt;1ms / ~3ms / ~5ms — ~10ms typical, ~15ms worst-case.
 
-## The 17 filters
+## The 18 filters
 
 <FilterTable />
 

@@ -60,7 +60,7 @@ Each boundary crossing is where filtering happens:
   read is allowed if path filters pass); the data is tagged as tainted for
   later.
 - **Untrusted → Trusted**: every syscall the agent makes. This is where the
-  17 filters live. Sycall is allowed, queued, or denied.
+  18 filters live. Sycall is allowed, queued, or denied.
 - **Trusted → Trusted**: internal grith operations. No filtering — these are
   inside the trust boundary.
 

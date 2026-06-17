@@ -412,7 +412,7 @@
           "method": "GET",
           "path": "/analytics/compliance",
           "since": null,
-          "summary": "Compliance-ready reporting bundles.",
+          "summary": "Structured evidence bundles designed to support compliance reporting (grith is not certified).",
           "tier": "enterprise"
         }
       ]

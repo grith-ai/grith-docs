@@ -90,7 +90,7 @@ reference for security reviewers.
 | Lateral via shell | command, egress | rate_limit, behavioural | Command parser. |
 | Persistent backdoor (file write) | path_match, sensitive_path | behavioural | Writes outside project. |
 | Beaconing / C2 | egress, reputation | behavioural, rate_limit | Adaptive trust. |
-| Confused agent destructive | operation_risk, sensitive_path | path_match | Score lifts on rm-shaped. |
+| Confused agent destructive | destructive_action, operation_risk | sensitive_path, path_match | Hard-deny on catastrophic ops; deny on prod-targeted. |
 
 ## Defence-in-depth properties
 
@@ -100,8 +100,10 @@ reference for security reviewers.
   syscall and session state.
 - **Hard gates**: canary detection and capability enforcement bypass scoring
   to deny unconditionally.
-- **Cold start**: new installs widen the queue zone to avoid pathological
-  auto-allow on uncalibrated state.
+- **Fixed thresholds**: every call is evaluated against the same thresholds
+  (`< 3.0` allow, `> 8.0` deny) — there is no call-count "cold-start" widening,
+  so a destructive or exfiltrating operation issued early in a session is never
+  under-scored.
 
 ## What grith doesn't promise
 
@@ -109,6 +111,19 @@ reference for security reviewers.
   prompt construction *may* find a sequence of calls that, individually, all
   auto-allow but composed effect a leak. Mitigations: canary, behavioural,
   cross-session analytics (Pro).
+- **IPC-delegated authority**: enforcement is scoped to the supervised process
+  tree. An action the tool *delegates* to a more-privileged peer executes
+  outside that tree and is not intercepted per-operation — e.g.
+  `docker run -v /etc:…:rw` (runs in the docker daemon as root),
+  `tmux send-keys` into a pre-existing pane, or commands sent to ssh-agent, the
+  session D-Bus bus, or X11. These require pre-existing conditions (docker-group
+  membership, an attached unrestricted multiplexer). grith mitigates the known
+  vectors — container host-escalation scoring (see
+  [Destructive action coverage](/docs/filters/destructive-action)), plus
+  audit-only detection of foreign-pts writes, control-socket connects, and
+  authority-delegating spawns — but is **not** a wall-based sandbox substitute
+  for a fully untrusted agent. Its model is observe-score-mediate in your real
+  environment, not isolation.
 - **Future-proof signatures**: secret_scan and dlp_gate have curated pattern
   sets. New credential formats won't be detected until added.
 - **Side-channel defence**: timing-based DNS exfil, slow-and-low patterns —
