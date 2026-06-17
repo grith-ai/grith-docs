@@ -102,7 +102,7 @@ filters are deterministic and run independently of the model.
 
 ## What "deterministic" buys us
 
-The 17 filters are pure functions of the syscall and the session state. They don't
+The 18 filters are pure functions of the syscall and the session state. They don't
 talk to the model. They don't ask the agent to confirm. Given the same syscall in the
 same session, they produce the same score, every time.
 

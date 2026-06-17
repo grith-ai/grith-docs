@@ -1,0 +1,85 @@
+---
+title: "Destructive action coverage"
+description: "Hard-denies catastrophic, irreversible host and storage destruction, and escalates destructive operations directed at production."
+section: "filters"
+order: 17
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-06-17"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/destructive-action.mdx"
+---
+
+| | |
+| --- | --- |
+| **Phase** | Pattern |
+| **Score range** | +3.5 to DENY |
+| **Module** | `crates/grith-proxy/src/filters/destructive_action.rs` |
+| **Config file** | `[proxy.destructive_action]` (enabled by default) |
+
+This filter brings the default ruleset in line with the destructive-action
+threat model: catastrophic, unrecoverable operations are hard-denied, and
+destructive operations aimed at **production** are escalated from review to
+deny. It inspects both the reconstructed shell command
+(`ShellExec`/`ProcessSpawn`) and destructive file-operation targets, and is the
+single authority for destructive-action scoring — so calibration stays local
+and predictable.
+
+## Hard-deny: catastrophic host / storage destruction
+
+These have no legitimate use inside a supervised agent and cannot be undone, so
+they are denied outright (score above the `8.0` deny threshold):
+
+- **Filesystem format** — `mkfs`, `mkfs.<fs>`, `mke2fs`, `mkswap`, `wipefs`.
+- **Raw block-device overwrite** — `dd of=/dev/sdX` (benign targets like
+  `/dev/null` are excluded), `shred` of a block device.
+- **Root-filesystem destruction** — `rm --no-preserve-root`, `rm -rf /` or `/*`.
+- **System-root or database-data removal** — recursive deletion of `/etc`,
+  `/usr`, `/boot`, … or a database data directory (`/var/lib/postgresql`,
+  `/var/lib/mysql`, `/var/lib/mongodb`, …). The same destructive file operations
+  on those paths (via the supervised syscall stream) are caught too.
+
+## Escalate to deny when the target is production
+
+A destructive operation directed at a **production** target is denied rather
+than queued. Production is recognised two ways:
+
+- **Managed-database endpoints** — `*.rds.amazonaws.com`, `*.sql.googleapis.com`,
+  `*.database.windows.net`, `*.documents.azure.com`, `*.cache.amazonaws.com`,
+  `*.redshift.amazonaws.com`.
+- **A `prod` / `production` / `prd` / `live` / `mainnet` token** in the argument
+  or working directory (boundary-matched, so `product` / `reproduce` do not
+  trip it). The production token only escalates an operation that is *already*
+  destructive — it never denies a benign read on its own.
+
+So `psql -h shop.cluster-x.rds.amazonaws.com -c "DROP DATABASE prod"` is denied,
+while `psql -c "DROP TABLE orders"` against a non-production target queues for
+review.
+
+## Queue for review
+
+Recoverable or sometimes-legitimate destructive operations queue for human
+review rather than deny: `DROP TABLE` / `TRUNCATE`, `aws s3 rb` (bucket delete),
+`gsutil rm -r`, `terraform destroy`, `kubectl delete --all` / `delete namespace`,
+`helm uninstall`, `docker system prune`.
+
+## Container host-escalation
+
+A `docker` / `podman` / `nerdctl` `run`/`create` that escalates to host
+authority is frozen for review, because the privileged action executes inside
+the daemon (outside the supervised process tree) and would otherwise be
+unseen — see [IPC-delegated authority](/docs/security/threat-model). Flagged
+shapes: a writable bind-mount of a sensitive host path (`-v /etc:…:rw`), the
+docker control socket, `--privileged`, and `--pid=host`.
+
+## What it does *not* flag
+
+Scoped development operations are left alone: `rm -rf ./node_modules` or
+`target/`, a single-object `aws s3 rm s3://staging-bucket/old.zip`, read-only
+queries, `docker build` / `docker ps`, read-only or named-volume container
+mounts. Over-blocking ordinary dev workflows is treated as a regression.
+
+## See also
+
+- [Three-phase pipeline](/docs/concepts/three-phase-pipeline)
+- [Phase 2: pattern](/docs/filters/phase-2-pattern)
+- [Threat model](/docs/security/threat-model) — IPC-delegated authority

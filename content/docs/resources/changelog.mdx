@@ -12,6 +12,40 @@ editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resource
 The changelog is also available as an [RSS feed](/changelog.xml) — subscribe
 to be notified of new releases and security advisories.
 
+## Unreleased
+
+### Filters & scoring
+
+- **New filter: [destructive action coverage](/docs/filters/destructive-action)**
+  (Phase 2, the 18th filter). Hard-denies catastrophic, irreversible host/storage
+  destruction (filesystem format, raw block-device overwrite, recursive removal
+  of a system root or database data directory) and escalates destructive
+  operations directed at production (managed-DB endpoints, `prod`/`live`-tagged
+  resources) from review to deny. Also freezes `docker`/`podman run`
+  host-escalation (writable `-v /etc:…:rw` mounts, the docker socket,
+  `--privileged`, `--pid=host`).
+- **Fixed thresholds — cold-start widening removed.** Every call is now scored
+  against the same thresholds (`< 3.0` allow, `> 8.0` deny); the first call in a
+  session is filtered identically to the thousandth.
+- **Fewer false positives.** Secret scanning no longer flags provably-benign
+  shapes (git SHAs, lockfile integrity hashes, JWTs, UUIDs, `_test_` placeholder
+  keys) and down-weights its generic heuristics when reading `node_modules` /
+  minified bundles; the egress filter no longer treats `s3://` / `gs://` bucket
+  URIs as unknown network destinations; the taint filter no longer flags an
+  outbound tool (`git push`, `aws s3 ls`, `npm publish`) that merely uses its
+  own credential. Real secrets and genuine exfil still fire (each carve-out is
+  paired with a guard).
+
+### Security
+
+- **IPC-delegated authority disclosed and partially mitigated.** Enforcement is
+  scoped to the supervised process tree, so actions delegated to a
+  more-privileged peer (the docker daemon, a `tmux` pane, ssh-agent, the session
+  D-Bus bus, X11) run outside it. Container host-escalation is now scored;
+  connects to control-injection sockets and spawns of authority-delegating
+  binaries are detected (audit-only). See the
+  [threat model](/docs/security/threat-model).
+
 ## v0.1.4 — 2026-06
 
 ### Dashboard
@@ -51,7 +85,7 @@ The initial public release.
 
 ### Features
 
-- **17 filters** across 3 phases (static, pattern, context) — see
+- **18 filters** across 3 phases (static, pattern, context) — see
   [Filter overview](/docs/filters/overview).
 - **Supervisor profiles** for 11 common AI agents — Claude Code, Codex, Aider,
   Goose, Cursor, Cline, OpenClaw, Copilot, generic-cli, grith-repl, generic.

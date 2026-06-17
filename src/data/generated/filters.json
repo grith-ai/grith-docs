@@ -22,7 +22,7 @@
         2.0,
         5.0
       ],
-      "summary": "Aho-Corasick scan of paths against curated denylists and allowlists. Hot — runs against every fs operation."
+      "summary": "Aho-Corasick scan of paths against curated denylists and allowlists. Hot \u2014 runs against every fs operation."
     },
     {
       "config_file": null,
@@ -82,7 +82,7 @@
         3.0,
         5.0
       ],
-      "summary": "Scans content for embedded credentials. 1,600+ regex patterns covering provider API keys, tokens, private keys, and bespoke credential formats."
+      "summary": "Scans content for embedded credentials. 1,620+ regex patterns covering provider API keys, tokens, private keys, and bespoke credential formats."
     },
     {
       "config_file": "config/filters/commands.toml",
@@ -97,10 +97,22 @@
       "summary": "Parses shell commands. Catches dangerous patterns: piped curl-to-sh, sudo with arbitrary scripts, fork-bombs, base64-encoded payloads in subshells."
     },
     {
+      "config_file": null,
+      "module": "destructive_action",
+      "name": "Destructive action coverage",
+      "ordinal": 9,
+      "phase": "pattern",
+      "score_range": [
+        3.5,
+        99.0
+      ],
+      "summary": "Hard-denies catastrophic, irreversible host/storage destruction (filesystem format, raw block-device overwrite, recursive removal of a system root or database data directory) and escalates destructive operations against production targets (managed-DB endpoints, prod/live-tagged resources) to deny; other destructive operations (DROP TABLE, bucket delete, terraform destroy, kubectl delete) queue for review."
+    },
+    {
       "config_file": "config/filters/egress.toml",
       "module": "egress_policy",
       "name": "Egress policy",
-      "ordinal": 9,
+      "ordinal": 10,
       "phase": "pattern",
       "score_range": [
         -1.0,
@@ -112,7 +124,7 @@
       "config_file": "config/filters/dlp.toml",
       "module": "dlp_gate",
       "name": "DLP gate",
-      "ordinal": 10,
+      "ordinal": 11,
       "phase": "pattern",
       "score_range": [
         3.0,
@@ -124,13 +136,13 @@
       "config_file": "config/filters/canary.toml",
       "module": "canary",
       "name": "Canary secret detection",
-      "ordinal": 11,
+      "ordinal": 12,
       "phase": "pattern",
       "score_range": [
         99.0,
         99.0
       ],
-      "summary": "Hard DENY. Detects registered canary tokens (fake secrets seeded in your repo) reaching any outbound sink — definitive proof of exfiltration."
+      "summary": "Hard DENY. Detects registered canary tokens (fake secrets seeded in your repo) reaching any outbound sink \u2014 definitive proof of exfiltration."
     },
     {
       "config_file": "config/filters/domains.toml",
@@ -184,7 +196,7 @@
       "config_file": null,
       "module": "rate_limit",
       "name": "Rate limiting",
-      "ordinal": 16,
+      "ordinal": 17,
       "phase": "pattern",
       "score_range": [
         0.0,
@@ -196,7 +208,7 @@
       "config_file": null,
       "module": "semantic",
       "name": "Semantic analysis",
-      "ordinal": 17,
+      "ordinal": 18,
       "phase": "pattern",
       "score_range": [
         0.0,

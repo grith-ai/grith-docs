@@ -18,11 +18,12 @@ sets) are aggressive.
 
 | # | Filter | Score range | What it does |
 | --- | --- | --- | --- |
-| 7 | [Secret / credential scanning](/docs/filters/07-secret-credential-scanning) | +3 to +5 | 1,600+ regex patterns over content. |
+| 7 | [Secret / credential scanning](/docs/filters/07-secret-credential-scanning) | +3 to +5 | 1,620+ regex patterns over content. |
 | 8 | [Command structure analysis](/docs/filters/08-command-structure-analysis) | +2 to +4 | Shell parser, catches dangerous patterns. |
-| 9 | [Egress policy](/docs/filters/09-egress-policy) | -1 to +5 | Network destination trust. |
-| 10 | [DLP gate](/docs/filters/10-dlp-gate) | +3 to +5 | Outbound payload scan. |
-| 11 | [Canary detection](/docs/filters/11-canary-secret-detection) | DENY | Hard gate for exfil traps. |
+| 9 | [Destructive action coverage](/docs/filters/destructive-action) | +3.5 to DENY | Catastrophic host/storage destruction; production-target escalation. |
+| 10 | [Egress policy](/docs/filters/09-egress-policy) | -1 to +5 | Network destination trust. |
+| 11 | [DLP gate](/docs/filters/10-dlp-gate) | +3 to +5 | Outbound payload scan. |
+| 12 | [Canary detection](/docs/filters/11-canary-secret-detection) | DENY | Hard gate for exfil traps. |
 
 ## What Phase 2 buys you
 
