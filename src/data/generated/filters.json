@@ -22,7 +22,7 @@
         2.0,
         5.0
       ],
-      "summary": "Aho-Corasick scan of paths against curated denylists and allowlists. Hot \u2014 runs against every fs operation."
+      "summary": "Aho-Corasick scan of paths against curated denylists and allowlists. Hot — runs against every fs operation."
     },
     {
       "config_file": null,
@@ -106,7 +106,7 @@
         3.5,
         99.0
       ],
-      "summary": "Hard-denies catastrophic, irreversible host/storage destruction (filesystem format, raw block-device overwrite, recursive removal of a system root or database data directory) and escalates destructive operations against production targets (managed-DB endpoints, prod/live-tagged resources) to deny; other destructive operations (DROP TABLE, bucket delete, terraform destroy, kubectl delete) queue for review."
+      "summary": "Hard-denies catastrophic, irreversible host/storage destruction (filesystem format, raw block-device overwrite, recursive removal of a system root or database data directory) and escalates destructive operations directed at production (managed-DB endpoints, prod/live-tagged resources) to deny; other destructive operations queue for review. Also scores docker/podman run host-escalation."
     },
     {
       "config_file": "config/filters/egress.toml",
@@ -142,13 +142,13 @@
         99.0,
         99.0
       ],
-      "summary": "Hard DENY. Detects registered canary tokens (fake secrets seeded in your repo) reaching any outbound sink \u2014 definitive proof of exfiltration."
+      "summary": "Hard DENY. Detects registered canary tokens (fake secrets seeded in your repo) reaching any outbound sink — definitive proof of exfiltration."
     },
     {
       "config_file": "config/filters/domains.toml",
       "module": "reputation",
       "name": "Destination reputation",
-      "ordinal": 12,
+      "ordinal": 13,
       "phase": "context",
       "score_range": [
         -1.0,
@@ -160,7 +160,7 @@
       "config_file": null,
       "module": "behavioural",
       "name": "Behavioural anomaly",
-      "ordinal": 13,
+      "ordinal": 14,
       "phase": "context",
       "score_range": [
         1.0,
@@ -172,19 +172,19 @@
       "config_file": null,
       "module": "taint",
       "name": "Taint tracking",
-      "ordinal": 14,
+      "ordinal": 15,
       "phase": "context",
       "score_range": [
         0.0,
         5.0
       ],
-      "summary": "Tracks data flow from sensitive sources (e.g. a .env read) through subsequent operations. Network calls or shell execs after a sensitive read inherit taint."
+      "summary": "Tracks data flow from sensitive sources (e.g. a .env read) through subsequent operations. Network calls or shell execs that reference tainted data inherit taint."
     },
     {
       "config_file": "config/filters/containment.toml",
       "module": "session_containment",
       "name": "Session containment",
-      "ordinal": 15,
+      "ordinal": 16,
       "phase": "context",
       "score_range": [
         0.0,
@@ -197,37 +197,24 @@
       "module": "rate_limit",
       "name": "Rate limiting",
       "ordinal": 17,
-      "phase": "pattern",
+      "phase": "context",
       "score_range": [
         0.0,
         99.0
       ],
-      "summary": "Per-minute caps on file writes (default 30), shell execs (20), and network requests (60). Bursts trigger queue; sustained violations trigger DENY."
-    },
-    {
-      "config_file": null,
-      "module": "semantic",
-      "name": "Semantic analysis",
-      "ordinal": 18,
-      "phase": "pattern",
-      "score_range": [
-        0.0,
-        0.0
-      ],
-      "summary": "Stub for v0.1. Local embedding-based intent classification. Disabled by default; full implementation planned for v1.5."
+      "summary": "Per-minute caps on file writes (default 30), shell execs (20), and network requests (60). Bursts trigger queue; sustained violations trigger DENY. Volume penalties are risk-gated by default."
     },
     {
       "config_file": null,
       "module": "egress_rate",
-      "name": "Egress Rate",
-      "ordinal": 0,
-      "phase": "unknown",
+      "name": "Egress rate / burst detection",
+      "ordinal": 18,
+      "phase": "context",
       "score_range": [
-        0.0,
-        0.0
+        1.0,
+        3.0
       ],
-      "summary": "(no metadata entry for module `egress_rate`)",
-      "unmapped": true
+      "summary": "Per-destination outbound rate and burst detection. Flags rapid bursts of network egress to the same or many destinations — a beaconing or exfil shape that single-call filters miss."
     },
     {
       "config_file": null,
@@ -240,6 +227,19 @@
         0.0
       ],
       "summary": "(no metadata entry for module `outbound_binaries`)",
+      "unmapped": true
+    },
+    {
+      "config_file": null,
+      "module": "semantic",
+      "name": "Semantic",
+      "ordinal": 0,
+      "phase": "unknown",
+      "score_range": [
+        0.0,
+        0.0
+      ],
+      "summary": "(no metadata entry for module `semantic`)",
       "unmapped": true
     }
   ],
