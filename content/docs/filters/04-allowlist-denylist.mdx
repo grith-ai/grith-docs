@@ -25,7 +25,7 @@ Whatever you've taught it. A `learn`-tagged approval from the digest writes an e
 ```
 allowlist  file_read /home/you/.ssh/config       (per-session)
 allowlist  shell    git status                   (permanent, "allow-always")
-denylist   network  api.dangerous.example         (permanent, set by deny+block-future)
+denylist   network  api.dangerous.example         (permanent, user deny rule)
 ```
 
 Entries can be:
@@ -74,7 +74,7 @@ grith config show allowlist
 ## What it doesn't do
 
 Allowlist is a contribution, not an override. A canary trip or a capability deny
-will still block, even if the call is in the allowlist. That's intentional: the
+will still deny, even if the call is in the allowlist. That's intentional: the
 allowlist is a hint, not a bypass.
 
 ## See also

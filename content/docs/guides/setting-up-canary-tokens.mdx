@@ -10,7 +10,7 @@ editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/s
 ---
 
 A canary token is a fake credential placed somewhere an attacker might look. When
-it shows up in outbound traffic, grith blocks the call and alarms loudly. See
+it shows up in outbound traffic, grith denies the call and alarms loudly. See
 [Canary tokens](/docs/concepts/canary-tokens) for the concept; this page is the
 practical deployment.
 
@@ -90,7 +90,7 @@ See per-channel guides for the specific setup steps.
 To verify the canary detection works without actually firing a real one:
 
 ```
-# Read the file (this is a sensitive_path read, will probably quarantine)
+# Read the file (this is a sensitive-path-heuristic read, will probably quarantine)
 cat ~/.aws/credentials_backup
 
 # Approve in the digest

@@ -64,8 +64,8 @@ A trivial read in a project:
   "decision": "allow",
   "composite_score": 0.4,
   "filters": [
-    { "name": "operation_risk", "score": 0.5 },
-    { "name": "path_match",     "score": -0.1 },
+    { "name": "operation-risk", "score": 0.5 },
+    { "name": "path-match",     "score": -0.1 },
     ...
   ]
 }
@@ -81,8 +81,8 @@ A sensitive read:
   "decision": "queue",
   "composite_score": 5.8,
   "filters": [
-    { "name": "sensitive_path", "score": 4.0, "annotations": ["ssh-private-key"] },
-    { "name": "path_match",     "score": 1.5 },
+    { "name": "sensitive-path-heuristic", "score": 4.0, "annotations": ["ssh-private-key"] },
+    { "name": "path-match",               "score": 1.5 },
     ...
   ]
 }

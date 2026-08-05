@@ -50,27 +50,28 @@ grith profile audit --trace /tmp/trace.jsonl --report-timing
 
 Symptom: p99 latency exceeds 20ms on calls with large content.
 
-Fix:
-
-```toml
-[proxy.filters.secret_scan]
-max_scan_bytes = 524288     # 512KB cap (default 1MB)
-```
-
-Trade-off: large payloads beyond the cap are sampled rather than scanned in
-full. Set this lower than your typical legitimate payload size to avoid the
-sample mode silently helping exfil.
+The scanner compiles all patterns into a single automaton, so cost is linear in
+payload size, not pattern count - and there is no scan-length cap: large outbound
+payloads are scanned in full. If a workload routinely pushes multi-MB payloads
+through supervised network sends, expect scan time proportional to size. The lever
+is on the workload side (smaller payloads through supervised calls); trimming
+patterns from `config/filters/secrets.toml` does not meaningfully change scan time.
 
 ### 2. Behavioural baseline computation
 
 Symptom: latency spikes on certain calls after a long session.
 
-The behavioural filter rebuilds its smoothing window periodically. Tune:
+The behavioural filter compares each call against a per-session rolling baseline.
+If profiling shows it hot in your workload, it is a Phase 3 filter and can be
+disabled outright:
 
 ```toml
 [proxy.filters.behavioural]
-recompute_interval_seconds = 60     # less frequent = lower per-call cost
+enabled = false
 ```
+
+Trade-off: you lose the out-of-pattern signal (sudden bursts, unusual
+destinations) for the session.
 
 ### 3. Audit log fsync
 

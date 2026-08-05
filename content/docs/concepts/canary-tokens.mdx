@@ -25,7 +25,7 @@ API key" is a heuristic. "This destination is unusual" is a heuristic.
 
 Canary detection is not a heuristic. It's a direct match against a token that the
 operator put in the filesystem *and* explicitly told grith was a canary. If that
-exact string is going out, something went wrong — and the right answer is to block
+exact string is going out, something went wrong — and the right answer is to deny
 the call, not to score it.
 
 That's why filter 11 returns DENY rather than a score contribution. There is no

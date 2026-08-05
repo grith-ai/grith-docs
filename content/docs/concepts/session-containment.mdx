@@ -78,7 +78,7 @@ contributes positive score, weighted by:
 - Whether the cross-zone target overlaps another zone (e.g. dayjob writing into oss
   is heavier than dayjob writing into a non-zoned temp dir).
 
-A cross-zone call that crosses the auto-deny threshold blocks. One that lands in the
+A cross-zone call that crosses the auto-deny threshold is denied. One that lands in the
 queue is shown with the "out of zone" annotation, so the reviewer knows immediately
 what's interesting about it.
 

@@ -83,14 +83,14 @@ reference for security reviewers.
 
 | Attack class | Primary defence | Secondary | Notes |
 | --- | --- | --- | --- |
-| Read credential, send out | sensitive_path, taint, dlp, secret_scan | reputation, canary | Canary catches when others fuzz. |
-| Read credential, leak via summary | dlp, secret_scan | egress, reputation | Model summary can defeat taint; dlp catches if content shape persists. |
-| Pivot to other project | path_match, session_containment | sensitive_path | Zone enforcement. |
-| Privilege escalation | capability, command | rate_limit | Hard gate via capability. |
-| Lateral via shell | command, egress | rate_limit, behavioural | Command parser. |
-| Persistent backdoor (file write) | path_match, sensitive_path | behavioural | Writes outside project. |
-| Beaconing / C2 | egress, reputation | behavioural, rate_limit | Adaptive trust. |
-| Confused agent destructive | destructive_action, operation_risk | sensitive_path, path_match | Hard-deny on catastrophic ops; deny on prod-targeted. |
+| Read credential, send out | sensitive-path-heuristic, taint, dlp-gate, secret-scan | reputation, canary | Canary catches when others fuzz. |
+| Read credential, leak via summary | dlp-gate, secret-scan | egress-policy, reputation | Model summary can defeat taint; dlp-gate catches if content shape persists. |
+| Pivot to other project | path-match, session-containment | sensitive-path-heuristic | Zone enforcement. |
+| Privilege escalation | capability, command | rate-limit | Hard gate via capability. |
+| Lateral via shell | command, egress-policy | rate-limit, behavioural | Command parser. |
+| Persistent backdoor (file write) | path-match, sensitive-path-heuristic | behavioural | Writes outside project. |
+| Beaconing / C2 | egress-policy, reputation | behavioural, rate-limit | Adaptive trust. |
+| Confused agent destructive | destructive-action, operation-risk | sensitive-path-heuristic, path-match | Hard-deny on catastrophic ops; deny on prod-targeted. |
 
 ## Defence-in-depth properties
 
@@ -124,7 +124,7 @@ reference for security reviewers.
   authority-delegating spawns — but is **not** a wall-based sandbox substitute
   for a fully untrusted agent. Its model is observe-score-mediate in your real
   environment, not isolation.
-- **Future-proof signatures**: secret_scan and dlp_gate have curated pattern
+- **Future-proof signatures**: secret-scan and dlp-gate have curated pattern
   sets. New credential formats won't be detected until added.
 - **Side-channel defence**: timing-based DNS exfil, slow-and-low patterns —
   partially covered by behavioural, not formally guaranteed.

