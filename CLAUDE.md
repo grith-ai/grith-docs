@@ -63,7 +63,7 @@ content/docs/
 ├── start/          # What is grith, installation, quickstart, choose-your-agent, ...
 ├── concepts/       # Threat model, zero-trust, three-phase pipeline, scoring, ...
 ├── cli/            # Every CLI command and subcommand
-├── filters/        # The 17 filters in detail
+├── filters/        # The 18 filters in detail
 ├── config/         # Every config section and key
 ├── profiles/       # Supervisor profiles (built-in + custom)
 ├── api/            # REST endpoints, WebSocket events, IPC routes
@@ -110,7 +110,7 @@ Available globally inside `.mdx` files. Registered in `src/components/mdx/index.
 
 **Interactive**
 - **ScoreCalculator** — Input a tool call, see filters fire, score computed. Rebuilt in Phase 2 against real scoring math from `grith-proxy::scoring`.
-- **FilterTable** — Searchable, sortable table of all 17 filters. Rebuilt in Phase 2 from `src/data/generated/filters.json`.
+- **FilterTable** — Searchable, sortable table of all 18 filters. Rebuilt in Phase 2 from `src/data/generated/filters.json`.
 - **ArchitectureDiagram** — Dual-path execution diagram (agent + supervisor → proxy + daemon). Refresh in Phase 3 to include thin-client sessions.
 
 **Reference renderers (Phase 1)**

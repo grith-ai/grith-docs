@@ -38,7 +38,7 @@ export const SECTIONS: SectionInfo[] = [
     blurb: 'The threat model, the pipeline, the scoring, and how everything fits together.',
   },
   { slug: 'cli', label: 'CLI reference', order: 2, blurb: 'Every command, every flag.' },
-  { slug: 'filters', label: 'Filter reference', order: 3, blurb: 'The 17 filters in detail.' },
+  { slug: 'filters', label: 'Filter reference', order: 3, blurb: 'The 18 filters in detail.' },
   { slug: 'config', label: 'Configuration', order: 4, blurb: 'Every config section and key.' },
   {
     slug: 'profiles',
