@@ -6,18 +6,21 @@ interface BadgeProps {
   className?: string;
 }
 
+// Tint-system pills per the surface-extension spec (section 6). Plan badges:
+// Pro = allow variant (green tint), Enterprise = purple. Roadmap = queue
+// (warning tint). "info" is the neutral variant.
 const variantStyles: Record<BadgeVariant, string> = {
-  community: 'bg-green-light text-green-dark border-green-border',
-  pro: 'bg-info-light text-info border-info-border',
-  enterprise: 'bg-purple-light text-purple border-purple/20',
-  roadmap: 'bg-warning-light text-warning border-warning-border',
-  info: 'bg-surface text-text-secondary border-border',
+  community: 'bg-green-light text-accent-text border-green-border',
+  pro: 'bg-green-light text-accent-text border-green-border',
+  enterprise: 'bg-purple-light text-purple border-purple-border',
+  roadmap: 'bg-warning-light text-warning-text border-warning-border',
+  info: 'bg-transparent text-text-secondary border-border',
 };
 
 export default function Badge({ variant, children, className = '' }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-label text-[10px] uppercase tracking-[0.08em] ${variantStyles[variant]} ${className}`}
+      className={`rounded-pill font-label inline-flex items-center border px-2.5 py-0.5 text-[10px] font-medium tracking-[0.08em] uppercase ${variantStyles[variant]} ${className}`}
     >
       {children}
     </span>

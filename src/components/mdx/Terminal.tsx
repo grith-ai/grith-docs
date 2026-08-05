@@ -9,7 +9,15 @@ interface TerminalProps {
   className?: string;
 }
 
-export default function Terminal({ command, children, title = 'terminal', className = '' }: TerminalProps) {
+// Terminal frame on the fixed code palette (code panels never invert):
+// interior stays dark in both themes, only the outer border follows the page
+// theme. Title-bar dots are the fixed --g-code-dot colour.
+export default function Terminal({
+  command,
+  children,
+  title = 'terminal',
+  className = '',
+}: TerminalProps) {
   const [copied, setCopied] = useState(false);
 
   const copyText = command || (typeof children === 'string' ? children : '');
@@ -23,21 +31,21 @@ export default function Terminal({ command, children, title = 'terminal', classN
 
   return (
     <div
-      className={`my-6 overflow-hidden rounded-xl bg-terminal-bg shadow-[0_0_0_1px_rgba(0,168,90,0.15),0_8px_32px_rgba(0,0,0,0.12)] ${className}`}
+      className={`rounded-code border-border bg-terminal-bg my-6 overflow-hidden border ${className}`}
     >
-      <div className="flex items-center gap-1.5 border-b border-terminal-border bg-[#161b22] px-4 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-        <span className="ml-2 font-label text-[10px] uppercase tracking-[0.12em] text-terminal-muted">
+      <div className="border-terminal-rule flex items-center gap-1.5 border-b px-4 py-2.5">
+        <span className="bg-terminal-dot h-2.5 w-2.5 rounded-full" />
+        <span className="bg-terminal-dot h-2.5 w-2.5 rounded-full" />
+        <span className="bg-terminal-dot h-2.5 w-2.5 rounded-full" />
+        <span className="font-label text-terminal-muted ml-2 text-[10px] tracking-[0.12em] uppercase">
           {title}
         </span>
       </div>
       <div className="flex items-start justify-between px-4 py-3">
-        <pre className="flex-1 overflow-x-auto font-code text-sm text-terminal-text">
+        <pre className="font-code text-terminal-text flex-1 overflow-x-auto text-sm">
           {command ? (
             <code>
-              <span className="text-[#7ee787]">$</span> {command}
+              <span className="text-green">$</span> {command}
             </code>
           ) : (
             <code>{children}</code>
@@ -46,7 +54,7 @@ export default function Terminal({ command, children, title = 'terminal', classN
         {copyText && (
           <button
             onClick={copyToClipboard}
-            className="ml-4 shrink-0 rounded-md p-1.5 text-terminal-muted transition-colors hover:text-terminal-text"
+            className="text-terminal-muted hover:text-terminal-text ml-4 shrink-0 rounded-md p-1.5 transition-colors"
             aria-label="Copy command"
           >
             {copied ? (

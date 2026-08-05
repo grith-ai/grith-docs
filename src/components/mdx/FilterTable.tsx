@@ -31,8 +31,8 @@ const phaseOrder: Record<string, number> = {
 
 const phaseBadge: Record<string, string> = {
   static: 'bg-info-light text-info',
-  pattern: 'bg-warning-light text-warning',
-  context: 'bg-[#f3e8ff] text-[#7c3aed]',
+  pattern: 'bg-warning-light text-warning-text',
+  context: 'bg-purple-light text-purple',
   unknown: 'bg-surface-2 text-text-dim',
 };
 
@@ -40,32 +40,32 @@ const phaseLatency: Record<string, string> = {
   static: '<1ms',
   pattern: '~3ms',
   context: '~5ms',
-  unknown: '—',
+  unknown: '-',
 };
 
 function formatScore([lo, hi]: [number, number]): string {
   if (lo === 99 && hi === 99) return 'DENY';
-  if (lo === 0 && hi === 0) return '—';
+  if (lo === 0 && hi === 0) return '-';
   if (hi === 99) return 'DENY';
   const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
   return lo === hi ? sign(lo) : `${sign(lo)} to ${sign(hi)}`;
 }
 
 function titlePhase(p: string): string {
-  return p ? p.charAt(0).toUpperCase() + p.slice(1) : '—';
+  return p ? p.charAt(0).toUpperCase() + p.slice(1) : '-';
 }
 
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   if (!active) {
     return (
-      <svg width="10" height="10" viewBox="0 0 10 10" className="ml-1 inline text-text-dim/40">
+      <svg width="10" height="10" viewBox="0 0 10 10" className="text-text-dim/40 ml-1 inline">
         <path d="M3 4l2-2 2 2" fill="none" stroke="currentColor" strokeWidth="1.5" />
         <path d="M3 6l2 2 2-2" fill="none" stroke="currentColor" strokeWidth="1.5" />
       </svg>
     );
   }
   return (
-    <svg width="10" height="10" viewBox="0 0 10 10" className="ml-1 inline text-green">
+    <svg width="10" height="10" viewBox="0 0 10 10" className="text-green ml-1 inline">
       {dir === 'asc' ? (
         <path d="M3 6l2-3 2 3" fill="none" stroke="currentColor" strokeWidth="1.5" />
       ) : (
@@ -120,25 +120,25 @@ export default function FilterTable() {
   }, [search, sortKey, sortDir]);
 
   const thClass =
-    'cursor-pointer select-none whitespace-nowrap pb-2 pr-3 text-left text-xs font-bold uppercase tracking-wider text-text-dim hover:text-text transition-colors';
+    'cursor-pointer select-none whitespace-nowrap pb-2 pr-3 text-left font-label text-[11px] font-medium uppercase tracking-[0.08em] text-text-dim hover:text-text transition-colors';
 
   return (
-    <div className="my-6 rounded-lg border border-border bg-surface p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+    <div className="rounded-card border-border bg-surface my-6 border p-5">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="font-heading text-lg font-bold text-text">Security filters</h3>
+        <h3 className="font-heading text-text text-lg font-semibold">Security filters</h3>
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search filters..."
-          className="w-full rounded-md border border-border bg-bg px-3 py-2 font-code text-sm text-text placeholder:text-text-dim focus:border-green focus:outline-none sm:w-64"
+          className="rounded-btn border-border bg-bg font-code text-text placeholder:text-text-dim focus:border-green focus:shadow-glow w-full border px-3 py-2 text-sm focus:outline-none sm:w-64"
         />
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-border">
+            <tr className="border-border border-b">
               <th className={thClass} onClick={() => handleSort('ordinal')}>
                 # <SortIcon active={sortKey === 'ordinal'} dir={sortDir} />
               </th>
@@ -159,35 +159,33 @@ export default function FilterTable() {
             {filtered.map((f) => (
               <tr
                 key={f.module}
-                className="border-b border-border/50 transition-colors hover:bg-bg/50"
+                className="border-border/50 hover:bg-bg/50 border-b transition-colors"
               >
-                <td className="py-2.5 pr-3 font-code text-xs text-text-dim">
-                  {f.ordinal === 0 ? '—' : f.ordinal}
+                <td className="font-code text-text-dim py-2.5 pr-3 text-xs">
+                  {f.ordinal === 0 ? '-' : f.ordinal}
                 </td>
-                <td className="py-2.5 pr-3 font-heading text-sm font-medium text-text">
-                  {f.name}
-                </td>
+                <td className="font-code text-text py-2.5 pr-3 text-[12.5px]">{f.name}</td>
                 <td className="py-2.5 pr-3">
                   <span
-                    className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                    className={`rounded-pill font-label inline-block px-2.5 py-0.5 text-[10px] font-medium tracking-[0.08em] uppercase ${
                       phaseBadge[f.phase] ?? phaseBadge.unknown
                     }`}
                   >
                     {titlePhase(f.phase)}
                   </span>
                 </td>
-                <td className="py-2.5 pr-3 font-code text-xs text-text-secondary">
-                  {phaseLatency[f.phase] ?? '—'}
+                <td className="font-code text-text-secondary py-2.5 pr-3 text-xs">
+                  {phaseLatency[f.phase] ?? '-'}
                 </td>
-                <td className="py-2.5 pr-3 font-code text-xs text-text-secondary">
+                <td className="font-code text-text-secondary py-2.5 pr-3 text-xs">
                   {formatScore(f.score_range)}
                 </td>
-                <td className="py-2.5 text-xs text-text-secondary">{f.summary}</td>
+                <td className="text-text-secondary py-2.5 text-xs">{f.summary}</td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-sm text-text-dim">
+                <td colSpan={6} className="text-text-dim py-8 text-center text-sm">
                   No filters match your search.
                 </td>
               </tr>
@@ -196,8 +194,9 @@ export default function FilterTable() {
         </table>
       </div>
 
-      <p className="mt-3 text-[10px] text-text-dim">
-        {filtered.length} of {FILTERS.length} filters shown. Within each phase, filters run in parallel; phase order is static → pattern → context.
+      <p className="text-text-dim mt-3 text-[10px]">
+        {filtered.length} of {FILTERS.length} filters shown. Within each phase, filters run in
+        parallel; phase order is static → pattern → context.
       </p>
     </div>
   );

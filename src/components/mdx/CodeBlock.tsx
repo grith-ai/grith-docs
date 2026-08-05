@@ -9,6 +9,8 @@ interface CodeBlockProps {
   className?: string;
 }
 
+// Code panel on the fixed code palette: interior stays dark in both themes,
+// only the outer border follows the page theme.
 export default function CodeBlock({
   code,
   language = 'text',
@@ -25,15 +27,15 @@ export default function CodeBlock({
 
   return (
     <div
-      className={`my-6 overflow-hidden rounded-xl bg-terminal-bg shadow-[0_0_0_1px_rgba(0,168,90,0.15),0_8px_32px_rgba(0,0,0,0.12)] ${className}`}
+      className={`rounded-code border-border bg-terminal-bg my-6 overflow-hidden border ${className}`}
     >
-      <div className="flex items-center justify-between border-b border-terminal-border bg-[#161b22] px-4 py-2">
-        <span className="font-label text-[10px] uppercase tracking-[0.12em] text-terminal-muted">
+      <div className="border-terminal-rule flex items-center justify-between border-b px-4 py-2">
+        <span className="font-label text-terminal-muted text-[10px] tracking-[0.12em] uppercase">
           {title || language}
         </span>
         <button
           onClick={copyToClipboard}
-          className="rounded-md p-1.5 text-terminal-muted transition-colors hover:text-terminal-text"
+          className="text-terminal-muted hover:text-terminal-text rounded-md p-1.5 transition-colors"
           aria-label="Copy code"
         >
           {copied ? (
@@ -49,7 +51,7 @@ export default function CodeBlock({
         </button>
       </div>
       <pre className="overflow-x-auto p-4">
-        <code className="font-code text-sm leading-relaxed text-terminal-text">{code}</code>
+        <code className="font-code text-terminal-text text-sm leading-relaxed">{code}</code>
       </pre>
     </div>
   );
