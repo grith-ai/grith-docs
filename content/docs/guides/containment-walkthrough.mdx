@@ -81,9 +81,9 @@ In terminal 1 (dayjob session), ask Claude to read the OSS project:
 [grith] file_read ~/oss/grith/Cargo.toml → score 5.2 → quarantine
 ```
 
-The session_containment filter contributed +4 (out of zone). The sensitive_path
-filter didn't fire, but the containment filter alone took it past the
-auto-allow threshold.
+The session-containment filter contributed +4 (out of zone). The
+sensitive-path-heuristic filter didn't fire, but the containment filter alone took
+it past the auto-allow threshold.
 
 In another terminal:
 

@@ -20,9 +20,9 @@ const GROUPS = apiData.groups as Group[];
 
 const methodColour: Record<string, string> = {
   GET: 'bg-info-light text-info',
-  POST: 'bg-green-light text-green-dark',
-  PUT: 'bg-warning-light text-warning',
-  DELETE: 'bg-danger-light text-danger',
+  POST: 'bg-green-light text-accent-text',
+  PUT: 'bg-warning-light text-warning-text',
+  DELETE: 'bg-danger-light text-danger-text',
   PATCH: 'bg-purple-light text-purple',
 };
 
@@ -40,7 +40,7 @@ export default function ApiRouteTable({ group, showHeadings = true }: ApiRouteTa
 
   if (groups.length === 0) {
     return (
-      <p className="my-4 text-sm text-danger">
+      <p className="text-danger-text my-4 text-sm">
         API group <code className="font-code">{group}</code> not found. Run{' '}
         <code className="font-code">npm run gen:references</code>.
       </p>
@@ -50,29 +50,30 @@ export default function ApiRouteTable({ group, showHeadings = true }: ApiRouteTa
   return (
     <div className="my-6 space-y-6">
       {groups.map((g) => (
-        <section key={g.name} className="overflow-hidden rounded-lg border border-border bg-surface">
+        <section
+          key={g.name}
+          className="rounded-card border-border bg-surface overflow-hidden border"
+        >
           {showHeadings && (
-            <div className="border-b border-border px-4 py-3">
-              <h3 className="font-heading text-sm font-bold text-text">{g.name}</h3>
-              {g.description && (
-                <p className="mt-1 text-xs text-text-secondary">{g.description}</p>
-              )}
+            <div className="border-border border-b px-4 py-3">
+              <h3 className="font-heading text-text text-sm font-semibold">{g.name}</h3>
+              {g.description && <p className="text-text-secondary mt-1 text-xs">{g.description}</p>}
             </div>
           )}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-border bg-surface-2/40">
-                  <th className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-text-dim">
+                <tr className="border-border bg-surface-2/40 border-b">
+                  <th className="font-label text-text-dim px-4 py-2 text-[11px] font-medium tracking-[0.08em] uppercase">
                     Method
                   </th>
-                  <th className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-text-dim">
+                  <th className="font-label text-text-dim px-4 py-2 text-[11px] font-medium tracking-[0.08em] uppercase">
                     Path
                   </th>
-                  <th className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-text-dim">
+                  <th className="font-label text-text-dim px-4 py-2 text-[11px] font-medium tracking-[0.08em] uppercase">
                     Summary
                   </th>
-                  <th className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-text-dim">
+                  <th className="font-label text-text-dim px-4 py-2 text-[11px] font-medium tracking-[0.08em] uppercase">
                     Flags
                   </th>
                 </tr>
@@ -81,43 +82,43 @@ export default function ApiRouteTable({ group, showHeadings = true }: ApiRouteTa
                 {g.routes.map((r) => (
                   <tr
                     key={`${r.method} ${r.path}`}
-                    className="border-b border-border/40 last:border-0"
+                    className="border-border/40 border-b last:border-0"
                   >
                     <td className="px-4 py-2 align-top">
                       <span
-                        className={`inline-block rounded px-1.5 py-0.5 font-code text-[10px] font-bold ${
+                        className={`font-code inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                           methodColour[r.method] ?? 'bg-surface-2 text-text-secondary'
                         }`}
                       >
                         {r.method}
                       </span>
                     </td>
-                    <td className="px-4 py-2 align-top font-code text-xs text-text">{r.path}</td>
-                    <td className="px-4 py-2 align-top text-xs text-text-secondary">{r.summary}</td>
+                    <td className="font-code text-text px-4 py-2 align-top text-xs">{r.path}</td>
+                    <td className="text-text-secondary px-4 py-2 align-top text-xs">{r.summary}</td>
                     <td className="px-4 py-2 align-top">
                       <div className="flex flex-wrap gap-1">
                         {r.tier === 'pro' && (
-                          <span className="inline-block rounded-full bg-info-light px-1.5 py-0.5 text-[9px] font-bold uppercase text-info">
+                          <span className="rounded-pill bg-green-light font-label text-accent-text inline-block px-1.5 py-0.5 text-[9px] font-medium uppercase">
                             Pro
                           </span>
                         )}
                         {r.tier === 'enterprise' && (
-                          <span className="inline-block rounded-full bg-purple-light px-1.5 py-0.5 text-[9px] font-bold uppercase text-purple">
+                          <span className="rounded-pill bg-purple-light font-label text-purple inline-block px-1.5 py-0.5 text-[9px] font-medium uppercase">
                             Ent
                           </span>
                         )}
                         {r.ipc_only && (
-                          <span className="inline-block rounded-full bg-surface-2 px-1.5 py-0.5 text-[9px] font-bold uppercase text-text-secondary">
+                          <span className="rounded-pill bg-surface-2 font-label text-text-secondary inline-block px-1.5 py-0.5 text-[9px] font-medium uppercase">
                             IPC
                           </span>
                         )}
                         {r.auth === 'local' && (
-                          <span className="inline-block rounded-full bg-warning-light px-1.5 py-0.5 text-[9px] font-bold uppercase text-warning">
+                          <span className="rounded-pill bg-warning-light font-label text-warning-text inline-block px-1.5 py-0.5 text-[9px] font-medium uppercase">
                             local
                           </span>
                         )}
                         {r.since && (
-                          <span className="inline-block rounded border border-border bg-bg px-1.5 py-0.5 font-code text-[10px] text-text-dim">
+                          <span className="border-border bg-bg font-code text-text-dim inline-block rounded border px-1.5 py-0.5 text-[10px]">
                             since {r.since}
                           </span>
                         )}

@@ -31,7 +31,7 @@ What grith actually does (in `grith-proxy::scoring::ScoringEngine`):
    (`reputation.auto_allow_min_observations`, default `8`) and the trust score is
    above `reputation.auto_allow_trust` (default `0.92`), subtract up to
    `reputation.max_score_reduction` (default `4.0`) — but never below `0`.
-4. **Apply hard gates last**: if any filter returned DENY (capability filter blocked
+4. **Apply hard gates last**: if any filter returned DENY (capability filter denied
    the call, or canary filter detected an exfil token), force-set composite to
    `>= auto_deny_threshold`.
 
@@ -50,15 +50,14 @@ otherwise                                →  QUEUE
 [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) for when to
 move them.
 
-## Cold start
+## Fixed thresholds
 
-Before grith has seen `proxy.cold_start_calls` worth of traffic, the thresholds
-widen — `cold_start_escalation_low` / `cold_start_escalation_high`. This makes the
-digest more permissive while you're learning your own scoring profile, so you can
-shape the reputation table without a torrent of trivial quarantines.
-
-Default for v0.1 is `cold_start_calls = 0` (cold start disabled). Set higher if a
-new install is flooding the queue.
+The thresholds are the same for every call - the first call of a fresh install is
+scored exactly like the thousandth. An earlier cold-start mode that widened the
+thresholds for the first N calls was removed so that early destructive or
+exfiltrating operations are never under-scored. If a new install floods the queue,
+tune the thresholds directly or teach the
+[reputation system](/docs/concepts/adaptive-reputation) with `learn` approvals.
 
 ## A worked example
 
@@ -69,19 +68,19 @@ file_read /project/src/app.ts
 
   filter                       contribution
   ────────────────────────────────────────
-  operation_risk               +0.5     (read = low risk)
-  path_match                   -1.0     (project dir is allowlisted)
-  sensitive_path                0
+  operation-risk               +0.5     (read = low risk)
+  path-match                   -1.0     (project dir is allowlisted)
+  sensitive-path-heuristic      0
   allowlist                     0
   argument                      0
   capability                    0
   ────────────────────────────────────────
   Phase 1 subtotal             -0.5
 
-  secret_scan                   0       (no content yet — this is a read)
-  command_structure             0       (not a shell call)
-  egress_policy                 0       (not a network call)
-  dlp_gate                      0
+  secret-scan                   0       (no content yet - this is a read)
+  command                       0       (not a shell call)
+  egress-policy                 0       (not a network call)
+  dlp-gate                      0
   canary                        0
   ────────────────────────────────────────
   Phase 2 subtotal              0.0
@@ -89,8 +88,8 @@ file_read /project/src/app.ts
   reputation                   -0.3     (project dir trusted)
   behavioural                   0       (within baseline)
   taint                         0       (clean read)
-  session_containment           0       (in the right zone)
-  rate_limit                    0
+  session-containment           0       (in the right zone)
+  rate-limit                    0
   semantic                      0       (stub)
   ────────────────────────────────────────
   Phase 3 subtotal             -0.3
@@ -105,9 +104,9 @@ The same agent reads `~/.ssh/config` ten seconds later:
 ```
 file_read /home/you/.ssh/config
 
-  operation_risk               +0.5
-  path_match                   +1.2     (.ssh/ on the static denylist)
-  sensitive_path               +3.5     (ssh config heuristic)
+  operation-risk               +0.5
+  path-match                   +1.2     (.ssh/ on the static denylist)
+  sensitive-path-heuristic     +3.5     (ssh config heuristic)
   allowlist                     0
   argument                      0
   capability                    0
@@ -124,11 +123,11 @@ A taint-tracked network call after that:
 ```
 network POST https://api.example.com/upload  (body contains .env contents)
 
-  operation_risk               +1.5     (network write)
+  operation-risk               +1.5     (network write)
   ...
-  secret_scan                  +4.0     (matched API key pattern)
-  egress_policy                +1.0     (unknown host)
-  dlp_gate                     +3.5     (large credential-shaped payload)
+  secret-scan                  +4.0     (matched API key pattern)
+  egress-policy                +1.0     (unknown host)
+  dlp-gate                     +3.5     (large credential-shaped payload)
   ...
   taint                        +3.0     (body originated from .env read 4 calls ago)
   reputation                    0       (no history with this host)

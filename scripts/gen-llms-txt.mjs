@@ -50,7 +50,7 @@ const lines = [
   '# grith documentation',
   '',
   'grith is a security-first local AI agent platform. It intercepts every',
-  'syscall an AI agent makes, scores it through 17 filters, and routes',
+  'syscall an AI agent makes, scores it through 18 filters, and routes',
   'ambiguous calls to a human-review queue.',
   '',
   `Site: ${SITE}`,

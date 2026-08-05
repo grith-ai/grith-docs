@@ -72,24 +72,13 @@ points off the composite. The discount is also gated:
 
 The discount never makes the composite go negative — `composite = max(0, …)`.
 
-## Cold-start mode
+## Fixed thresholds
 
-`proxy.cold_start_calls` controls a wider escalation zone for the first N calls of a
-fresh install or after a reputation reset. During cold start, the thresholds
-temporarily become:
-
-```
-auto_allow ← cold_start_escalation_low   (default 2.0)
-auto_deny  ← cold_start_escalation_high  (default 10.0)
-```
-
-This makes the digest more aggressive (more things land in queue) and the auto-deny
-less aggressive (more things land in queue rather than deny). The intent is to give
-the reviewer a chance to shape the reputation table without auto-denying calls the
-filters haven't seen patterns for.
-
-Default `cold_start_calls = 0` (disabled). Set higher (e.g. 100) on new
-installations.
+Every call is evaluated against the same thresholds, from the first call of a
+session onwards. There is no call-count "cold-start" widening: an earlier mode that
+temporarily widened the escalation zone for the first N calls of a fresh install
+was removed, because it under-scored destructive or exfiltrating operations issued
+early in a session. See the [changelog](/docs/resources/changelog).
 
 ## Worked examples
 

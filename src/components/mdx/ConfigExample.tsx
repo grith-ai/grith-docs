@@ -13,8 +13,8 @@ export default function ConfigExample({ code, title, description }: ConfigExampl
     <div className="my-6">
       {(title || description) && (
         <div className="mb-2">
-          {title && <p className="font-heading text-sm font-bold text-text">{title}</p>}
-          {description && <p className="text-sm text-text-secondary">{description}</p>}
+          {title && <p className="font-heading text-text text-sm font-semibold">{title}</p>}
+          {description && <p className="text-text-secondary text-sm">{description}</p>}
         </div>
       )}
       <CodeBlock code={code} language="toml" />

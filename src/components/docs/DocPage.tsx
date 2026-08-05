@@ -23,11 +23,11 @@ interface DocPageProps {
 export default function DocPage({ doc, headings, prev, next }: DocPageProps) {
   return (
     <div className="flex flex-1 gap-8">
-      <article className="min-w-0 max-w-[720px] flex-1 px-6 py-8 lg:px-10">
+      <article className="max-w-[720px] min-w-0 flex-1 px-6 py-8 lg:px-10">
         <Breadcrumbs slug={doc.slug} />
 
         <div className="mt-4 flex items-center gap-3">
-          <h1 className="font-heading text-3xl font-extrabold tracking-tight text-text">
+          <h1 className="font-heading text-text text-3xl font-semibold tracking-[-0.02em]">
             {doc.meta.title}
           </h1>
           {doc.meta.tier && doc.meta.tier !== 'community' && (
@@ -36,7 +36,7 @@ export default function DocPage({ doc, headings, prev, next }: DocPageProps) {
         </div>
 
         {doc.meta.description && (
-          <p className="mt-3 text-lg text-text-secondary">{doc.meta.description}</p>
+          <p className="text-text-secondary mt-3 text-lg">{doc.meta.description}</p>
         )}
 
         <div className="prose-docs mt-8">
@@ -49,14 +49,14 @@ export default function DocPage({ doc, headings, prev, next }: DocPageProps) {
 
         <PrevNext prev={prev} next={next} />
 
-        <div className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-dim">
+        <div className="text-text-dim mt-8 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
           {doc.meta.lastUpdated && <span>Last updated: {doc.meta.lastUpdated}</span>}
           {doc.meta.editUrl && (
             <a
               href={doc.meta.editUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-text-secondary hover:text-green"
+              className="text-text-secondary hover:text-accent-text transition-colors"
             >
               Edit this page on GitHub →
             </a>

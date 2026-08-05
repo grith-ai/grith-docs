@@ -32,15 +32,15 @@ export default function Tabs({ items, children, storageKey }: TabsProps) {
 
   return (
     <div className="my-6">
-      <div className="flex gap-0 border-b border-border">
+      <div className="border-border flex gap-0 border-b">
         {items.map((item, i) => (
           <button
             key={item}
             onClick={() => select(i)}
             className={`border-b-2 px-4 py-2 text-sm transition-colors ${
               active === i
-                ? 'border-green font-medium text-green-dark'
-                : 'border-transparent text-text-dim hover:text-text-secondary'
+                ? 'border-green text-accent-text font-medium'
+                : 'text-text-dim hover:text-text-secondary border-transparent'
             }`}
           >
             {item}

@@ -5,6 +5,21 @@ import Link from 'next/link';
 type Variant = 'primary' | 'secondary' | 'ghost';
 type Size = 'sm' | 'md' | 'lg';
 
+const variantStyles: Record<Variant, string> = {
+  primary:
+    'bg-green text-accent-ink font-heading font-semibold hover:bg-green-dark focus-visible:outline-text',
+  secondary:
+    'border border-border bg-transparent text-text font-heading font-semibold hover:border-border-dark hover:bg-surface focus-visible:outline-green',
+  ghost:
+    'text-text-secondary font-medium hover:text-text hover:bg-surface-2 focus-visible:outline-green',
+};
+
+const sizeStyles: Record<Size, string> = {
+  sm: 'px-3 py-1.5 text-[13px]',
+  md: 'px-4 py-[9px] text-sm',
+  lg: 'px-6 py-3.5 text-base',
+};
+
 interface ButtonProps {
   children: React.ReactNode;
   variant?: Variant;
@@ -14,18 +29,6 @@ interface ButtonProps {
   onClick?: () => void;
 }
 
-const variantStyles: Record<Variant, string> = {
-  primary: 'bg-text text-bg font-semibold hover:opacity-85',
-  secondary: 'border border-border bg-surface text-text font-medium hover:bg-surface-2',
-  ghost: 'text-text-secondary hover:text-text hover:bg-surface',
-};
-
-const sizeStyles: Record<Size, string> = {
-  sm: 'px-3 py-1.5 text-sm rounded-md',
-  md: 'px-5 py-2.5 text-sm rounded-lg',
-  lg: 'px-6 py-3 text-base rounded-lg',
-};
-
 export default function Button({
   children,
   variant = 'primary',
@@ -34,7 +37,7 @@ export default function Button({
   className = '',
   onClick,
 }: ButtonProps) {
-  const styles = `inline-flex items-center justify-center transition-all ${variantStyles[variant]} ${sizeStyles[size]} ${className}`;
+  const styles = `inline-flex items-center justify-center rounded-btn transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 ${variantStyles[variant]} ${sizeStyles[size]} ${className}`;
 
   if (href) {
     return (

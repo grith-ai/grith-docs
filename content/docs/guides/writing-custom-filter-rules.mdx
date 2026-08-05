@@ -66,11 +66,12 @@ reason = "actually-malicious"
 Edit `~/.config/grith/filters/secrets.toml`:
 
 ```toml
-[[proxy.filters.secret_scan.custom_patterns]]
-name = "acme-internal-id"
+[[patterns]]
+id = "acme-internal-id"
 regex = "ACME-CID-[0-9]{8}"
 score = 4.0
-description = "internal customer ID format"
+severity = "critical"
+message = "internal customer ID format detected"
 ```
 
 ## How layers work

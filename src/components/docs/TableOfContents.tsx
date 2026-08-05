@@ -35,18 +35,18 @@ export default function TableOfContents({ headings }: { headings: TocItem[] }) {
 
   return (
     <nav className="sticky top-20 hidden w-[200px] shrink-0 xl:block">
-      <h4 className="mb-3 font-label text-[10px] uppercase tracking-[0.12em] text-text-dim">
+      <h4 className="font-label text-text-dim mb-3 text-[10px] font-medium tracking-[0.1em] uppercase">
         On this page
       </h4>
-      <ul className="space-y-1 border-l border-border">
+      <ul className="border-border space-y-1 border-l">
         {headings.map((h) => (
           <li key={h.id}>
             <a
               href={`#${h.id}`}
               className={`block border-l-2 py-1 text-sm transition-colors ${h.level === 3 ? 'pl-6' : 'pl-4'} ${
                 activeId === h.id
-                  ? 'border-green font-medium text-green-dark'
-                  : 'border-transparent text-text-dim hover:text-text-secondary'
+                  ? 'border-green text-accent-text font-medium'
+                  : 'text-text-dim hover:text-text-secondary border-transparent'
               }`}
             >
               {h.text}

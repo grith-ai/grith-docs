@@ -6,6 +6,11 @@
       "variant": "Run"
     },
     {
+      "description": "Run the interactive first-run setup (welcome, provider, trial, guide)",
+      "name": "setup",
+      "variant": "Setup"
+    },
+    {
       "description": "Create default configuration",
       "name": "init",
       "variant": "Init"

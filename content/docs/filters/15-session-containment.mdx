@@ -64,7 +64,7 @@ Without `--zone`, the session has no zone bound and the filter contributes nothi
 
 ## Soft vs. hard
 
-Containment is **soft** — it scores rather than blocks. A call that escapes the
+Containment is **soft** — it scores rather than denies. A call that escapes the
 zone gets scored higher and likely quarantines, but if you approve in the digest,
 the call runs. This is intentional: legitimate cross-zone needs happen (e.g.
 "yes, I need to read the OSS project's config from a dayjob session this once").

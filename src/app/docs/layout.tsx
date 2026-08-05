@@ -13,11 +13,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
     <div className="flex min-h-screen flex-col">
       <Header onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
       <div className="flex flex-1">
-        <Sidebar
-          sections={sidebarData}
-          open={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-        />
+        <Sidebar sections={sidebarData} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="flex flex-1 justify-center">{children}</main>
       </div>
       <Footer />

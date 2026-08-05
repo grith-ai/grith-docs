@@ -1,7 +1,7 @@
 # grith documentation
 
 grith is a security-first local AI agent platform. It intercepts every
-syscall an AI agent makes, scores it through 17 filters, and routes
+syscall an AI agent makes, scores it through 18 filters, and routes
 ambiguous calls to a human-review queue.
 
 Site: https://docs.grith.ai
@@ -10,7 +10,7 @@ Site: https://docs.grith.ai
 
 ### Start here
 
-- [What is grith](https://docs.grith.ai/docs/start/what-is-grith) — An OS-level security supervisor for AI agents — intercept every action, score it against 17 filters, route ambiguous calls to a human review queue.
+- [What is grith](https://docs.grith.ai/docs/start/what-is-grith) — An OS-level security supervisor for AI agents — intercept every action, score it against 18 filters, route ambiguous calls to a human review queue.
 - [Installation](https://docs.grith.ai/docs/start/installation) — Install grith v0.1 on Linux x86_64 — install script, manual download, or build from source.
 - [Quickstart](https://docs.grith.ai/docs/start/quickstart) — Five minutes from install to a supervised agent session and reviewing its first queued call.
 - [Choose your agent](https://docs.grith.ai/docs/start/choose-your-agent) — Pick the built-in supervisor profile that matches the AI agent you'll be running.
@@ -23,7 +23,7 @@ Site: https://docs.grith.ai
 - [The threat model](https://docs.grith.ai/docs/concepts/threat-model) — What grith protects against, what it explicitly doesn't, and where the trust boundaries sit.
 - [Zero-trust for agents](https://docs.grith.ai/docs/concepts/zero-trust) — The single design principle: never trust the agent's decision about safety. Verify every action.
 - [The three-phase pipeline](https://docs.grith.ai/docs/concepts/three-phase-pipeline) — Why filters run in three phases — static, pattern, context — and what each phase contributes.
-- [Composite scoring](https://docs.grith.ai/docs/concepts/composite-scoring) — How 17 filter scores combine into one composite, and how that composite maps to a decision.
+- [Composite scoring](https://docs.grith.ai/docs/concepts/composite-scoring) — How 18 filter scores combine into one composite, and how that composite maps to a decision.
 - [The quarantine digest](https://docs.grith.ai/docs/concepts/quarantine-digest) — Why grith routes ambiguous calls to a human review queue instead of guessing.
 - [Syscall interception](https://docs.grith.ai/docs/concepts/syscall-interception) — How grith catches what an agent does at the OS level — ptrace + seccomp on Linux.
 - [Supervisor profiles](https://docs.grith.ai/docs/concepts/supervisor-profiles) — What a profile is, how it shapes scoring, and why every supervised session needs one.
@@ -54,7 +54,7 @@ Site: https://docs.grith.ai
 
 ### Filter reference
 
-- [Filter overview](https://docs.grith.ai/docs/filters/overview) — The 17 filters grith runs on every supervised call, organised into three phases.
+- [Filter overview](https://docs.grith.ai/docs/filters/overview) — The 18 filters grith runs on every supervised call, organised into three phases.
 - [Phase 1 — Static](https://docs.grith.ai/docs/filters/phase-1-static) — Six filters that run cheap structural checks on every call. Sub-millisecond budget.
 - [Phase 2 — Pattern](https://docs.grith.ai/docs/filters/phase-2-pattern) — Five filters that scan content and structure. ~3ms budget.
 - [Phase 3 — Context](https://docs.grith.ai/docs/filters/phase-3-context) — Six filters that look at session history and accumulated state. ~5ms budget.
@@ -64,8 +64,9 @@ Site: https://docs.grith.ai
 - [4. Allowlist / denylist](https://docs.grith.ai/docs/filters/04-allowlist-denylist) — User-managed allow and deny rules with explicit priority over static patterns.
 - [5. Argument length & structure](https://docs.grith.ai/docs/filters/05-argument-length-structure) — Flags suspiciously-shaped arguments — oversized payloads, encoded blobs, unusual metacharacters.
 - [6. Capability enforcement](https://docs.grith.ai/docs/filters/06-capability-enforcement) — Hard gate. Profile capabilities determine what an agent is allowed to do at all.
-- [7. Secret / credential scanning](https://docs.grith.ai/docs/filters/07-secret-credential-scanning) — 1,600+ regex patterns over outbound content. The credential leak filter.
+- [7. Secret / credential scanning](https://docs.grith.ai/docs/filters/07-secret-credential-scanning) — 1,620+ regex patterns over outbound content. The credential leak filter.
 - [8. Command structure analysis](https://docs.grith.ai/docs/filters/08-command-structure-analysis) — Parses shell commands. Catches piped curl-to-sh, fork bombs, smuggled payloads.
+- [Destructive action coverage](https://docs.grith.ai/docs/filters/destructive-action) — Hard-denies catastrophic, irreversible host and storage destruction, and escalates destructive operations directed at production.
 - [9. Egress policy](https://docs.grith.ai/docs/filters/09-egress-policy) — Network destination policy — allowlisted hosts lower the score, unknowns raise it.
 - [10. DLP gate](https://docs.grith.ai/docs/filters/10-dlp-gate) — Outbound payload scanning. Catches credentials, PII, and large file contents leaving the box.
 - [11. Canary detection](https://docs.grith.ai/docs/filters/11-canary-secret-detection) — Hard gate. Registered canary tokens leaving the box trigger an immediate DENY.

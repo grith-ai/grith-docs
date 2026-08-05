@@ -110,7 +110,7 @@ You'll see something like:
 
 [7d1f...] file_read ~/.ssh/config
 composite: 4.6 (queue)
-filters fired: - sensitive_path +3.5 "ssh config in user home" - path_match +1.2 "static deny pattern .ssh/" - egress_policy 0 "no network in this call"
+filters fired: - sensitive-path-heuristic +3.5 "ssh config in user home" - path-match +1.2 "static deny pattern .ssh/" - egress-policy 0 "no network in this call"
 session: abc12345-...
 pid: 17421 (bash)
 
@@ -155,8 +155,8 @@ grith audit export --format json | jq '.[0]'
   "resolved": "deny",
   "composite_score": 4.6,
   "filters": [
-    { "name": "sensitive_path", "score": 3.5, "annotations": ["ssh-config"] },
-    { "name": "path_match", "score": 1.2 }
+    { "name": "sensitive-path-heuristic", "score": 3.5, "annotations": ["ssh-config"] },
+    { "name": "path-match", "score": 1.2 }
   ],
   "session": "abc12345-...",
   "profile": "generic-cli",
@@ -182,7 +182,7 @@ grith supervisor list
 ## What just happened, briefly
 
 1. `grith exec` spawned bash under ptrace.
-2. Every syscall in the supervised tree got routed through the 17-filter pipeline.
+2. Every syscall in the supervised tree got routed through the 18-filter pipeline.
 3. Routine calls auto-allowed at under 15ms latency.
 4. Sensitive calls crossed the quarantine threshold and froze the process.
 5. You made a decision via the CLI; the process resumed accordingly.

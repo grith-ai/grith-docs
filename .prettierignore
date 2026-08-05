@@ -1,0 +1,4 @@
+# Generated verbatim copies from grith-website packages/theme - must stay
+# byte-identical to the source (see the header in each file). Do not reformat.
+src/theme/grith-theme.css
+src/theme/grith-fonts.css

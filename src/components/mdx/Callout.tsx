@@ -6,12 +6,14 @@ interface CalloutProps {
   children: React.ReactNode;
 }
 
+// Tint-fill admonitions on the token system: fills/borders use the theme's
+// tint pairs, titles use the AA-safe *-text colours in both themes.
 const styles: Record<CalloutType, { border: string; bg: string; icon: string; title: string }> = {
   tip: {
     border: 'border-green-border',
     bg: 'bg-green-light',
     icon: '💡',
-    title: 'text-green-dark',
+    title: 'text-accent-text',
   },
   info: {
     border: 'border-info-border',
@@ -23,27 +25,27 @@ const styles: Record<CalloutType, { border: string; bg: string; icon: string; ti
     border: 'border-warning-border',
     bg: 'bg-warning-light',
     icon: '⚠️',
-    title: 'text-warning',
+    title: 'text-warning-text',
   },
   danger: {
     border: 'border-danger-border',
     bg: 'bg-danger-light',
     icon: '🚨',
-    title: 'text-danger',
+    title: 'text-danger-text',
   },
 };
 
 export default function Callout({ type = 'info', title, children }: CalloutProps) {
   const s = styles[type];
   return (
-    <div className={`my-6 rounded-lg border ${s.border} ${s.bg} p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]`}>
+    <div className={`rounded-card my-6 border ${s.border} ${s.bg} p-5`}>
       {title && (
-        <p className={`mb-2 flex items-center gap-2 font-heading text-sm font-bold ${s.title}`}>
+        <p className={`font-heading mb-2 flex items-center gap-2 text-sm font-semibold ${s.title}`}>
           <span>{s.icon}</span>
           {title}
         </p>
       )}
-      <div className="text-sm text-text-secondary [&>p]:my-1">{children}</div>
+      <div className="text-text-secondary text-sm [&>p]:my-1">{children}</div>
     </div>
   );
 }

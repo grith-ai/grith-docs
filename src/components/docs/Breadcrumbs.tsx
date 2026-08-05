@@ -7,14 +7,14 @@ export default function Breadcrumbs({ slug }: { slug: string }) {
   const section = SECTIONS.find((s) => s.slug === sectionSlug);
 
   return (
-    <nav className="flex items-center gap-1.5 text-sm text-text-dim">
-      <Link href="/" className="transition-colors hover:text-text-secondary">
+    <nav className="text-text-dim flex items-center gap-1.5 text-sm">
+      <Link href="/" className="hover:text-text-secondary transition-colors">
         Docs
       </Link>
       <span>/</span>
       {section && (
         <>
-          <span className="transition-colors hover:text-text-secondary">{section.label}</span>
+          <span className="hover:text-text-secondary transition-colors">{section.label}</span>
           <span>/</span>
         </>
       )}

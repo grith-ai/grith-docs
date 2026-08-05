@@ -55,13 +55,13 @@ contributes score based on:
 ## Worked example
 
 ```
-T+0s   read .env                              → sensitive_path: +3.5 → quarantine
+T+0s   read .env                              → sensitive-path-heuristic: +3.5 → quarantine
        (approved with "learn")
 T+2s   read .env                              → trust applied      → allow
 T+5s   read .env                              → trust applied      → allow
 T+10s  open socket to api.example.com         → ...
                                                 taint: +3.0  (recent sensitive read)
-                                                dlp_gate: +4 (payload contains AWS key shape)
+                                                dlp-gate: +4 (payload contains AWS key shape)
                                                 composite: 9.5 → DENY
 ```
 
