@@ -121,49 +121,33 @@ Available globally inside `.mdx` files. Registered in `src/components/mdx/index.
 
 ## Design System
 
-Shared visual language with grith-website. The docs site should feel like a seamless extension of the marketing site. Tokens defined in `src/app/globals.css`.
+Shared visual language with grith-website. The docs site should feel like a seamless extension of the marketing site.
+
+### Canonical theme (do not restyle by hand)
+
+The single source of truth for tokens and fonts is grith-website `packages/theme`. This repo carries verbatim copies in `src/theme/grith-theme.css` and `src/theme/grith-fonts.css` (each has a GENERATED header naming the source commit - re-copy from the website repo to update, never hand-edit; they are prettier-ignored to stay byte-identical). `src/app/globals.css` imports both and layers docs-only rules (`.prose-docs`, Pagefind theming, scrims) on top using `var(--g-*)` custom properties.
+
+- **Dual theme, dark default.** `data-theme` on `<html>` selects the palette; the inline FOUC guard (`src/lib/theme-script.ts`, rendered by `ThemeScript` in the root layout) resolves localStorage `grith-theme` -> `prefers-color-scheme` -> dark before first paint. `ThemeToggle` lives in the Header.
+- **Code panels are fixed dark in both themes** (`--g-code-*` tokens are intentionally not overridden by the light theme).
+- All colour values live in `src/theme/grith-theme.css` - consult it rather than any hex table here. Accent green is `--g-accent` (`#00e5a0` dark / `#00a870` light).
 
 ### Typography
 
-| Role               | Font           | Weight          | Notes                       |
-| ------------------ | -------------- | --------------- | --------------------------- |
-| Display & Headings | Inter          | 800 (ExtraBold) | Tracking −0.04em            |
-| Body               | Inter          | 400 (Regular)   | Line-height 1.6–1.8         |
-| Code & Terminal    | JetBrains Mono | 400             |                             |
-| Labels & System UI | JetBrains Mono | 400             | Uppercase, tracking 0.12em  |
+| Role               | Font          | Token            |
+| ------------------ | ------------- | ---------------- |
+| Display & Headings | Space Grotesk | `--font-heading` |
+| Body               | IBM Plex Sans | `--font-body`    |
+| Code & Terminal    | IBM Plex Mono | `--font-code`    |
+| Labels & System UI | IBM Plex Mono | `--font-label`   |
 
-Fonts are loaded from Google Fonts in `globals.css`. The earlier spec for Manrope / IBM Plex Sans / DM Mono was superseded — Inter matches grith.ai exactly.
-
-### Colour Palette (light theme only)
-
-| Token          | Hex       | Usage                              |
-| -------------- | --------- | ---------------------------------- |
-| Green primary  | `#00a85a` | Links, active sidebar, CTAs        |
-| Green dark     | `#008548` | Hover states                       |
-| Green light    | `#e6f9ef` | Callout / badge backgrounds        |
-| Green border   | `#b4e6cc` | Callout / badge borders            |
-| Background     | `#fafaf8` | Warm off-white page background     |
-| Background dk  | `#0d1117` | Terminal / footer background       |
-| Surface        | `#f4f3f0` | Sidebar, cards, neutral panels     |
-| Surface 2      | `#eceae6` | Hover states, nested panels        |
-| Border         | `#e2e0db` | Dividers, card borders             |
-| Border dark    | `#d0cec8` | Hover/active borders               |
-| Text primary   | `#0d1117` | Body text, headings                |
-| Text secondary | `#57606a` | Descriptions, breadcrumbs          |
-| Text dim       | `#8b949e` | Labels, metadata                   |
-| Warning        | `#bf8700` | Callout (warning)                  |
-| Danger         | `#d1242f` | Callout (danger)                   |
-| Info           | `#0969da` | Callout (info), Pro badge          |
-| Purple         | `#8250df` | Enterprise badge                   |
-| Terminal text  | `#e6edf3` | Code text on terminal bg           |
-| Terminal mute  | `#7d8590` | Comments / muted output in terminal|
+Fonts are self-hosted woff2 in `public/fonts/` with `@font-face` rules in `src/theme/grith-fonts.css`. No Google Fonts, no external font loading.
 
 ### Layout
 
 Three-column layout on desktop:
 
 - **Sidebar** (260px, left) — Collapsible navigation tree. Active item: green left border + green text + green-light background.
-- **Content** (max-width 720px, centre) — Prose area in Inter body text. Line-height 1.8 for readability.
+- **Content** (max-width 720px, centre) — Prose area in IBM Plex Sans body text. Line-height 1.8 for readability.
 - **Table of Contents** (200px, right) — Sticky heading navigation, highlights current section on scroll.
 
 Responsive: Sidebar collapses to drawer on mobile (`<lg`). TOC drops above content on tablet.
@@ -178,7 +162,7 @@ Matches grith.ai. A reader moving from the marketing site to the docs site shoul
 - **Developer-first, human** — write for engineers. Dry humour welcome. No exclamation marks.
 - **Show, don't claim** — real config snippets, real command output, real scores. Mock data is allowed but should look real.
 
-Light theme throughout. Hexagonal lattice motif for the logo and large illustrations. Green used sparingly for links, active states, and CTAs.
+Dark theme by default with a light theme behind the toggle. Hexagonal lattice motif for the logo and large illustrations. Green used sparingly for links, active states, and CTAs. No em dashes in new copy - use ` - ` instead.
 
 ## Performance Targets
 
