@@ -155,24 +155,6 @@
           "type": "float"
         },
         {
-          "default": 0,
-          "description": null,
-          "name": "cold_start_calls",
-          "type": "integer"
-        },
-        {
-          "default": 10.0,
-          "description": null,
-          "name": "cold_start_escalation_high",
-          "type": "float"
-        },
-        {
-          "default": 2.0,
-          "description": null,
-          "name": "cold_start_escalation_low",
-          "type": "float"
-        },
-        {
           "default": 300,
           "description": "auto-deny queued calls after 5 minutes",
           "name": "review_timeout_seconds",
@@ -180,6 +162,18 @@
         }
       ],
       "path": "proxy"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": true,
+          "description": "Work item 68: destructive-action coverage. Hard-denies catastrophic host/storage destruction (mkfs, dd-to-device, wipefs, rm --no-preserve-root, recursive removal of a system root or database data directory) and escalates destructive operations directed at production (prod DB endpoints, or prod/production/live-tagged resources) from QUEUE to DENY. Non-production destructive ops QUEUE; scoped dev operations (rm -rf of project dirs, single-object staging deletes, read-only queries) are not flagged. ON by default — this is the coverage behind grith's \"blocks the destructive step\" claim. Set false to disable the whole filter.",
+          "name": "enabled",
+          "type": "boolean"
+        }
+      ],
+      "path": "proxy.destructive_action"
     },
     {
       "description": null,
@@ -401,7 +395,7 @@
       "keys": [
         {
           "default": true,
-          "description": "Gate the rate_limit filter's volume penalties (burst/per-minute/approaching) on per-op risk, so a burst of untainted routine file churn (~/.cache, .git/ internals, build outputs) never escalates. The supervisor's target-aware mass-destruction signal backfills the one case this drops (an untainted destructive spree). See work/futurework/rate-limit-burst-redesign.md.  ON by default (rollout step 4). Setting this false restores the legacy frequency-blind burst counter and also forfeits the scratch/~/.cache/.git exemptions (retired in favour of this gate) — expect routine-churn prompts.",
+          "description": "Gate the rate-limit filter's volume penalties (burst/per-minute/approaching) on per-op risk, so a burst of untainted routine file churn (~/.cache, .git/ internals, build outputs) never escalates. The supervisor's target-aware mass-destruction signal backfills the one case this drops (an untainted destructive spree). See work/futurework/rate-limit-burst-redesign.md.  ON by default (rollout step 4). Setting this false restores the legacy frequency-blind burst counter and also forfeits the scratch/~/.cache/.git exemptions (retired in favour of this gate) — expect routine-churn prompts.",
           "name": "risk_gated_burst",
           "type": "boolean"
         }
@@ -421,6 +415,12 @@
           "default": true,
           "description": "Data-flow taint-on-spawn (PR 2). Default ON (FP research §5.2): the legacy \"any session taint → +3.0 on every spawn/connect\" flagged read-credential-then-use-credential (~/.npmrc → npm, ~/.kube/config → kubectl). The data-flow rule still catches genuine exfil.",
           "name": "taint_data_flow_only",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Narrow condition 4 of the data-flow taint rule (FP §5.2). When true, an outbound-capable binary under taint (`git push`, `aws s3 ls`, `npm publish`) only fires when the spawn actually references the tainted data (argv path/env, pipe/redirect, shell-pattern) — not merely because a credential was read earlier and the tool is outbound-capable. Genuine exfil still fires via conditions 1–3/5, and outbound-to-untrusted-destination is scored by egress. Set false to restore the standalone outbound-binary fire.",
+          "name": "taint_outbound_requires_data_flow",
           "type": "boolean"
         }
       ],
@@ -562,6 +562,12 @@
           "type": "string"
         },
         {
+          "default": 0,
+          "description": "Seconds to keep running after the daemon stops accounting for this session (it answered a heartbeat with \"I am not tracking you\" — usually because it restarted while at its session cap). 0 = never terminate: the session keeps running with a loud warning and you decide. Terminating by default would destroy in-progress agent work over a daemon-side event you did not cause. Set a positive value in CI, where nobody is watching the warning.",
+          "name": "authority_lost_terminate_after_seconds",
+          "type": "integer"
+        },
+        {
           "default": "generic",
           "description": null,
           "name": "default_profile",
@@ -593,6 +599,12 @@
         },
         {
           "default": false,
+          "description": "H2 Option 1 (IPC-delegated authority): enforce PTY ownership. When false (default), writes to a /dev/pts/N that is NOT the supervised tool's own controlling terminal are detected and forensically logged (event = \"foreign_pts_write\") but still allowed — audit-only, to measure the false-positive budget. Set true to DENY them (the `echo cmd > /dev/pts/<other pane>` IPC-injection vector). See work/futurework/ipc-delegated-authority-escape.md.",
+          "name": "pty_ownership_enforce",
+          "type": "boolean"
+        },
+        {
+          "default": false,
           "description": null,
           "name": "require_sandbox",
           "type": "boolean"
@@ -604,10 +616,88 @@
       "description": null,
       "keys": [
         {
+          "default": false,
+          "description": "A proxy-owned upstream socket can have network access the tracee lacks due to cgroups, firewall owner rules, SO_MARK/SO_BINDTODEVICE, or policy routing. Set true only after that authority difference is explicitly reviewed and accepted or equivalently contained. The proxy refuses to start otherwise.",
+          "name": "accept_proxy_network_authority",
+          "type": "boolean"
+        },
+        {
           "default": true,
-          "description": null,
+          "description": "Deny TCP-DNS, forcing resolution onto the inspected UDP path. TCP-DNS can't be content-inspected (its query/response ride write()/read(), the hottest syscalls, deliberately not intercepted), so leaving it enabled would let a tool bypass query blocking over TCP. The rare cost is a lookup whose answer exceeds EDNS0-UDP size failing (modern resolvers use EDNS0 UDP up to 4 KB, so TCP fallback is seldom needed); such a case surfaces as a visible deny. Set false to allow TCP-DNS uninspected. Default on.",
+          "name": "block_tcp_dns",
+          "type": "boolean"
+        },
+        {
+          "default": false,
+          "description": "Canary path for connected UDP/53 sockets whose query/response use plain write()/read() and are therefore invisible to in-line inspection. Off until the Phase 0 resolver, namespace, race, lifecycle, and performance gates pass.",
+          "name": "connected_udp_proxy",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "In-line DNS inspection (Linux). Discovers connected and unconnected UDP DNS destinations, parses every sendto/sendmsg/sendmmsg query before send, and lets allowed queries reach the machine's real resolver untouched. Malformed port-53 payloads fail closed. DoT (port 853) is denied.",
           "name": "enabled",
           "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Observe DNS responses to populate the exact IP->domain cache the egress / reputation filters use. This promotes tracked recvfrom/recvmsg/recvmmsg calls to catch their exits (one tightly-scoped PTRACE_SYSCALL step per DNS receive). Query blocking does not depend on this. Default on.",
+          "name": "observe_responses",
+          "type": "boolean"
+        },
+        {
+          "default": 256,
+          "description": null,
+          "name": "proxy_control_capacity",
+          "type": "integer"
+        },
+        {
+          "default": 4096,
+          "description": "Bound the proxy data plane. Oversized responses fail explicitly rather than being silently truncated.",
+          "name": "proxy_max_response_bytes",
+          "type": "integer"
+        },
+        {
+          "default": 128,
+          "description": null,
+          "name": "proxy_policy_capacity",
+          "type": "integer"
+        },
+        {
+          "default": 1000,
+          "description": null,
+          "name": "proxy_policy_timeout_ms",
+          "type": "integer"
+        },
+        {
+          "default": 1024,
+          "description": null,
+          "name": "proxy_query_capacity",
+          "type": "integer"
+        },
+        {
+          "default": "refuse",
+          "description": "QUEUE-range policy decisions from either DNS inspection owner (the in-line sendto/sendmsg path and the connected-UDP proxy) enqueue review but refuse the current lookup. \"forward\" is an explicit compatibility mode which permits DNS before review and must not be used for complete-enforcement claims.",
+          "name": "proxy_queue_action",
+          "type": "string"
+        },
+        {
+          "default": 256,
+          "description": null,
+          "name": "proxy_route_capacity",
+          "type": "integer"
+        },
+        {
+          "default": 2000,
+          "description": "Bounds route-task draining; the owning thread is always joined afterward.",
+          "name": "proxy_shutdown_timeout_ms",
+          "type": "integer"
+        },
+        {
+          "default": 5000,
+          "description": null,
+          "name": "proxy_upstream_timeout_ms",
+          "type": "integer"
         }
       ],
       "path": "supervisor.dns_inspection"
