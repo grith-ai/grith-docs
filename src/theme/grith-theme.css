@@ -98,7 +98,7 @@
 /* Light theme overrides                                              */
 /* ------------------------------------------------------------------ */
 
-:root[data-theme='light'] {
+:root[data-theme="light"] {
   --g-bg: #f5f7f6;
   --g-surface: #ffffff;
   --g-surface-2: #fafbfa;
@@ -185,10 +185,10 @@
   --color-terminal-dot: var(--g-code-dot);
 
   /* Fonts (self-hosted, see grith-fonts.css) */
-  --font-heading: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-code: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
-  --font-label: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --font-heading: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-code: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-label: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
 
   /* Radii (handoff section 2.3) */
   --radius-btn: 8px; /* buttons, small chips */
