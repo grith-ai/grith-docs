@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { slugify } from '@/lib/mdx';
 import Callout from './Callout';
+import HighlightedPre from './HighlightedPre';
 import Tabs from './Tabs';
 import Terminal from './Terminal';
 import CodeBlock from './CodeBlock';
@@ -47,6 +48,7 @@ export const mdxComponents = {
   h2: createHeading(2),
   h3: createHeading(3),
   h4: createHeading(4),
+  pre: HighlightedPre,
   Callout,
   Tabs,
   Terminal,
