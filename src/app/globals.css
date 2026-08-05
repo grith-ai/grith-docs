@@ -1,61 +1,44 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
+@import '../theme/grith-theme.css';
+@import '../theme/grith-fonts.css';
 
-@theme inline {
-  --color-green: #00a85a;
-  --color-green-dark: #008548;
-  --color-green-light: #e6f9ef;
-  --color-green-border: #b4e6cc;
-  --color-bg: #fafaf8;
-  --color-bg-dark: #0d1117;
-  --color-surface: #f4f3f0;
-  --color-surface-2: #eceae6;
-  --color-border: #e2e0db;
-  --color-border-dark: #d0cec8;
-  --color-text: #0d1117;
-  --color-text-secondary: #57606a;
-  --color-text-dim: #8b949e;
-  --color-warning: #bf8700;
-  --color-warning-light: #fff8e1;
-  --color-warning-border: #eed28b;
-  --color-danger: #d1242f;
-  --color-danger-light: #fef1f2;
-  --color-danger-border: #f5c6c9;
-  --color-info: #0969da;
-  --color-info-light: #edf5ff;
-  --color-info-border: #b6d4fe;
-  --color-purple: #8250df;
-  --color-purple-light: #f3eeff;
+/*
+ * Design tokens and fonts come from the canonical Grith theme, copied from
+ * grith-website packages/theme (see src/theme/ - generated, do not hand-edit).
+ * Dark is the default theme; ThemeScript in the root layout sets data-theme
+ * on <html> before first paint (FOUC guard).
+ *
+ * Note: grith-theme.css maps Tailwind tokens via `@theme inline`, which does
+ * NOT emit runtime --color- / --font- custom properties. Hand-authored rules
+ * below therefore use the raw var(--g-*) properties (theme-reactive) and
+ * build-time theme() resolution for fonts and radii.
+ */
 
-  --font-heading: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-code: 'JetBrains Mono', ui-monospace, monospace;
-  --font-label: 'JetBrains Mono', ui-monospace, monospace;
+/* color-scheme follows the theme - grith-theme.css sets tokens only */
+:root {
+  color-scheme: dark;
+}
 
-  --color-terminal-bg: #0d1117;
-  --color-terminal-text: #e6edf3;
-  --color-terminal-border: #21262d;
-  --color-terminal-muted: #7d8590;
-  --color-terminal-subtle: #8b949e;
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 
 html {
-  background-color: #fafaf8 !important;
-  color-scheme: light only !important;
+  background-color: var(--g-bg);
 }
 
 body {
-  background-color: #fafaf8 !important;
-  color: #0d1117 !important;
-  font-family: var(--font-body);
+  background-color: var(--g-bg);
+  color: var(--g-text);
+  font-family: theme(--font-body);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background-color: rgba(0, 168, 90, 0.15);
-  color: #0d1117;
+  background-color: var(--g-accent-tint-border);
+  color: var(--g-text);
 }
 
 ::-webkit-scrollbar {
@@ -63,21 +46,31 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-surface);
+  background: var(--g-surface);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border-dark);
+  background: var(--g-border-strong);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-dim);
+  background: var(--g-muted);
 }
 
-/* Prose typography for MDX content */
+/* Dropdown / dialog page scrim (spec section 11): darker page scrim instead
+   of a shadow. Dark theme default; light override below. */
+.search-scrim {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme='light'] .search-scrim {
+  background-color: rgba(13, 21, 18, 0.2);
+}
+
+/* Prose typography for MDX content - theme-reactive via var(--g-*) */
 .prose-docs {
-  color: var(--color-text-secondary);
+  color: var(--g-muted);
   line-height: 1.8;
   font-size: 1.0625rem;
 }
@@ -87,42 +80,42 @@ body {
 }
 
 .prose-docs h1 {
-  font-family: var(--font-heading);
-  font-weight: 800;
+  font-family: theme(--font-heading);
+  font-weight: 600;
   font-size: 2rem;
-  letter-spacing: -0.5px;
-  color: var(--color-text);
+  letter-spacing: -0.02em;
+  color: var(--g-text);
   margin-top: 0;
   margin-bottom: 0.5em;
   line-height: 1.15;
 }
 
 .prose-docs h2 {
-  font-family: var(--font-heading);
-  font-weight: 800;
+  font-family: theme(--font-heading);
+  font-weight: 600;
   font-size: 1.75rem;
-  letter-spacing: -0.5px;
-  color: var(--color-text);
+  letter-spacing: -0.02em;
+  color: var(--g-text);
   margin-top: 3.5em;
   margin-bottom: 0.75em;
   line-height: 1.2;
 }
 
 .prose-docs h3 {
-  font-family: var(--font-heading);
-  font-weight: 700;
+  font-family: theme(--font-heading);
+  font-weight: 600;
   font-size: 1.25rem;
   letter-spacing: -0.02em;
-  color: var(--color-text);
+  color: var(--g-text);
   margin-top: 2em;
   margin-bottom: 0.5em;
 }
 
 .prose-docs h4 {
-  font-family: var(--font-heading);
-  font-weight: 700;
+  font-family: theme(--font-heading);
+  font-weight: 600;
   font-size: 1.1rem;
-  color: var(--color-text);
+  color: var(--g-text);
   margin-top: 1.75em;
   margin-bottom: 0.5em;
 }
@@ -130,10 +123,11 @@ body {
 .prose-docs p {
   margin-top: 1.25em;
   margin-bottom: 1.25em;
+  text-wrap: pretty;
 }
 
 .prose-docs a {
-  color: var(--color-green);
+  color: var(--g-accent-text);
   text-decoration: none;
   font-weight: 500;
   transition: color 0.15s;
@@ -144,7 +138,7 @@ body {
 }
 
 .prose-docs strong {
-  color: var(--color-text);
+  color: var(--g-text);
   font-weight: 600;
 }
 
@@ -169,35 +163,37 @@ body {
 }
 
 .prose-docs li::marker {
-  color: var(--color-text-dim);
+  color: var(--g-faint);
 }
 
 .prose-docs blockquote {
-  border-left: 3px solid var(--color-green);
+  border-left: 3px solid var(--g-accent);
   padding: 4px 0 4px 20px;
   margin-left: 0;
-  color: var(--color-text-secondary);
+  color: var(--g-muted);
   font-style: italic;
 }
 
 .prose-docs code {
-  font-family: var(--font-code);
+  font-family: theme(--font-code);
   font-size: 0.875em;
-  color: var(--color-text);
-  background-color: var(--color-surface-2);
+  color: var(--g-text);
+  background-color: var(--g-surface-2);
   padding: 2px 7px;
   border-radius: 4px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--g-border);
 }
 
+/* Code blocks keep the fixed dark code palette in both themes; only the
+   border follows the page theme (per the mock) */
 .prose-docs pre {
-  background-color: var(--color-terminal-bg);
-  border-radius: 8px;
+  background-color: var(--g-code-bg);
+  border: 1px solid var(--g-border);
+  border-radius: theme(--radius-code);
   padding: 1em 1.25em;
   overflow-x: auto;
   margin-top: 1.5em;
   margin-bottom: 1.5em;
-  box-shadow: 0 0 0 1px rgba(0, 168, 90, 0.15), 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
 .prose-docs pre code {
@@ -205,13 +201,13 @@ body {
   border: none;
   padding: 0;
   font-size: 0.875rem;
-  color: var(--color-terminal-text);
+  color: var(--g-code-text);
   line-height: 1.7;
 }
 
 .prose-docs hr {
   border: none;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--g-border);
   margin: 2.5em 0;
 }
 
@@ -224,16 +220,20 @@ body {
 }
 
 .prose-docs th {
-  font-weight: 600;
-  color: var(--color-text);
+  font-family: theme(--font-label);
+  font-weight: 500;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--g-faint);
   text-align: left;
   padding: 0.625em 1em;
-  border-bottom: 2px solid var(--color-border);
+  border-bottom: 1px solid var(--g-border);
 }
 
 .prose-docs td {
   padding: 0.625em 1em;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--g-border);
 }
 
 .prose-docs img {
@@ -247,4 +247,73 @@ body {
 .prose-docs h3[id],
 .prose-docs h4[id] {
   scroll-margin-top: 5rem;
+}
+
+/*
+ * Pagefind UI theming (DS4). Pagefind's stylesheet reads these custom
+ * properties at runtime, so pointing them at var(--g-*) makes the search
+ * dialog follow the active theme automatically in both directions.
+ */
+:root {
+  --pagefind-ui-scale: 0.9;
+  --pagefind-ui-primary: var(--g-accent-text);
+  --pagefind-ui-text: var(--g-text);
+  --pagefind-ui-background: var(--g-surface);
+  --pagefind-ui-border: var(--g-border);
+  --pagefind-ui-tag: var(--g-surface-2);
+  --pagefind-ui-border-width: 1px;
+  --pagefind-ui-border-radius: 8px;
+  --pagefind-ui-image-border-radius: 8px;
+  --pagefind-ui-image-box-shadow: none;
+  --pagefind-ui-font: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Scoped fallback overrides for the pieces Pagefind's own variables cannot
+   reach (result meta text, highlight marks, load-more button). */
+.pagefind-ui .pagefind-ui__search-input {
+  background-color: var(--g-bg);
+  color: var(--g-text);
+  border: 1px solid var(--g-border);
+  font-weight: 400;
+}
+
+.pagefind-ui .pagefind-ui__search-input::placeholder {
+  color: var(--g-faint);
+  opacity: 1;
+}
+
+.pagefind-ui .pagefind-ui__search-clear {
+  color: var(--g-muted);
+  background-color: transparent;
+}
+
+.pagefind-ui .pagefind-ui__result {
+  border-color: var(--g-border);
+}
+
+.pagefind-ui .pagefind-ui__result-title,
+.pagefind-ui .pagefind-ui__result-link {
+  color: var(--g-accent-text);
+}
+
+.pagefind-ui .pagefind-ui__result-excerpt,
+.pagefind-ui .pagefind-ui__message {
+  color: var(--g-muted);
+}
+
+.pagefind-ui .pagefind-ui__result-excerpt mark {
+  background-color: var(--g-accent-tint-border);
+  color: var(--g-text);
+  border-radius: 2px;
+}
+
+.pagefind-ui .pagefind-ui__button {
+  background-color: transparent;
+  color: var(--g-text);
+  border: 1px solid var(--g-border);
+}
+
+.pagefind-ui .pagefind-ui__button:hover {
+  border-color: var(--g-border-strong);
+  background-color: var(--g-surface);
 }

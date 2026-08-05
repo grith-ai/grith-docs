@@ -9,7 +9,7 @@ interface SearchDialogProps {
 
 // Loads the Pagefind UI on demand. Pagefind is only present after `npm run build`
 // (via the postbuild step). In `npm run dev`, the dialog opens but shows
-// "search not available — run `npm run build` first".
+// "search not available - run `npm run build` first".
 export default function SearchDialog({ open, onClose }: SearchDialogProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initRef = useRef(false);
@@ -32,7 +32,7 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
 
     const init = async () => {
       try {
-        // @ts-expect-error — runtime-loaded ESM, no types
+        // @ts-expect-error - runtime-loaded ESM, no types
         const mod = await import(/* webpackIgnore: true */ '/pagefind/pagefind-ui.js');
         const PagefindUI = mod.PagefindUI ?? mod.default?.PagefindUI ?? mod.default;
         if (containerRef.current && PagefindUI) {
@@ -66,21 +66,21 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center bg-text/30 p-4 backdrop-blur-sm"
+      className="search-scrim fixed inset-0 z-[60] flex items-start justify-center p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="mt-24 w-full max-w-2xl rounded-lg border border-border bg-bg shadow-2xl"
+        className="rounded-card border-border bg-surface mt-24 w-full max-w-2xl border"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-border px-4 py-2 font-label text-[10px] uppercase tracking-[0.18em] text-text-dim">
+        <div className="border-border font-label text-text-dim border-b px-4 py-2 text-[10px] font-medium tracking-[0.1em] uppercase">
           Search docs · Esc to close
         </div>
         {unavailable ? (
-          <div className="p-6 text-sm text-text-secondary">
+          <div className="text-text-secondary p-6 text-sm">
             Search index not available. Run <code className="font-code">npm run build</code> to
             generate the Pagefind index, or visit the deployed site at{' '}
-            <a href="https://docs.grith.ai" className="text-green">
+            <a href="https://docs.grith.ai" className="text-accent-text">
               docs.grith.ai
             </a>
             .
