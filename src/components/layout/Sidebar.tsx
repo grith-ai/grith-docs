@@ -41,7 +41,7 @@ export default function Sidebar({
         <div key={section.slug}>
           <button
             onClick={() => toggle(section.slug)}
-            className="flex w-full items-center justify-between px-4 py-2 font-label text-[10px] uppercase tracking-[0.12em] text-text-dim transition-colors hover:text-text-secondary"
+            className="font-label text-text-dim hover:text-text-secondary flex w-full items-center justify-between px-4 py-2 text-[10px] font-medium tracking-[0.1em] uppercase transition-colors"
           >
             {section.label}
             <svg
@@ -62,10 +62,11 @@ export default function Sidebar({
                   <Link
                     href={`/docs/${doc.slug}`}
                     onClick={onClose}
+                    aria-current={isActive(doc.slug) ? 'page' : undefined}
                     className={`flex items-center gap-2 border-l-2 px-4 py-1.5 text-sm transition-colors ${
                       isActive(doc.slug)
-                        ? 'border-green bg-green-light font-medium text-green-dark'
-                        : 'border-transparent text-text-secondary hover:border-border hover:text-text'
+                        ? 'border-green bg-green-light text-accent-text font-medium'
+                        : 'text-text-secondary hover:border-border hover:text-text border-transparent'
                     }`}
                   >
                     <span className="truncate">{doc.title}</span>
@@ -86,11 +87,11 @@ export default function Sidebar({
       {/* Mobile overlay */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-text/20 backdrop-blur-sm lg:hidden"
+          className="search-scrim fixed inset-0 z-40 backdrop-blur-sm lg:hidden"
           onClick={onClose}
         >
           <aside
-            className="h-full w-[280px] overflow-y-auto border-r border-border bg-bg"
+            className="border-border bg-bg h-full w-[280px] overflow-y-auto border-r"
             onClick={(e) => e.stopPropagation()}
           >
             {nav}
@@ -99,7 +100,7 @@ export default function Sidebar({
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-[260px] shrink-0 overflow-y-auto border-r border-border bg-bg lg:block">
+      <aside className="border-border bg-bg hidden w-[260px] shrink-0 overflow-y-auto border-r lg:block">
         <div className="sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto">{nav}</div>
       </aside>
     </>
