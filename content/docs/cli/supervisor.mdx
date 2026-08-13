@@ -65,9 +65,11 @@ hangs after `--attach` and you can't reach its TUI.
 
 ## Daemon requirement
 
-These commands require the daemon to be running (so it has the session registry). If
-no daemon is running and you have standalone `grith exec` invocations, each runs in
-its own process; use `ps` to find them and signal them directly.
+These commands read the daemon's session registry, so the daemon has to be running.
+Every `grith exec` runs against the daemon — auto-starting one when none is running —
+so all active sessions are registered there. There is no standalone, per-process mode:
+if no trusted daemon can be established, `grith exec` fails closed and starts nothing.
+Start a daemon explicitly if you want one that outlives the session:
 
 ```
 grith daemon start

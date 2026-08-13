@@ -62,9 +62,10 @@ With this config, no calls to grith.ai or any external service happen.
 
 ## v2.0 air-gapped Enterprise (planned)
 
-- **Offline license activation** — license files signed by grith.ai release key,
-  importable via `grith pro activate <license.signed>`. Validates locally; no
-  network round-trip.
+- **Offline license activation** — license files signed by grith.ai's release
+  key, imported locally with no network round-trip. (Today, `grith pro activate`
+  fetches a fresh license from grith.ai and therefore needs connectivity; offline
+  file import is planned for the air-gapped Enterprise release.)
 - **Bundled policy artefacts** — sign the policy bundle and copy it to each
   device manually; no live dashboard required.
 - **Air-gapped update channel** — signed tarballs distributed by the operator;
@@ -79,7 +80,7 @@ When v2.0 ships air-gapped Enterprise:
 1. Generate an offline license bundle on the dashboard (admin action).
 2. Transfer the bundle to each device via your existing transfer mechanism
    (USB, mirrored repo, etc.).
-3. Run `grith pro activate ./bundle.signed` on each device.
+3. Import the transferred license bundle on each device.
 4. Disable update checks (`update_check = false`).
 
 ## See also

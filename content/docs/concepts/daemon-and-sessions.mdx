@@ -13,44 +13,46 @@ The simplest way to use grith is one-shot per session: `grith exec` spawns the a
 supervises it, exits when the agent exits. That works fine for a single terminal,
 single agent, single user.
 
-For everything else — multiple concurrent sessions, the dashboard, notification
-channels, team sync — there's the daemon. The daemon is a long-running grith process
-that owns the shared subsystems (audit, digest, reputation, server) and lets thin
-clients (each `grith exec` invocation) talk to them.
+A persistent daemon is what you run for everything else — multiple concurrent
+sessions, the dashboard, notification channels, team sync. The daemon is a
+long-running grith process that owns the shared subsystems (audit, digest,
+reputation, server) and lets thin clients (each `grith exec` invocation) talk to
+them. Even a lone `grith exec` uses a daemon: when you haven't started one, it
+auto-starts a throwaway daemon that shuts down when the session ends.
 
-## Daemon vs no daemon
+## Auto-started vs persistent daemon
 
-Without the daemon:
+Every `grith exec` runs against a daemon — the only question is whether it starts one
+for you or connects to one you already have running. There is no daemon-less mode: if a
+trusted, version-compatible daemon can't be established, `grith exec` fails closed and
+starts nothing.
 
-```
-grith exec -- claude
-```
-
-This:
-
-- Owns its own audit log file (under `~/.local/share/grith/audit/<session>.sqlite`).
-- Runs its own filter pipeline.
-- Reviews go through `grith digest review` on the same terminal, or via TUI signal.
-- No HTTP API exposed, no dashboard.
-
-With the daemon (`grith daemon start`):
+Auto-started (no daemon already running):
 
 ```
 grith exec -- claude
-# Detects the daemon, registers as a thin-client session
+# No daemon found → grith starts one in the background, then registers this session
 ```
 
-This:
+The daemon grith starts idle-shuts-down once the session ends. For the life of the
+session it still owns the shared subsystems — one audit database, one digest queue,
+one reputation table, one session registry.
 
-- Sends syscall events to the daemon over a UNIX socket.
-- Audit log is the daemon's central SQLite database.
-- Digest is the daemon's central queue, reviewable from any terminal or the
-  dashboard at `http://127.0.0.1:3141`.
+Persistent (`grith daemon start` first):
+
+```
+grith exec -- claude
+# Detects the running daemon, registers as a thin-client session
+```
+
+A persistent daemon outlives individual sessions, so:
+
+- The audit log is one central SQLite database across every session.
+- Digest is one central queue, reviewable from any terminal or the dashboard at
+  `http://127.0.0.1:3141`.
 - Notification channels (configured once in the daemon) deliver review prompts.
-- Reputation table is shared across all sessions.
-
-You can switch back and forth. A `grith exec` with no daemon running just falls back
-to standalone mode.
+- The reputation table is shared across all sessions.
+- Concurrent sessions register together and count against your plan's concurrent-session limit.
 
 ## What the daemon owns
 
@@ -62,8 +64,8 @@ to standalone mode.
 - The **license** — refreshed in-band on Pro plans.
 - The **canary registry** — same tokens visible to every session.
 
-A daemon restart drops in-flight digest items if it's running in standalone mode (the
-process freeze in the thin client times out and auto-denies). On the Pro plan,
+A daemon restart can drop in-flight digest items (the process freeze in the thin
+client times out and auto-denies). On the Pro plan,
 restarts are clean — the daemon flushes pending state to disk before stopping and
 recovers it on start.
 
@@ -106,13 +108,13 @@ the dashboard from another machine, or for a webhook receiver), either configure
 `[server.tls]` with cert + key, or run a reverse proxy in front. See
 [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
 
-## When you'd not run a daemon
+## When you'd not keep a persistent daemon
 
-- Single-user laptop, one terminal at a time, you're fine in standalone mode.
+- Single-user laptop, one terminal at a time — the daemon `grith exec` auto-starts is enough.
 - Containerised agents where each container is its own short-lived session.
 - CI runs where the agent runs once and exits.
 
-When you'd want a daemon:
+When you'd keep a persistent daemon:
 
 - More than one supervised session in flight.
 - You want the dashboard.

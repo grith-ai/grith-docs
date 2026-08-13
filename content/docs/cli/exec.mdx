@@ -85,11 +85,15 @@ grith exec --profile claude-code --zone dayjob -- claude
 
 ## What it does, in order
 
-1. Connects to the local daemon if one is running (thin-client mode). Otherwise runs
-   the filter pipeline in-process.
-2. `fork()` the target process; child sets up its own seccomp filter.
-3. `ptrace(PTRACE_SEIZE)` from the parent to attach without a stop.
-4. Child `execve()`s the target binary; the supervisor takes over.
+1. Connects to the local daemon, auto-starting one if none is running. If it cannot
+   establish a trusted, version-compatible daemon connection, `grith exec` fails closed:
+   it refuses to start the supervised session and exits non-zero. There is no in-process
+   or no-daemon fallback.
+2. `fork()` the target process. The child calls `ptrace(PTRACE_TRACEME)` to be traced
+   by the parent, then installs its own seccomp filter.
+3. Child `execve()`s the target binary, which raises a ptrace exec-stop.
+4. The parent catches the exec-stop, sets its ptrace options, resumes the child, and
+   the supervisor takes over.
 5. Every interesting syscall (configured set: file ops, exec, sockets, network) traps
    to the supervisor.
 6. The call shape is sent through the filter pipeline.

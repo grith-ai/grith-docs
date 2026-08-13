@@ -52,7 +52,7 @@ grith config reload     # if daemon running
 grith daemon stop && grith daemon start
 ```
 
-For standalone `grith exec` invocations, the next invocation picks up changes.
+If no persistent daemon is running, the next `grith exec` starts a fresh daemon that picks up the changes.
 
 ## Schema per file
 

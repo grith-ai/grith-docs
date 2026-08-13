@@ -10,7 +10,7 @@ editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/audi
 ---
 
 ```
-grith audit [list | show | export | exfil-stats]
+grith audit [diagnose | export | compact]
 ```
 
 The audit log is the persistent record of every decision grith made — including
@@ -20,51 +20,49 @@ auto-allows. It lives in a SQLite database under `~/.local/share/grith/audit/`.
 
 | Subcommand | What it does |
 | --- | --- |
-| (default) / `list` | Print recent events, newest first. |
-| `show <id>` | Full record for one event. |
-| `export --format json` | Dump records as JSON (stdout or file). |
-| `export --format csv` | Same, as CSV. |
-| `exfil-stats` | Aggregate exfiltration analytics over the recent window. |
-
-## Common queries
-
-```
-grith audit                      # last 50 events
-grith audit --limit 500          # last 500
-grith audit --session abc1234... # one session
-grith audit --decision deny      # only denials
-grith audit --since 1h           # last hour
-```
-
-`--since` accepts duration shorthand (`30s`, `15m`, `1h`, `7d`) or absolute ISO 8601
-timestamps.
+| `export --format json` | Dump every record as a JSON array (stdout; redirect to a file). |
+| `export --format csv` | Same records, as CSV. |
+| `diagnose` | Inspect the audit chain — verification outcome, forks, and gaps. Read-only, and works even when the chain is quarantined. |
+| `compact` | Reclaim free database pages left by retention pruning. Manual maintenance: rewrites and atomically swaps the audit database; the daemon must be stopped and the chain must not be quarantined. |
 
 ## Export
 
 ```
 grith audit export --format json > audit.json
-grith audit export --format csv --since 24h --output today.csv
+grith audit export --format csv > audit.csv
+grith audit export --format json --offset 1000 --limit 1000   # page through in batches
 ```
 
-JSON output is one record per array element. CSV uses a fixed column order
-documented in [Reporting & exports](/docs/pro/analytics-and-cost) for Pro analytics
-parity.
+JSON output is one record per array element. Paging is by `--offset` / `--limit`
+(default offset `0`, limit `1000`); there is no time or session filter on export —
+filter the emitted records downstream.
 
-## Exfil stats
+## Diagnose the audit chain
 
 ```
-grith audit exfil-stats
+grith audit diagnose
 ```
 
-Aggregates the recent window (last `EXFIL_STATS_RECENT_COUNT` events, default 500)
-into a small report:
+Read-only inspection of the tamper-evident audit chain. It reports the
+verification outcome and, if the chain is broken or forked, where the break is —
+including the sequence numbers involved. Unlike the other `audit` subcommands,
+`diagnose` still runs when the chain is quarantined (that is exactly when you need
+it), so it never refuses on a failed verification.
 
-- Most-frequent denied destinations
-- Most-frequent canary fires (if any)
-- Top destinations by data-volume estimate
-- Sessions with the most queue events
+## Compact the database
 
-Useful for the weekly review.
+```
+grith audit compact          # prompts for confirmation
+grith audit compact --yes    # skip the prompt (for scripts)
+```
+
+Reclaims free pages left behind by retention pruning: it rewrites the audit
+database into a fresh copy, verifies that copy's chain, and atomically swaps it in;
+on any failure the original is left untouched. This is a manual maintenance
+operation — it never runs on a timer. It needs exclusive write access, so **stop
+the daemon first** (`grith daemon stop`), and it refuses to run on a quarantined
+chain so evidence is preserved. On success it prints the on-disk and free-page
+bytes reclaimed.
 
 ## What a record looks like
 
@@ -94,14 +92,19 @@ allow/deny via review or timeout).
 
 ## Storage and retention
 
-The SQLite DB grows monotonically. Default retention is forever — no automatic
-cleanup. For storage-bounded deployments, tune:
+The active SQLite database keeps a bounded window of recent records and prunes
+older ones automatically. Retention is configured under `[audit]`:
 
 ```toml
-[general]
-audit_retention_days = 90        # delete events older than 90 days
-audit_max_db_mb     = 500        # cap DB size; oldest events drop first
+[audit]
+retain_full_days     = 30     # days kept in the active database (0 = keep all)
+cold_storage_enabled = true   # archive pruned records under audit/cold/ first
+prune_interval_hours = 24     # prune cadence (0 = prune once on startup only)
 ```
+
+Deleting rows does not shrink the SQLite file. Run `grith audit compact` to
+rewrite the database and reclaim the freed space — a manual operation that
+needs exclusive write access, so stop the daemon first (`grith daemon stop`).
 
 See [Logging & audit retention](/docs/ops/logging-and-audit-retention) for the trade-
 offs.

@@ -68,8 +68,8 @@ the v0.1 offline-leaning configuration.
 2. Generates a per-device license signed by grith.ai's release key.
 3. Transfers the license file to the target device via the customer's existing
    media-transfer mechanism (mirrored repo, signed USB, etc.).
-4. On the device: `grith pro activate ./license.signed`. Validates locally,
-   no network needed.
+4. On the device, import the transferred license file. Validation happens
+   locally against grith.ai's release signing key, with no network round-trip.
 
 License files include `valid_until`. For ongoing operation, customers cycle
 new license files in on schedule (typically monthly or quarterly).

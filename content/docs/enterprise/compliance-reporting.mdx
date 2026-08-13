@@ -59,7 +59,7 @@ Returns a signed bundle (JSON + CSV) downloadable via a one-time link.
 By default, audit data summaries are retained on the dashboard for **24 months**,
 sufficient for typical audit windows (12 months + lookback). Raw audit records
 stay on each developer's device (local SQLite, retention per
-[`general.audit_retention_days`](/docs/config/general)).
+[`audit.retain_full_days`](/docs/ops/logging-and-audit-retention)).
 
 For longer retention requirements, see [SIEM integration](/docs/enterprise/siem-integration)
 — SIEM platforms typically have longer retention by default.

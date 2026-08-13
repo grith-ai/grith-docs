@@ -9,9 +9,7 @@ lastUpdated: "2026-05-14"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/syscall-interception.mdx"
 ---
 
-grith intercepts every syscall an agent makes. That sentence does most of the work in
-this product. Everything else — the filters, the digest, the scoring — is downstream
-of being able to see and stop syscalls before they run.
+grith intercepts a curated set of security-relevant syscalls an agent makes — the file, process, and network operations that can grant or leak authority. High-volume calls like `read` and `write` are deliberately left alone (the access decision was already made at `open` time). That interception does most of the work in this product. Everything else — the filters, the digest, the scoring — is downstream of being able to see and stop those syscalls before they run.
 
 This page explains how that interception works on Linux x86_64 (the v0.1 supported
 target). macOS and Windows backends are different mechanisms with the same goal; see
@@ -40,9 +38,8 @@ grith exec --profile claude-code -- claude
 
 Behind the scenes:
 
-1. `fork()` a child process. The child immediately calls `prctl(PR_SET_PTRACER, ...)`
-   and waits.
-2. Parent calls `ptrace(PTRACE_SEIZE)` on the child to attach without stopping.
+1. `fork()` a child process.
+2. In the child, call `ptrace(PTRACE_TRACEME)` so the kernel traces it under the parent (grith). There is no `PTRACE_SEIZE` attach and no `PR_SET_PTRACER` dance on the shipped path.
 3. Child installs the seccomp-bpf filter (the "interesting syscalls" filter) via
    `seccomp(SECCOMP_FILTER_FLAG_TSYNC, ...)`.
 4. Child `execve()`s the target binary (claude in our example).
@@ -51,10 +48,11 @@ Behind the scenes:
    sends it through the filter pipeline.
 6. If filters auto-allow: grith resumes the syscall (`ptrace(PTRACE_SYSCALL, ...)`)
    and the call runs normally.
-7. If filters auto-deny: grith rewrites the syscall to a no-op (e.g. `getpid`) and
-   sets the return register to EACCES before resuming.
-8. If filters quarantine: the thread stays stopped (`PTRACE_INTERRUPT`) until a
-   reviewer decides.
+7. If filters auto-deny: grith rewrites the syscall number to an invalid value so the
+   kernel skips it, and sets the return register to `EPERM` before resuming.
+8. If filters quarantine: the thread is already held at its ptrace/seccomp syscall-stop,
+   so grith simply does not resume it until a reviewer decides. (No `PTRACE_INTERRUPT`
+   is issued, and the rest of the process tree keeps running.)
 
 This is a slightly simplified version of what's in `crates/grith-supervisor/`. The
 real code also handles PTY forwarding, signal forwarding, fork/clone tracking, and
@@ -77,12 +75,16 @@ The seccomp filter intercepts (approximately):
 
 - **File operations** — `open`, `openat`, `openat2`, `unlink`, `unlinkat`, `rename`,
   `renameat2`, `chmod`, `fchmod`, `fchmodat`.
-- **Process operations** — `execve`, `execveat`, `clone`, `fork`, `vfork`,
-  `prlimit64` (for memory caps), `kill`.
+- **Process operations** — `execve`, `execveat`, `clone`, `clone3`, `fork`.
 - **Network operations** — `socket`, `connect`, `bind`, `sendto`, `sendmsg`,
-  `getaddrinfo` (intercepted at the libc layer via a special hook in DNS-aware
-  builds).
-- **Memory protection** — `mprotect` with W^X violations (advisory; off by default).
+  `sendmmsg`, `recvfrom`, `recvmsg`. DNS is inspected **in-line at these syscalls**:
+  grith parses the DNS query out of the `connect`/`sendto`/`sendmsg` payload and reads
+  the resolver's reply at `recvfrom`/`recvmsg` exit. There is no `getaddrinfo` libc
+  hook — grith never touches libc and works purely at the syscall boundary.
+- **Kernel & privileged operations** — `init_module`, `finit_module`, `delete_module`,
+  `kexec_load` (kernel tampering — hard-denied); `io_uring_setup`/`io_uring_enter`/
+  `io_uring_register` (blocked so ring I/O can't bypass ptrace); `seccomp` and `prctl`
+  (so a tracee can't install its own filter to hide syscalls).
 
 Reads — `read`, `pread64` — are *not* in the interesting set by default, because the
 data flow has already been captured at the `open` time. Tracking every read would

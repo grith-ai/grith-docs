@@ -35,47 +35,42 @@ escape.
 ## Adding a canary
 
 ```
-grith canary add --format aws_secret \
-    --place ~/.aws/canary_creds \
-    --label "aws-canary"
+grith canary add --label "aws-canary" --value "AKIACANARY0EXAMPLE0NOTREAL"
 ```
 
 This:
 
-1. Generates a credential of the requested **format** that looks real (AWS access
-   key shape, GitHub PAT, SSH-flavoured RSA, etc).
-2. **Places** the credential at the path you specified.
-3. **Registers** its exact value in the canary detection set.
+1. **Registers** the value in the canary detection set (keyed by a generated id and
+   your label).
+2. **Prints** the id, label, and value so you can record them.
 
-Now, if any supervised process ever reads that file AND tries to send the contents
-out, the canary filter triggers DENY and records a high-severity audit event.
+`grith canary add` does not write any file. To turn a registered value into a
+decoy, copy it into a plausible location yourself — for example a fake
+`~/.aws/canary_creds`. Now, if any supervised process reads that file AND tries to
+send the contents out, the canary filter triggers DENY and records a
+high-severity audit event.
 
-Supported formats:
+Supplying the value:
 
-- `aws_secret`, `aws_access_key` — AWS-shaped IDs.
-- `gh_pat` — GitHub personal access token.
-- `slack_token` — `xoxb-...`-shaped.
-- `ssh_rsa` — fake RSA-formatted private key.
-- `generic_jwt` — JWT shape, signed nonsense.
-- `random_hex` — 40-char hex blob, for low-context places.
-- `custom` — provide your own value via `--value`.
-
-Each format is convincing enough to look real to an attacker scanning a filesystem,
-but obvious to anyone who decodes it (e.g. the AWS keys all start with a canary-only
-prefix in the registered string).
+- `--value "<literal>"` — register an exact string you provide. Use this to make a
+  convincingly shaped decoy (an AWS-key-shaped string, a `ghp_`-prefixed token, an
+  `xoxb-` Slack token, etc.).
+- `--generate` — register a random 48-character hex value instead. Good for
+  low-context places where the shape does not matter.
 
 ## Listing and rotating
 
 ```
 grith canary list
-grith canary rotate <id>
+grith canary rotate <id> --generate
 grith canary remove <id>
 ```
 
-Rotation generates a new token with the same format/label, updates the file in
-place, and updates the registration. Use this if you suspect a canary has been
-*leaked* (showed up in a paste, in a public log, etc.) — rotate to invalidate the
-old value while keeping the trap intact.
+Rotation replaces a canary's value while keeping its label and updates the
+registration; supply the new value with `--generate` or `--value <VALUE>`. Use this
+if you suspect a canary has been *leaked* (showed up in a paste, in a public log,
+etc.) — rotate to invalidate the old value while keeping the trap intact. If you
+placed the old value in a decoy file, update that file with the new value it prints.
 
 ## Where to place canaries
 

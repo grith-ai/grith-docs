@@ -36,7 +36,7 @@ Operational log rotation defaults: 10MB cap, 5 generations.
 
 ## Audit log
 
-The big one. Lives at `~/.local/share/grith/audit/*.sqlite`. Each record is
+The big one. Lives at `~/.local/share/grith/audit/audit.db`. Each record is
 ~200–500 bytes. A busy agent (~50 calls/minute) produces:
 
 | Window | Approx size |
@@ -49,36 +49,68 @@ The big one. Lives at `~/.local/share/grith/audit/*.sqlite`. Each record is
 
 ## Retention
 
-Default: **forever**. No automatic cleanup. Configure caps:
+Those figures are the raw rate at which records accumulate; the active database
+does not grow without bound, because grith prunes it on a schedule. The active
+audit database keeps a bounded window of recent records — older records are
+archived (when cold storage is enabled) and then deleted from the active
+database in a contiguous prune that preserves the audit chain's integrity.
+Retention lives under the `[audit]` section:
 
 ```toml
-[general]
-audit_retention_days = 90          # delete records older than 90 days
-audit_max_db_mb     = 500          # cap DB size; oldest events drop first
+[audit]
+retain_full_days     = 30     # days of records kept in the active database
+                              # (0 disables retention — keep everything)
+retain_compact_days  = 7      # reserved; the single hash chain currently
+                              # prunes on one cutoff, so this tracks
+                              # retain_full_days today
+cold_storage_enabled = true   # archive pruned records before deleting them
+prune_interval_hours = 24     # how often the prune runs (0 = once on startup)
 ```
 
-When both are set, whichever triggers first applies.
+The daemon prunes once on startup and then every `prune_interval_hours`. With
+`retain_full_days = 0`, nothing is ever pruned and the active database keeps
+every record.
 
-## Vacuuming
+## Cold archives
 
-SQLite databases don't reclaim space on row deletion until vacuumed. grith
-vacuums weekly by default; force a vacuum:
+When `cold_storage_enabled = true`, each prune first writes the records it is
+about to delete to
+`~/.local/share/grith/audit/cold/YYYY-MM-DD.jsonl.zst` — date-partitioned,
+zstd-compressed NDJSON — and only then removes them from the active database.
+The archive is written before the delete, so an interrupted prune leaves the
+records in both places rather than losing them.
+
+## Reclaiming disk space
+
+Deleting rows from SQLite does not shrink the database file: the freed pages go
+on an internal freelist and are reused by later writes, so the file can stay
+large after a prune. To rewrite the database and reclaim that space, run:
 
 ```
-grith audit vacuum
+grith audit compact
 ```
 
-Vacuum takes a write lock; expect 10–30s on a multi-GB DB. Run during low
-activity.
+`compact` rewrites the database into a fresh copy, verifies the copy's audit
+chain, and atomically swaps it in — on any failure the original is left
+untouched. It is a manual maintenance operation and never runs on a timer.
+Because it rewrites the file, it needs exclusive write access: stop the daemon
+first (`grith daemon stop`), and it refuses to run on a quarantined chain.
+
+To inspect the audit chain's integrity — the verification result and any forks
+or gaps — without modifying anything, use the read-only `grith audit diagnose`.
 
 ## Export and offload
 
-For long-term retention, export to cold storage and remove from the live DB:
+Export records for offline retention or ad-hoc analysis:
 
 ```
-grith audit export --since 60d --until 30d --format json > 2026-04.jsonl
-grith audit prune --until 30d
+grith audit export --format json > audit.jsonl
+grith audit export --format csv --offset 0 --limit 5000 > audit.csv
 ```
+
+`export` takes `--format` (`json` or `csv`), `--offset`, and `--limit`. Records
+removed by retention are already kept automatically in the cold archive
+described above, so there is no separate "prune to offload" step.
 
 Or stream to a SIEM continuously (Enterprise):
 [SIEM integration](/docs/enterprise/siem-integration).
@@ -104,9 +136,11 @@ Or stream to a SIEM continuously (Enterprise):
 }
 ```
 
-Sensitive content (file bytes, payload contents) is **not** stored by default.
-For forensic mode, `general.audit_include_content = true` captures bytes —
-high storage cost, only for security investigations.
+Sensitive content (file bytes, payload contents) is **not** stored — grith
+records the *fact* of each operation, never the data it moved. How much routine
+activity is recorded is controlled by `audit.completeness` (`decisions`,
+`spawns`, `io`, `all`); higher tiers record more events for forensics at the
+cost of database growth, but none of them capture file or payload bytes.
 
 ## Privacy
 

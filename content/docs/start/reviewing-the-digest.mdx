@@ -31,7 +31,7 @@ pipeline, and a single keystroke applies a decision. The keystrokes:
 | --- | ---------------- | -------------------------------------------------------------------------- |
 | `a` | approve          | Allow this call once.                                                      |
 | `l` | learn            | Allow + train reputation so similar future calls auto-allow.               |
-| `d` | deny             | Block this call. Process gets EACCES (or the syscall-appropriate failure). |
+| `d` | deny             | Block this call. Process gets EPERM (or the syscall-appropriate failure). |
 | `t` | deny + terminate | Block + kill the originating process tree. Use for clear exfil.            |
 | `u` | unlock-egress    | Approve and whitelist the destination for this session.                    |
 | `e` | escalate         | (Pro) route to a teammate or channel for second opinion.                   |

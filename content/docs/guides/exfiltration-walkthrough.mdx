@@ -25,9 +25,9 @@ mkdir -p /tmp/grith-exfil-test && cd /tmp/grith-exfil-test
 Plant a canary:
 
 ```
-grith canary add --format aws_secret \
-    --place ./fake-prod-creds \
-    --label "exfil-walkthrough"
+grith canary add --label "exfil-walkthrough" --value "AKIACANARY0EXFIL0WALK0NOTREAL"
+
+echo 'AWS_SECRET_ACCESS_KEY=AKIACANARY0EXFIL0WALK0NOTREAL' > ./fake-prod-creds
 ```
 
 Plant an env file with shaped credentials (the secret scanner will recognise

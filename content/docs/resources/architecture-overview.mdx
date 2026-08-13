@@ -65,9 +65,11 @@ it's invoked:
 - **CLI** — `grith digest review`, `grith audit`, etc. Short-lived. Talks
   to the daemon over the HTTP API.
 
-When no daemon is running, `grith exec` runs the filter pipeline in-process —
-no IPC. The audit DB and reputation table are then per-session rather than
-shared. Useful for one-off use; for anything multi-session, run the daemon.
+`grith exec` always talks to a daemon over IPC, auto-starting one when none is
+running (that daemon idle-shuts-down after the session). If a trusted daemon can't
+be established, `grith exec` fails closed and starts nothing — there is no
+in-process or no-daemon mode. For anything multi-session, keep a persistent daemon
+running so the audit database and reputation table are shared.
 
 ### Filter pipeline
 
@@ -105,12 +107,12 @@ Loopback-only by default. See [API overview](/docs/api/overview).
 2. Seccomp filter in the supervised process traps the syscall to the thin-client
    supervisor.
 3. Supervisor reads the syscall args, constructs a `ToolCallType` shape.
-4. Supervisor sends to daemon (or in-proc to filter pipeline if no daemon).
+4. Supervisor sends the call shape to the daemon over IPC.
 5. Filter pipeline runs Phase 1 → 2 → 3, emits composite score.
 6. Composite compared to thresholds → allow / queue / deny.
 7. Decision returns to supervisor.
 8. If allow: supervisor lets the syscall continue with `ptrace(PTRACE_SYSCALL)`.
-9. If deny: supervisor rewrites syscall to a no-op + sets return reg to EACCES.
+9. If deny: supervisor rewrites the syscall number so the kernel skips it + sets return reg to EPERM.
 10. If queue: supervisor leaves the thread in ptrace-stop until a decision arrives.
 11. Audit record is written regardless of decision.
 

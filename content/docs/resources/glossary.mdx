@@ -157,9 +157,9 @@ operations after a tainted read inherit increased score contribution. See
 
 ## Thin client
 
-A short-lived `grith exec` invocation that talks to the daemon over IPC
-rather than running the filter pipeline in-process. The "thin" refers to
-how little state the client owns — the daemon holds it.
+A short-lived `grith exec` invocation that talks to the daemon over IPC. The
+"thin" refers to how little state the client owns — the daemon holds it (the
+audit database, digest queue, reputation table, and session registry).
 
 ## Trust boundary
 

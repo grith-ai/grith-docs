@@ -128,9 +128,9 @@ machine. Pro analytics use summarised counts (not raw records) if you opt in.
 ### Can grith see my source code?
 
 It sees the *fact* of file reads (paths, sizes, timestamps), not the
-contents — unless `general.audit_include_content = true` is set (off by
-default). The model that's running inside your agent sees the content; that's
-between you and your provider.
+contents — grith never stores file or payload bytes in the audit log. The model
+that's running inside your agent sees the content; that's between you and your
+provider.
 
 ### What about my chat history with the model?
 

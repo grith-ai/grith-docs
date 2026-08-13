@@ -68,7 +68,7 @@ T+10s  open socket to api.example.com         → ...
 The agent could read `.env` freely (we approved it). But the moment the session tried
 to send data out, the taint filter remembered the read, the DLP gate confirmed
 credential-shaped content in the payload, and the call was denied. The agent never
-sees the deny as a clean error — its `send()` returns EACCES, but the credentials
+sees the deny as a clean error — its `send()` returns EPERM, but the credentials
 never left the box.
 
 ## Taint kinds and weights

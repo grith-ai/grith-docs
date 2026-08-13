@@ -75,7 +75,7 @@ guarantee grith makes.
 ## When a capability deny fires
 
 The audit log gets a `decision: deny, reason: capability` record. The originating
-process gets `EACCES` on the syscall. If notifications are configured, the
+process gets `EPERM` on the syscall. If notifications are configured, the
 capability deny is one of the events that escapes default rate-limiting (canaries
 are the other).
 

@@ -17,7 +17,7 @@ the prompts. A malicious README, a poisoned dependency, a clever prompt injectio
 suddenly the agent is reading your SSH keys or exfiltrating credentials, with you out
 of the loop.
 
-grith sits underneath the agent and intercepts every syscall before it runs.
+grith sits underneath the agent and intercepts the security-relevant syscalls it makes — the file, process, and network operations that can grant or leak authority — before they run.
 
 ## What grith does
 

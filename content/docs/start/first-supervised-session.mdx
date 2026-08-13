@@ -125,7 +125,7 @@ Press:
 - `a` to allow once and unfreeze the process.
 - `l` to allow + train the [reputation system](/docs/concepts/adaptive-reputation) so
   similar future reads auto-allow.
-- `d` to deny — the syscall returns EACCES, your `cat` prints "Permission denied", the
+- `d` to deny — the syscall returns EPERM, your `cat` prints "Operation not permitted", the
   shell continues.
 - `t` to deny + kill — the syscall is denied _and_ the bash process tree is
   terminated. Use this when something looks like exfil.
@@ -182,7 +182,7 @@ grith supervisor list
 ## What just happened, briefly
 
 1. `grith exec` spawned bash under ptrace.
-2. Every syscall in the supervised tree got routed through the 18-filter pipeline.
+2. Every security-relevant syscall in the supervised tree got routed through the 18-filter pipeline.
 3. Routine calls auto-allowed at under 15ms latency.
 4. Sensitive calls crossed the quarantine threshold and froze the process.
 5. You made a decision via the CLI; the process resumed accordingly.

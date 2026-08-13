@@ -33,10 +33,11 @@ calling process and asks**.
 
 ## Process freezing
 
-When a call lands in the queue, grith uses `ptrace(PTRACE_INTERRUPT)` to stop the
-calling thread before the syscall is committed. The thread sits there, frozen, with
-the syscall args staged in registers. It cannot proceed, but it also cannot fail —
-it's just paused.
+When a call lands in the queue, the calling thread is already held at its
+ptrace/seccomp syscall-stop — grith simply does not resume it, so the syscall is
+never committed. The thread sits there, paused, with the syscall args staged in
+registers. It cannot proceed, but it also cannot fail — it's just held. (Only the
+calling thread is held; the rest of the process tree keeps running.)
 
 That matters because:
 
@@ -49,7 +50,7 @@ That matters because:
   auto-denies.
 
 When a decision is made, the thread either runs the original syscall (approve) or
-returns it with EACCES / equivalent failure (deny).
+returns it with EPERM / equivalent failure (deny).
 
 ## What the reviewer sees
 
@@ -79,7 +80,7 @@ The reviewer can:
 - **Approve + unlock egress** — for network calls. Allows this destination for the
   rest of the session.
 - **Allow always** *(Pro)* — adds the call to a permanent allowlist. Sparingly.
-- **Deny** — block this call; the syscall returns EACCES.
+- **Deny** — block this call; the syscall returns EPERM.
 - **Deny + terminate** — block + kill the process tree. For confirmed exfil.
 - **Escalate** *(Pro)* — route to a teammate or channel for second opinion.
 - **Skip** — leave it queued. Useful for "I'll come back to this".

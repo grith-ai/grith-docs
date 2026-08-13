@@ -39,24 +39,16 @@ that and you get diminishing returns; fewer and an attacker might miss them.
 ## Step 2 — add them
 
 ```
-grith canary add \
-    --format aws_secret \
-    --place ~/.aws/credentials_backup \
-    --label "aws-prod-decoy"
-
-grith canary add \
-    --format ssh_rsa \
-    --place ~/honeypot/.ssh/id_rsa \
-    --label "ssh-honey"
-
-grith canary add \
-    --format gh_pat \
-    --place repo/test/fixtures/.env \
-    --label "gh-test-fixture"
+grith canary add --label "aws-prod-decoy" --generate
+grith canary add --label "ssh-honey" --generate
+grith canary add --label "gh-test-fixture" --generate
 ```
 
-Each command generates a real-looking token, writes it to the path, and
-registers it in the detection set.
+Each command registers a token and prints its value — `grith canary add` does not
+create files. Copy each printed value into the matching decoy path from Step 1 (for
+example, paste the `aws-prod-decoy` value into `~/.aws/credentials_backup`). To
+plant a specific, convincingly shaped string instead of a random one, use
+`--value "<literal>"` in place of `--generate`.
 
 ## Step 3 — verify
 

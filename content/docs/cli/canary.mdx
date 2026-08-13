@@ -24,56 +24,62 @@ List all registered canaries.
 
 ```
 $ grith canary list
-ID         LABEL              FORMAT       PLACED                          AGE
-ca-7f1...  aws-prod-decoy     aws_secret   ~/.aws/credentials_backup       4d
-ca-9c2...  gh-org-trap        gh_pat       ./test/fixtures/.env            12h
-ca-3e8...  ssh-honey          ssh_rsa      ~/honeypot/.ssh/id_rsa          21d
+Registered canary tokens (3):
+  6f1e... | aws-prod-decoy | 9c2f8a1b7d3e...
+  9c2a... | gh-org-trap    | 4b7c1e9f2a8d...
+  3e8b... | ssh-honey      | e21a7f0c94bd...
 ```
 
-`--format json` for structured output.
+Each row is the token id, its label, and the registered value. `list` takes no
+flags — there is no `--format json`.
 
 ### `grith canary add`
 
-Generate and register a new canary.
+Register a new canary value in the detection set.
 
 ```
-grith canary add --format <FORMAT> --place <PATH> [--label <LABEL>]
+grith canary add --label <LABEL> (--generate | --value <VALUE>)
 ```
 
 | Option | Required | Description |
 | --- | --- | --- |
-| `--format <FORMAT>` | yes | One of `aws_secret`, `aws_access_key`, `gh_pat`, `slack_token`, `ssh_rsa`, `generic_jwt`, `random_hex`, `custom`. |
-| `--place <PATH>` | yes | Filesystem path where the canary is written. |
-| `--label <LABEL>` | no | Human-readable name for alerts. |
-| `--value <VALUE>` | no | (For `custom` format) the literal token value. |
+| `--label <LABEL>` | yes | Human-readable name for alerts. |
+| `--generate` | one of these | Register a random 48-character hex token value. |
+| `--value <VALUE>` | one of these | Register a literal token value you supply. Cannot be combined with `--generate`. |
 
 Example:
 
 ```
-grith canary add --format aws_secret \
-    --place ~/.aws/credentials_backup \
-    --label "aws-prod-decoy"
+grith canary add --label "aws-prod-decoy" --generate
 ```
 
-This generates a plausible-looking AWS-shaped credential, writes it to the path you
-specified, and registers its exact value in the canary detection set.
+This registers the token and prints its id, label, and value. `grith canary add`
+does **not** write any file — copy the printed value into whatever decoy file you
+want an attacker to find (see [Setting up canary tokens](/docs/guides/setting-up-canary-tokens)).
+To make a convincingly shaped decoy, pass the shaped string yourself with
+`--value "<literal>"`.
 
 ### `grith canary remove <id>`
 
-Unregister and delete the canary file.
+Unregister a canary from the detection set. If you placed the value in a decoy
+file, delete that file yourself — the registry does not track file placements.
 
 ```
-grith canary remove ca-7f1...
+grith canary remove 6f1e...
 ```
 
 ### `grith canary rotate <id>`
 
-Generate a new token of the same format/label, replace the file in place, update the
-registration. Use after a suspected leak.
+Replace a canary's value while keeping its label, then update the registration. Use
+after a suspected leak. Supply the new value the same way as `add` — `--generate`
+for a random value or `--value <VALUE>` for a literal one (one is required).
 
 ```
-grith canary rotate ca-7f1...
+grith canary rotate 6f1e... --generate
 ```
+
+Rotation updates the detection set only; if you placed the old value in a decoy
+file, replace that file's contents with the new value it prints.
 
 ## When a canary fires
 

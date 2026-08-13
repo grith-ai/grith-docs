@@ -48,11 +48,17 @@ Last sync:       3m ago (2 policies, 5 channels)
 
 ### `grith pro activate`
 
-Apply a license file directly. Used in air-gapped or offline-first installs.
+Fetch a fresh license from grith.ai using your stored credentials and apply it
+locally. Requires a prior `grith pro login` — activation reads the saved API key,
+downloads the current signed license, verifies its signature, installs it, and
+signals a running daemon to re-apply it immediately.
 
 ```
-grith pro activate /path/to/license.signed
+grith pro activate
 ```
+
+Takes no arguments and needs network access to grith.ai. On success it prints the
+plan and expiry.
 
 ### `grith pro refresh`
 
