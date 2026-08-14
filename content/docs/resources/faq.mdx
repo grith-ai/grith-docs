@@ -52,14 +52,14 @@ It does NOT send:
 
 ### Does it work on macOS / Windows?
 
-Not in v0.1. The supervisor uses ptrace+seccomp, which is Linux-specific.
+Not in v0.2. The supervisor uses ptrace+seccomp, which is Linux-specific.
 macOS and Windows ports are in active development for v2.0.
 
 Until then: Linux VM, container, or Docker. grith in a container works fine.
 
 ### Does it work on aarch64?
 
-Not in v0.1. The seccomp-BPF filter is x86_64-specific. aarch64 support is on
+Not in v0.2. The seccomp-BPF filter is x86_64-specific. aarch64 support is on
 the v0.2 roadmap.
 
 ### Does it work on NixOS / Arch / Fedora / etc?
