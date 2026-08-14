@@ -17,12 +17,12 @@ internet access — classified networks, regulated industries, isolated lab
 environments.
 
 <Callout type="info" title="Planned for v2.0">
-Full air-gapped deployment ships in v2.0. v0.1 supports offline-only operation
+Full air-gapped deployment ships in v2.0. v0.2 supports offline-only operation
 with local model providers; the missing pieces are offline license activation
 and offline policy distribution, which are in the Enterprise roadmap.
 </Callout>
 
-## What works today (v0.1)
+## What works today (v0.2)
 
 The community/Pro features that run purely offline:
 
@@ -36,13 +36,13 @@ The community/Pro features that run purely offline:
 ## What needs cloud connectivity today
 
 - **License refresh** (Pro). Grith currently refreshes the license periodically.
-  In v0.1 a stale license falls back to community-tier behaviour, not full
+  In v0.2 a stale license falls back to community-tier behaviour, not full
   failure — but full Pro features need the network.
 - **Update check**. Disable via `general.update_check = false`.
 - **Profile updates**. Disable via `general.profile_update_check = false`.
 - **Team sync**. Inherently requires the dashboard.
 
-## v0.1 offline-leaning config
+## v0.2 offline-leaning config
 
 ```toml
 [general]

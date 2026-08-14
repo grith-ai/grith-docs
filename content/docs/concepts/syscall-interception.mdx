@@ -11,7 +11,7 @@ editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts
 
 grith intercepts a curated set of security-relevant syscalls an agent makes — the file, process, and network operations that can grant or leak authority. High-volume calls like `read` and `write` are deliberately left alone (the access decision was already made at `open` time). That interception does most of the work in this product. Everything else — the filters, the digest, the scoring — is downstream of being able to see and stop those syscalls before they run.
 
-This page explains how that interception works on Linux x86_64 (the v0.1 supported
+This page explains how that interception works on Linux x86_64 (the v0.2 supported
 target). macOS and Windows backends are different mechanisms with the same goal; see
 [Supported platforms](/docs/start/installation) for status.
 

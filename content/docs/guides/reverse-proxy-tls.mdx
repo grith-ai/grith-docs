@@ -104,7 +104,7 @@ For team setups with multiple users on the same daemon:
 - **Basic auth** — for quick locked-down setups (less ideal than OIDC).
 
 The grith daemon will see authenticated requests from the proxy via headers like
-`X-Forwarded-User`. For v0.1, grith trusts the proxy's auth headers when
+`X-Forwarded-User`. For v0.2, grith trusts the proxy's auth headers when
 configured to (`server.trust_forwarded_user = true`). For v0.2, native bearer-
 token auth is planned.
 
