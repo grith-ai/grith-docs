@@ -3,6 +3,7 @@
 | Method | Path |
 |---|---|
 | DELETE | `/api/canaries/:id` |
+| DELETE | `/api/ipc/session-reservations/:id` |
 | DELETE | `/api/ipc/sessions/:id` |
 | DELETE | `/api/policies/:name` |
 | DELETE | `/api/supervisor/sessions/:id` |
@@ -25,6 +26,7 @@
 | GET | `/api/license/status` |
 | GET | `/api/notifications/channels` |
 | GET | `/api/notifications/status` |
+| GET | `/api/onboarding/status` |
 | GET | `/api/policies` |
 | GET | `/api/policies/:name` |
 | GET | `/api/proxy/status` |
@@ -47,6 +49,7 @@
 | POST | `/api/digest/:id/learn` |
 | POST | `/api/digest/:id/unlock-egress` |
 | POST | `/api/digest/:id/webhook-review` |
+| POST | `/api/digest/clear-all` |
 | POST | `/api/ipc/audit/ingest` |
 | POST | `/api/ipc/dashboard/pair-code` |
 | POST | `/api/ipc/digest/expire` |
@@ -54,10 +57,13 @@
 | POST | `/api/ipc/digest/items/:id/status` |
 | POST | `/api/ipc/events` |
 | POST | `/api/ipc/inventory/install` |
+| POST | `/api/ipc/session-reservations` |
+| POST | `/api/ipc/session-reservations/:id/activate` |
 | POST | `/api/ipc/sessions` |
 | POST | `/api/ipc/sessions-prune` |
 | POST | `/api/ipc/sessions/:id/kill` |
 | POST | `/api/notifications/test/:channel` |
+| POST | `/api/onboarding/dismiss` |
 | POST | `/api/policies` |
 | POST | `/api/proxy/evaluate` |
 | POST | `/api/proxy/test` |
