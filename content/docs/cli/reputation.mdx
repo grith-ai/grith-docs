@@ -34,13 +34,7 @@ TRUST  OBS  DENIES  SHAPE
 ...
 ```
 
-Sort options: `--sort trust` (default), `--sort observations`, `--sort recent`,
-`--sort denies`.
-
-Filter options: `--profile <name>` to scope to one profile, `--min-trust <0..1>` to
-filter out low-trust noise.
-
-`--format json` for structured output.
+Pass `--profile <name>` to scope the table to a single profile.
 
 ### `grith reputation reset`
 
@@ -48,9 +42,8 @@ Wipe the trust table. Use after switching to a different agent, after a security
 audit, or if you accidentally trained the table on the wrong things.
 
 ```
-grith reputation reset             # ask for confirmation
-grith reputation reset --yes       # skip confirmation
-grith reputation reset --profile claude-code   # scope to one profile
+grith reputation reset                          # wipe the whole table
+grith reputation reset --profile claude-code    # scope to one profile
 ```
 
 ## Decay

@@ -2,7 +2,7 @@
 title: "grith pro"
 description: "Pro plan: log in, sync team policies, refresh license, manage billing."
 section: "cli"
-order: 15
+order: 16
 tier: "pro"
 version: "0.1.0"
 lastUpdated: "2026-05-14"
@@ -12,7 +12,7 @@ editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/pro.
 <PlanBadge tier="pro" />
 
 ```
-grith pro [login | status | activate | refresh | logout | sync | upgrade | billing]
+grith pro [login | status | activate | refresh | logout | sync | upgrade | start-trial | billing]
 ```
 
 The `pro` subcommand group is the local CLI surface for everything to do with the
@@ -80,21 +80,29 @@ Sessions in flight continue; new ones start on the community tier.
 
 ### `grith pro sync`
 
-Pull (or push) team policies and shared filter configs.
+Upload audit records to the cloud and pull the latest team policies and shared
+filter configs.
 
 ```
-grith pro sync                  # pull latest from dashboard
-grith pro sync --push           # push local profile changes to dashboard
-grith pro sync --dry-run        # show what would change without applying
+grith pro sync
 ```
 
-Synced artefacts: supervisor profiles, scoring thresholds (`[proxy]`), filter config
+Pulled artefacts: supervisor profiles, scoring thresholds (`[proxy]`), filter config
 files (`config/filters/*.toml`), notification channel configs, canary registry.
 
 ### `grith pro upgrade`
 
 Walk through an in-place upgrade from community to pro (or pro to enterprise).
 Opens a browser to the dashboard checkout.
+
+### `grith pro start-trial`
+
+Start a free Pro trial. When a one-click trial is available for your account it's
+activated immediately; otherwise the command opens the signup page in your browser.
+
+```
+grith pro start-trial
+```
 
 ### `grith pro billing`
 

@@ -66,7 +66,9 @@ export const sidebarData: SidebarSection[] = [
       { slug: 'cli/notifications', title: 'grith notifications' },
       { slug: 'cli/config', title: 'grith config' },
       { slug: 'cli/init', title: 'grith init' },
+      { slug: 'cli/setup', title: 'grith setup' },
       { slug: 'cli/pro', title: 'grith pro', tier: 'pro' },
+      { slug: 'cli/completions', title: 'grith completions' },
     ],
   },
   {

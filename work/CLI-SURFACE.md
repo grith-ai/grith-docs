@@ -9,6 +9,7 @@ Usage: grith [OPTIONS] [COMMAND]
 
 Commands:
   run            Execute a single task non-interactively
+  setup          Run the interactive first-run setup (welcome, provider, trial, guide)
   init           Create default configuration
   config         Show or modify configuration
   audit          Browse audit logs
@@ -31,6 +32,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
   -V, --version                Print version
 ```
@@ -50,6 +52,23 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
+  -h, --help                   Print help
+```
+
+## `grith setup --help`
+
+```text
+Run the interactive first-run setup (welcome, provider, trial, guide)
+
+Usage: grith setup [OPTIONS]
+
+Options:
+      --config <CONFIG>        Path to configuration file
+      --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
+      --no-color               Disable colored output
+      --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -65,6 +84,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -84,6 +104,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -95,14 +116,17 @@ Browse audit logs
 Usage: grith audit [OPTIONS] [COMMAND]
 
 Commands:
-  export  Export audit logs as JSON or CSV
-  help    Print this message or the help of the given subcommand(s)
+  diagnose  Inspect the audit chain: verification outcome, forks, gaps (read-only)
+  export    Export audit logs as JSON or CSV
+  compact   Reclaim free pages left by pruning: rewrites + atomically swaps the audit database. A manual maintenance op (never automatic); requires that no daemon is running and the chain is not quarantined
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
       --config <CONFIG>        Path to configuration file
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -122,6 +146,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -144,6 +169,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -163,6 +189,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -193,6 +220,10 @@ Options:
           Override the project name (defaults to current directory name)
       --trace-syscalls-jsonl <TRACE_SYSCALLS_JSONL>
           Write raw pre-filter syscall forensics records to a JSONL file
+      --allow-queued
+          In a non-interactive session (no terminal), allow + log queued operations instead of the default fail-closed auto-deny. Has no effect in an interactive session (the approval dialog is shown)
+      --skip-onboarding
+          Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help
           Print help
 ```
@@ -215,6 +246,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -226,17 +258,19 @@ Manage the grith daemon (dashboard server + shared subsystems)
 Usage: grith daemon [OPTIONS] <COMMAND>
 
 Commands:
-  start   Start the daemon (dashboard server + shared subsystems) as a background process
-  stop    Stop the running daemon
-  status  Check if the daemon is running
-  pair    Authorise a browser for the dashboard (mints a single-use pairing link)
-  help    Print this message or the help of the given subcommand(s)
+  start    Start the daemon (dashboard server + shared subsystems) as a background process
+  stop     Stop the running daemon
+  restart  Restart the daemon (stop the running one, then start this build)
+  status   Check if the daemon is running
+  pair     Authorise a browser for the dashboard (mints a single-use pairing link)
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
       --config <CONFIG>        Path to configuration file
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -248,21 +282,23 @@ Manage Pro plan: login, status, sync, activate, logout
 Usage: grith pro [OPTIONS] <COMMAND>
 
 Commands:
-  login     Authenticate with grith.ai (device auth by default, API key optional)
-  status    Show plan status, license expiry, team info
-  activate  Fetch and activate a fresh license
-  refresh   Force an on-demand license refresh against grith.ai
-  logout    Remove credentials and license
-  sync      Upload audit records to cloud and pull team policies
-  upgrade   Open the upgrade/pricing page in the default browser
-  billing   Show current plan and billing details; open billing portal in browser
-  help      Print this message or the help of the given subcommand(s)
+  login        Authenticate with grith.ai (device auth by default, API key optional)
+  status       Show plan status, license expiry, team info
+  activate     Fetch and activate a fresh license
+  refresh      Force an on-demand license refresh against grith.ai
+  logout       Remove credentials and license
+  sync         Upload audit records to cloud and pull team policies
+  upgrade      Open the upgrade/pricing page in the default browser
+  start-trial  Start a free Pro trial (one-click when available, else opens signup)
+  billing      Show current plan and billing details; open billing portal in browser
+  help         Print this message or the help of the given subcommand(s)
 
 Options:
       --config <CONFIG>        Path to configuration file
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -284,6 +320,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -302,6 +339,7 @@ Options:
       --limit <LIMIT>          Max records to read per poll / view [default: 100]
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -321,6 +359,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -341,6 +380,7 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```
 
@@ -359,5 +399,6 @@ Options:
       --log-level <LOG_LEVEL>  Log level (trace, debug, info, warn, error)
       --no-color               Disable colored output
       --project <PROJECT>      Override the project name (defaults to current directory name)
+      --skip-onboarding        Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)
   -h, --help                   Print help
 ```

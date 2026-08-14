@@ -31,7 +31,7 @@ grith run [GLOBAL OPTIONS] <TASK>
 
 ## Behaviour
 
-- Uses `[llm] default_provider` unless overridden via `--provider` (global flag).
+- Uses the configured `[llm] default_provider`.
 - Runs the model to completion or until tool-call budget is exhausted.
 - Every file/shell/network call the model issues is supervised exactly like
   [`grith exec`](/docs/cli/exec).

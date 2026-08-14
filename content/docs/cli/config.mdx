@@ -28,12 +28,6 @@ plan_tier = "community"
 ...
 ```
 
-Use `--format json` for structured output, useful in scripts:
-
-```
-grith config --format json | jq '.proxy.auto_allow_threshold'
-```
-
 ## Set
 
 ```
@@ -64,11 +58,7 @@ Layered, highest priority first:
 4. User config `~/.config/grith/config.toml`
 5. Built-in defaults (`config/default.toml` in the grith repo)
 
-`grith config` shows the merged result. To see only the user layer:
-
-```
-grith config --layer user
-```
+`grith config` shows the merged result.
 
 ## Reset
 

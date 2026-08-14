@@ -1,0 +1,62 @@
+---
+title: "grith completions"
+description: "Print a shell tab-completion script for grith to stdout."
+section: "cli"
+order: 17
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-08-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/completions.mdx"
+---
+
+```
+grith completions <SHELL>
+```
+
+Print a shell tab-completion script for `grith` to stdout. Supported shells are
+`bash`, `zsh`, `fish`, `elvish`, and `powershell`. The script is written to stdout
+only — nothing is installed — so you pipe or redirect it wherever your shell loads
+completions from.
+
+## Arguments
+
+| Argument | Required | What it is |
+| --- | --- | --- |
+| `<SHELL>` | yes | Target shell: `bash`, `zsh`, `fish`, `elvish`, or `powershell`. |
+
+## Examples
+
+Load bash completions for the current session:
+
+```
+source <(grith completions bash)
+```
+
+Install them permanently (bash):
+
+```
+grith completions bash > ~/.local/share/bash-completion/completions/grith
+```
+
+zsh — write to a directory on your `$fpath`:
+
+```
+grith completions zsh > ~/.zfunc/_grith
+```
+
+fish:
+
+```
+grith completions fish > ~/.config/fish/completions/grith.fish
+```
+
+## Notes
+
+- The command emits the script and exits; it doesn't touch your config or start the
+  daemon, so it works regardless of config state.
+- Regenerate the script after upgrading grith to pick up new commands and flags.
+
+## See also
+
+- [CLI overview](/docs/cli/overview) — every command and global flag
+- [Installation](/docs/start/installation)

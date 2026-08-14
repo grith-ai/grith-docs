@@ -23,8 +23,8 @@ This is the workhorse command — almost every real grith session starts with
 ## Synopsis
 
 ```
-grith exec [--profile <NAME>] [--zone <NAME>]
-           [--attach <PID>]
+grith exec [--profile <NAME>]
+           [--attach <PID>] [--allow-queued]
            [--syscall-log <FILE>] [--trace-syscalls-jsonl <FILE>]
            -- <COMMAND> [ARGS...]
 ```
@@ -37,8 +37,8 @@ tells `grith` where its options stop and the target command's begin.
 | Flag                            | Type   | Default   | Description                                                                                  |
 | ------------------------------- | ------ | --------- | -------------------------------------------------------------------------------------------- |
 | `--profile <NAME>`              | string | `generic` | Supervisor profile to use. See [Choose your agent](/docs/start/choose-your-agent).           |
-| `--zone <NAME>`                 | string | none      | Bind the session to a [containment zone](/docs/concepts/session-containment).                |
 | `--attach <PID>`                | u32    | —         | Attach to an existing process by PID instead of spawning. Useful for already-running agents. |
+| `--allow-queued`                | flag   | off       | In a non-interactive session (no terminal), allow and log queued operations instead of the default fail-closed auto-deny. No effect in an interactive session, where the approval dialog is shown. |
 | `--syscall-log <FILE>`          | path   | —         | Log every syscall request and decision to a file (human-readable).                           |
 | `--trace-syscalls-jsonl <FILE>` | path   | —         | Write raw pre-filter syscall forensics to a JSONL file. Heavyweight; use for forensics.      |
 
@@ -75,12 +75,6 @@ grith exec \
 
 # Later, audit the recorded session against the profile:
 grith profile audit --profile claude-code --trace ~/.cache/grith/last.jsonl
-```
-
-Use a containment zone:
-
-```
-grith exec --profile claude-code --zone dayjob -- claude
 ```
 
 ## What it does, in order

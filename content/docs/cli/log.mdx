@@ -23,8 +23,6 @@ during development when you want to see what an agent is doing in near real time
 | `--tail` | off | Follow the log; stays running and prints new events as they happen. |
 | `--session <ID\|NAME>` | all | Filter to a single session by id (UUID) or human-readable name. |
 | `--limit <N>` | 100 | Max events to print (in non-tail mode). |
-| `--since <DURATION>` | — | Only events newer than DURATION (e.g. `5m`, `1h`). |
-| `--decision <ZONE>` | all | Filter to `allow` / `queue` / `deny`. |
 
 ## Examples
 
@@ -40,10 +38,10 @@ Tail one session:
 grith log --tail --session abc12345-...
 ```
 
-Last 20 denies in the past hour:
+The last 20 events for one session:
 
 ```
-grith log --since 1h --decision deny --limit 20
+grith log --session abc12345-... --limit 20
 ```
 
 ## Output format
@@ -63,7 +61,7 @@ decision, and composite score.
 - **Development** — start an agent, run `grith log --tail` in a side terminal,
   understand the call shape it's actually making.
 - **Tuning** — see in real time whether your threshold changes are landing.
-- **Triage** — `--decision queue --tail` shows only quarantines as they happen.
+- **Triage** — `--tail` a single session to watch its decisions as they happen.
 
 For structured/programmatic use, use [`grith audit export`](/docs/cli/audit) — it's
 the same data, in JSON.

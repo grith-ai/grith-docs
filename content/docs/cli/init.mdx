@@ -24,13 +24,14 @@ inline comments. Edit freely; layers and precedence work normally
 
 - Creates `~/.config/grith/` if it doesn't exist (perms `0700`).
 - Writes `config.toml` with perms `0600`.
-- Won't overwrite an existing file unless `--force` is passed.
+- Won't overwrite an existing config file.
 
 ```
-grith init              # safe, errors if config exists
-grith init --force      # overwrite anything that's there
-grith init --print      # write to stdout instead of disk
+grith init              # safe, errors if config already exists
 ```
+
+To regenerate from scratch, delete the existing file first, then run `grith init`
+again.
 
 ## What's in the generated file
 

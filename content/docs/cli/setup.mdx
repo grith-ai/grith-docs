@@ -1,0 +1,36 @@
+---
+title: "grith setup"
+description: "Run the interactive first-run onboarding: welcome, provider, trial, and a short guide."
+section: "cli"
+order: 15
+tier: "community"
+version: "0.1.0"
+lastUpdated: "2026-08-14"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/setup.mdx"
+---
+
+```
+grith setup
+```
+
+Run the interactive first-run onboarding flow: a welcome, connecting a model
+provider, an optional Pro trial, and a short guide to get you started. This is the
+same flow grith offers automatically the first time you run it.
+
+`grith setup` and `grith onboarding` are the same command — use whichever reads
+better.
+
+## Behaviour
+
+- Takes no arguments or flags beyond the [global flags](/docs/cli/overview#global-flags).
+- Interactive — walks you through each step in the terminal.
+- Safe to run again at any time to revisit the setup steps.
+
+To skip onboarding when running other commands, pass `--skip-onboarding` (or set
+`GRITH_SKIP_ONBOARDING`).
+
+## See also
+
+- [`grith init`](/docs/cli/init) — generate a default config file
+- [Connect a model](/docs/start/connect-a-model) — provider setup
+- [Quickstart](/docs/start/quickstart)

@@ -10,7 +10,7 @@ editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/daem
 ---
 
 ```
-grith dashboard [start | stop | status | pair]
+grith dashboard [start | stop | restart | status | pair]
 ```
 
 The daemon is the long-running grith process that owns the dashboard server, the
@@ -93,6 +93,19 @@ writes, unregisters sessions, and exits.
 ```
 grith dashboard stop
 ```
+
+### `grith dashboard restart`
+
+Stop the running daemon, then start this build in its place. Use it after
+upgrading grith, or to pick up config changes that only apply at startup.
+
+```
+grith dashboard restart
+```
+
+The stop half is graceful — the daemon flushes state and unregisters sessions
+before the new one binds — so restarts are clean on Pro (see
+[Restart safety](#restart-safety)).
 
 ## Browser authorisation
 
