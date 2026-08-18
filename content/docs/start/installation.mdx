@@ -1,19 +1,19 @@
 ---
-title: "Installation"
-description: "Install grith v0.2 on Linux x86_64 — install script, manual download, or build from source."
-section: "start"
+title: 'Installation'
+description: 'Install grith v0.2 on Linux x86_64 and aarch64 — install script, manual download, or build from source.'
+section: 'start'
 order: 1
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/installation.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/installation.mdx'
 ---
 
-<Callout type="warning" title="Linux x86_64 only for v0.2">
-The v0.2 release ships for Linux x86_64. The supervisor uses ptrace + seccomp, which
-need OS-specific backends — macOS (Endpoint Security framework) and Windows
-(ETW / minifilter) are in active development. ARM Linux follows once the aarch64
-register backend lands. See the [roadmap](/docs/resources/roadmap).
+<Callout type="warning" title="Linux only for v0.2">
+  The v0.2 release ships for Linux — both x86_64 and aarch64 (kernel 5.3+ on aarch64). The
+  supervisor uses ptrace + seccomp, which need OS-specific backends, so macOS (Endpoint Security
+  framework) and Windows (ETW / minifilter) are in active development. See the
+  [roadmap](/docs/resources/roadmap).
 </Callout>
 
 ## One-line install
@@ -48,10 +48,12 @@ Pre-built binaries are published to GitHub Releases.
 # https://github.com/grith-ai/grith/releases/latest for the current
 # version (v0.1.4 as of May 2026).
 VERSION=v0.1.4
+# Set ARCH to your machine's architecture: x86_64 or aarch64.
+ARCH=x86_64
 curl -L -o grith.tar.gz \
-  https://github.com/grith-ai/grith/releases/download/${VERSION}/grith-${VERSION}-x86_64-unknown-linux-musl.tar.gz
+  https://github.com/grith-ai/grith/releases/download/${VERSION}/grith-${VERSION}-${ARCH}-unknown-linux-musl.tar.gz
 curl -L -o grith.sha256 \
-  https://github.com/grith-ai/grith/releases/download/${VERSION}/grith-${VERSION}-x86_64-unknown-linux-musl.tar.gz.sha256
+  https://github.com/grith-ai/grith/releases/download/${VERSION}/grith-${VERSION}-${ARCH}-unknown-linux-musl.tar.gz.sha256
 sha256sum -c grith.sha256
 tar -xzf grith.tar.gz
 sudo mv grith /usr/local/bin/
@@ -91,17 +93,18 @@ Zero Trust for AI Agents
 
 Usage: grith [OPTIONS] [COMMAND]
 ...`}
+
 </Terminal>
 
 ## What got placed where
 
-| Path | What |
-| --- | --- |
-| `~/.local/bin/grith` or `/usr/local/bin/grith` | The binary. |
-| `~/.config/grith/config.toml` | User-level config overrides. Edit freely. |
-| `~/.local/share/grith/audit/` | SQLite audit log. Grows over time; see [audit retention](/docs/ops/logging-and-audit-retention). |
-| `~/.cache/grith/` | Reputation table, profile updates, transient state. Safe to delete. |
-| `~/.config/grith/licenses/` | Pro license cache (only if you log in to Pro). |
+| Path                                           | What                                                                                             |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `~/.local/bin/grith` or `/usr/local/bin/grith` | The binary.                                                                                      |
+| `~/.config/grith/config.toml`                  | User-level config overrides. Edit freely.                                                        |
+| `~/.local/share/grith/audit/`                  | SQLite audit log. Grows over time; see [audit retention](/docs/ops/logging-and-audit-retention). |
+| `~/.cache/grith/`                              | Reputation table, profile updates, transient state. Safe to delete.                              |
+| `~/.config/grith/licenses/`                    | Pro license cache (only if you log in to Pro).                                                   |
 
 The CLI itself never writes to anywhere outside `~/.local/share/grith/` and
 `~/.cache/grith/` without an explicit config setting.

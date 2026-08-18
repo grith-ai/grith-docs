@@ -1,12 +1,12 @@
 ---
-title: "FAQ"
-description: "Frequently asked questions about grith."
-section: "resources"
+title: 'FAQ'
+description: 'Frequently asked questions about grith.'
+section: 'resources'
 order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/faq.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/faq.mdx'
 ---
 
 ## General
@@ -18,7 +18,7 @@ operates against the real filesystem, real network, real OS. Containment is
 opt-in via [zones](/docs/concepts/session-containment), but those score-based,
 not kernel-enforced.
 
-If you want hard isolation, run grith *inside* a container or user namespace.
+If you want hard isolation, run grith _inside_ a container or user namespace.
 The two are complementary.
 
 ### Does grith require root?
@@ -59,13 +59,16 @@ Until then: Linux VM, container, or Docker. grith in a container works fine.
 
 ### Does it work on aarch64?
 
-Not in v0.2. The seccomp-BPF filter is x86_64-specific. aarch64 support is on
-the v0.2 roadmap.
+Yes. grith runs natively on Linux aarch64 (kernel 5.3+) — the supervisor has a
+per-architecture register and syscall-number backend, and the release ships a
+static `aarch64-unknown-linux-musl` binary. Raspberry Pi 4/5, AWS Graviton, and
+Ampere are all supported. The one-line installer picks the right binary
+automatically.
 
 ### Does it work on NixOS / Arch / Fedora / etc?
 
-Yes. grith ships as a statically-linked musl binary that works on any Linux
-x86_64 distro. The shipping install script is distro-aware for placement; the
+Yes. grith ships as a statically-linked musl binary (x86_64 and aarch64) that
+works on any Linux distro. The shipping install script is distro-aware for placement; the
 binary itself doesn't care.
 
 ## Filters
@@ -127,7 +130,7 @@ machine. Pro analytics use summarised counts (not raw records) if you opt in.
 
 ### Can grith see my source code?
 
-It sees the *fact* of file reads (paths, sizes, timestamps), not the
+It sees the _fact_ of file reads (paths, sizes, timestamps), not the
 contents — grith never stores file or payload bytes in the audit log. The model
 that's running inside your agent sees the content; that's between you and your
 provider.
