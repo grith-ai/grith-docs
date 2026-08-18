@@ -74,7 +74,7 @@ export default function Home() {
               every filter, every API route.
             </p>
             <div className="rounded-btn border-green-border bg-green-light text-accent-text mx-auto mt-5 max-w-2xl border px-4 py-3 text-sm">
-              v0.1 ships for Linux x86_64. macOS and Windows builds are next.
+              v0.1 ships for Linux x86_64 and aarch64. macOS and Windows builds are next.
             </div>
             <div className="mt-8 flex items-center justify-center gap-4">
               <Button href="/docs/start/installation" size="lg">

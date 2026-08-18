@@ -1,12 +1,12 @@
 ---
-title: "[supervisor]"
-description: "OS-level supervisor settings — interception mechanism, default profile, noise reduction."
-section: "config"
+title: '[supervisor]'
+description: 'OS-level supervisor settings — interception mechanism, default profile, noise reduction.'
+section: 'config'
 order: 6
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/supervisor.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/supervisor.mdx'
 ---
 
 The `[supervisor]` section controls how `grith exec` intercepts syscalls and how
@@ -41,7 +41,8 @@ noisy a session looks to the filters.
 ## Platform mechanisms
 
 The supervisor uses different OS mechanisms per platform. v0.2 supports
-**ptrace + seccomp on Linux x86_64**; other platforms ship in v2.0. See
+**ptrace + seccomp on Linux x86_64 and aarch64**; other platforms ship in v2.0.
+See
 [Syscall interception](/docs/concepts/syscall-interception) for mechanism details.
 
 ## Noise reduction

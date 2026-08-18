@@ -1,19 +1,20 @@
 ---
-title: "Syscall interception"
-description: "How grith catches what an agent does at the OS level — ptrace + seccomp on Linux."
-section: "concepts"
+title: 'Syscall interception'
+description: 'How grith catches what an agent does at the OS level — ptrace + seccomp on Linux.'
+section: 'concepts'
 order: 6
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/syscall-interception.mdx"
+tier: 'community'
+version: '0.1.0'
+lastUpdated: '2026-05-14'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/syscall-interception.mdx'
 ---
 
 grith intercepts a curated set of security-relevant syscalls an agent makes — the file, process, and network operations that can grant or leak authority. High-volume calls like `read` and `write` are deliberately left alone (the access decision was already made at `open` time). That interception does most of the work in this product. Everything else — the filters, the digest, the scoring — is downstream of being able to see and stop those syscalls before they run.
 
-This page explains how that interception works on Linux x86_64 (the v0.2 supported
-target). macOS and Windows backends are different mechanisms with the same goal; see
-[Supported platforms](/docs/start/installation) for status.
+This page explains how that interception works on Linux — x86_64 and aarch64,
+the v0.2 supported targets. macOS and Windows backends are different mechanisms
+with the same goal; see [Supported platforms](/docs/start/installation) for
+status.
 
 ## The mechanism: ptrace + seccomp
 
@@ -86,7 +87,7 @@ The seccomp filter intercepts (approximately):
   `io_uring_register` (blocked so ring I/O can't bypass ptrace); `seccomp` and `prctl`
   (so a tracee can't install its own filter to hide syscalls).
 
-Reads — `read`, `pread64` — are *not* in the interesting set by default, because the
+Reads — `read`, `pread64` — are _not_ in the interesting set by default, because the
 data flow has already been captured at the `open` time. Tracking every read would
 flood the pipeline. The taint filter inherits the read context from the file
 descriptor's open.
@@ -116,7 +117,7 @@ and dramatically reduces filter work for read-heavy workloads.
 
 ## Permissions
 
-ptrace requires either CAP_SYS_PTRACE *or* matching uid + `kernel.yama.ptrace_scope`
+ptrace requires either CAP_SYS_PTRACE _or_ matching uid + `kernel.yama.ptrace_scope`
 allowing it. Most distros ship `ptrace_scope = 1` ("only attach to descendants"),
 which is what grith needs — and what it does, because the supervised process is
 always a descendant of the supervisor.
@@ -149,8 +150,9 @@ namespace. The supervision and the sandbox are complementary.
   in-flight; ships in v2.0.
 - **Windows** — ETW + minifilter for fs/registry, plus a process injection hook for
   network. Status: design done; ships in v2.0.
-- **aarch64 Linux** — needs the register backend (ptrace works; the BPF programs
-  are arch-specific). Status: targeting v0.2.
+
+Linux aarch64 already ships — the per-architecture register and syscall-number
+backend is part of the supervisor, so everything above applies on aarch64 too.
 
 ## See also
 
