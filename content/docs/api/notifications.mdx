@@ -9,64 +9,11 @@ lastUpdated: "2026-05-14"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/notifications.mdx"
 ---
 
-<Callout type="info" title="Coming soon — managed notifications">
-Notifications are being rebuilt as a managed, dashboard-configured feature — connect
-Telegram, Slack, and other channels from the dashboard with no local setup. Managed
-notifications are coming soon, so the setup shown below may change.
+The notifications API will report your managed notification channels and their
+delivery health.
+
+<Callout type="info" title="Coming soon">
+Managed notifications are coming soon. You'll set them up from your grith dashboard
+with no local configuration, and the notifications API will cover managed channels
+when it ships. This page will document it then.
 </Callout>
-
-<ApiRouteTable group="Notifications" showHeadings={false} />
-
-## `GET /notifications/channels`
-
-List configured channels.
-
-```json
-{
-  "channels": [
-    {
-      "id": "slack",
-      "type": "slack",
-      "enabled": true,
-      "state": "healthy",
-      "last_delivery": "2026-05-14T09:13:01Z",
-      "delivered_24h": 412,
-      "failed_24h": 0
-    }
-  ]
-}
-```
-
-## `GET /notifications/status`
-
-Roll-up status across channels.
-
-```json
-{
-  "channels_total": 5,
-  "channels_healthy": 4,
-  "channels_unhealthy": 1,
-  "delivered_24h": 821,
-  "failed_24h": 8
-}
-```
-
-## `POST /notifications/test/{channel}`
-
-Send a synthetic notification. The body is a stub digest item, useful for
-verifying HMAC handling on webhook receivers.
-
-Response on success:
-
-```json
-{
-  "delivered": true,
-  "ms": 312
-}
-```
-
-## See also
-
-- [`grith notifications`](/docs/cli/notifications)
-- Per-channel guides under [Guides](/docs/guides/notifications-slack)
-- [Notification security model](/docs/security/notification-security)
