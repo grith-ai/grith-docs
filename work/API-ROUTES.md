@@ -64,6 +64,7 @@
 | POST | `/api/ipc/sessions/:id/kill` |
 | POST | `/api/notifications/test/:channel` |
 | POST | `/api/onboarding/dismiss` |
+| POST | `/api/onboarding/intro-seen` |
 | POST | `/api/policies` |
 | POST | `/api/proxy/evaluate` |
 | POST | `/api/proxy/test` |
