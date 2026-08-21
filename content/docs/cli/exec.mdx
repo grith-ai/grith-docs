@@ -116,7 +116,9 @@ The workspace is:
 - the directory you ran `grith exec` in,
 - every linked git worktree of that repository (`[supervisor.trust]
   include_linked_worktrees`, on by default — the main worktree included, so
-  launching from a subdirectory covers the repository root),
+  launching from a subdirectory covers the repository root; a worktree git
+  reports still has to pass the checks described under
+  [`[supervisor.trust]`](/docs/config/supervisor#workspace-trust)),
 - anything listed in `[supervisor.trust] additional_project_roots`.
 
 Your other projects, the rest of your home directory, `/mnt`, `/media` and

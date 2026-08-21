@@ -53,6 +53,15 @@ directory over.
   the main worktree, so launching from a subdirectory trusts the repository root
   as well. Resolved once at session start and never re-read: a re-read would let
   the supervised tool widen its own trust with `git worktree add`.
+
+  git builds its worktree list from files inside the repository, which the
+  supervised tool can write, so a reported worktree earns trust only if it also
+  sits inside the directory the repository itself lives in, carries git's own
+  back-pointer to this repository, and is not a credential or personal-data
+  directory. A repository checked out directly into your home directory gets no
+  linked-worktree trust at all — its enclosing directory would be the whole of
+  `$HOME`. Declare `additional_project_roots` for that layout.
+
 - **`additional_project_roots`** — extra roots for layouts git cannot infer: a
   worktree of a _different_ repository parked alongside this one, or a non-git
   sibling checkout. `${HOME}`, `${PROJECT_DIR}` and `~` expand as in
