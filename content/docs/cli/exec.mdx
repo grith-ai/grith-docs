@@ -34,14 +34,14 @@ tells `grith` where its options stop and the target command's begin.
 
 ## Options
 
-| Flag                            | Type   | Default   | Description                                                                                  |
-| ------------------------------- | ------ | --------- | -------------------------------------------------------------------------------------------- |
-| `--profile <NAME>`              | string | `generic` | Supervisor profile to use. See [Choose your agent](/docs/start/choose-your-agent).           |
-| `--attach <PID>`                | u32    | —         | Attach to an existing process by PID instead of spawning. Useful for already-running agents. |
+| Flag                            | Type   | Default   | Description                                                                                                                                                                                        |
+| ------------------------------- | ------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--profile <NAME>`              | string | `generic` | Supervisor profile to use. See [Choose your agent](/docs/start/choose-your-agent).                                                                                                                 |
+| `--attach <PID>`                | u32    | —         | Attach to an existing process by PID instead of spawning. Useful for already-running agents.                                                                                                       |
 | `--allow-queued`                | flag   | off       | In a non-interactive session (no terminal), allow and log queued operations instead of the default fail-closed auto-deny. No effect in an interactive session, where the approval dialog is shown. |
-| `--workspace-only`              | flag   | off       | Deny file reads and writes outside the workspace instead of scoring them. See [Workspace-only sessions](#workspace-only-sessions). |
-| `--syscall-log <FILE>`          | path   | —         | Log every syscall request and decision to a file (human-readable).                           |
-| `--trace-syscalls-jsonl <FILE>` | path   | —         | Write raw pre-filter syscall forensics to a JSONL file. Heavyweight; use for forensics.      |
+| `--workspace-only`              | flag   | off       | Deny file reads and writes outside the workspace instead of scoring them. See [Workspace-only sessions](#workspace-only-sessions).                                                                 |
+| `--syscall-log <FILE>`          | path   | —         | Log every syscall request and decision to a file (human-readable).                                                                                                                                 |
+| `--trace-syscalls-jsonl <FILE>` | path   | —         | Write raw pre-filter syscall forensics to a JSONL file. Heavyweight; use for forensics.                                                                                                            |
 
 ## Examples
 
@@ -104,9 +104,9 @@ grith profile audit --profile claude-code --trace ~/.cache/grith/last.jsonl
 
 ## Workspace-only sessions
 
-By default the workspace is a *trusted* region: paths inside it are trusted,
+By default the workspace is a _trusted_ region: paths inside it are trusted,
 paths outside it are scored, and a low-scoring read outside it is auto-allowed
-without a prompt. `--workspace-only` makes it a *boundary* instead. A file read
+without a prompt. `--workspace-only` makes it a _boundary_ instead. A file read
 or write whose target is outside the workspace is denied rather than scored —
 including the read-only opens `[supervisor.noise_reduction] ignore_read_only`
 waves through today.
@@ -115,7 +115,7 @@ The workspace is:
 
 - the directory you ran `grith exec` in,
 - every linked git worktree of that repository (`[supervisor.trust]
-  include_linked_worktrees`, on by default — the main worktree included, so
+include_linked_worktrees`, on by default — the main worktree included, so
   launching from a subdirectory covers the repository root; a worktree git
   reports still has to pass the checks described under
   [`[supervisor.trust]`](/docs/config/supervisor#workspace-trust)),
@@ -130,22 +130,43 @@ otherwise:
 1. **Noise paths** — `/proc`, `/sys`, the terminal, CA certificates.
 2. **Reads of system runtime paths** — `/usr`, `/lib`, `/bin`, `/etc`,
    `/opt`, `/nix/store` and similar. A tool that cannot read `libc` does not
-   start. *Writes* into those trees are still refused.
+   start. _Writes_ into those trees are still refused. Resolver configuration
+   written at runtime is included (`/run/systemd/resolve/`,
+   `/run/resolvconf/`, `/run/NetworkManager/`, `/run/nscd/`) because
+   `/etc/resolv.conf` is a symlink into one of them on most Linux systems and
+   the resolver opens the target — without it the session cannot do DNS at
+   all. The rest of `/run` is not exempt: `/run/user/<uid>` holds your
+   keyring, gnupg and ssh-agent sockets.
 3. **The paths your profile declares routine** — `~/.claude`,
    `~/.nvm/versions/**`, `/tmp/<tool>-*` and the rest of the profile's
    `routine_paths`. The mode restricts a tool; it does not sabotage one.
 
 <Callout type="info">
-The boundary only ever **removes** access. Each exemption above means "the
-boundary does not decide this call" — never "allow it". The call still goes
-through the whole filter pipeline afterwards, so a read of `/etc/shadow` is
-exempt from the boundary and still denied by the secret-scanning filters.
+  The boundary only ever **removes** access. Each exemption above means "the boundary does not
+  decide this call" — never "allow it". The call still goes through the whole filter pipeline
+  afterwards, so a read of `/etc/shadow` is exempt from the boundary and still denied by the
+  secret-scanning filters.
 </Callout>
 
 Refusals are recorded in the audit log as `workspace_only_blocked`, so a tool
 that stops working reads as restricted rather than broken. If something
 legitimate is outside the fence, add it to `additional_project_roots` rather
 than turning the mode off.
+
+<Callout type="warning">
+  **Agent config in parent directories stops being visible.** Coding agents look for their
+  configuration by walking up from the working directory — Claude Code reads `CLAUDE.md` and
+  `.claude/rules` at every level above the project, and others do the same. Those ancestors are
+  outside the workspace, so a workspace-only session sees the project's own config and nothing above
+  it. That is the mode doing its job, not a fault; if you keep shared instructions in a parent
+  directory, name that directory in `[supervisor.trust] additional_project_roots`.
+</Callout>
+
+To see what a session refused:
+
+```
+grith audit --session <id> | grep workspace_only_blocked
+```
 
 The same posture is available permanently as `[supervisor.trust]
 restrict_to_workspace = true`. There is deliberately no `--no-workspace-only`:
