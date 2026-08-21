@@ -568,6 +568,12 @@
           "type": "integer"
         },
         {
+          "default": true,
+          "description": "Decide D-Bus control-socket access per *method call* instead of per connection. At `connect(2)` there is nothing to judge but a socket path — \"read the keyring\" and \"ask systemd to run this command outside supervision\" are byte-identical syscalls — so enforcing there charges a prompt for every credential-helper lookup. With this on (the default), a connect to a D-Bus endpoint instead arms message inspection: grith decodes the calls the tool writes to that socket and escalates only the ones a curated allowlist does not vouch for. `gh auth token`'s keyring read stops prompting; `org.freedesktop.systemd1.Manager.StartTransientUnit` still QUEUEs, and now says so by name.  Fails toward the old behaviour: an unreadable payload, an undecodable stream or an unlisted method escalates the connection exactly as enforce_control_socket_connect alone would. Only D-Bus is affected — X11, tmux and screen carry no per-message destination and keep connect-time enforcement. Has no effect when enforce_control_socket_connect is false. Emergency override: GRITH_DBUS_MESSAGE_INSPECTION=0 (or =1 to force on).",
+          "name": "dbus_message_inspection",
+          "type": "boolean"
+        },
+        {
           "default": "generic",
           "description": null,
           "name": "default_profile",
@@ -577,6 +583,18 @@
           "default": true,
           "description": null,
           "name": "enabled",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Enforce the authority-delegating-binary-spawn detection. When false, spawning systemd-run / at / docker / systemctl / dbus-send / … is detected and forensically logged but still allowed (audit-only). When true (the default since v0.2.5), such a spawn is escalated Allow→QUEUE for review unless the profile's permit_authority_delegating list names the binary — closing the `systemd-run --user … -- <cmd>` supervision escape (the command's effect runs in a peer OUTSIDE the supervised tree, where nothing it does is intercepted). Escalation is QUEUE, not deny, so you can approve legitimate use once (the approval sticks for the session, and read-only subcommands like `docker ps` never prompt); a non-interactive session fails safe (denies) — set this false or use the profile permit list for unattended/CI sessions that legitimately delegate. Emergency override: GRITH_ENFORCE_AUTHORITY_DELEGATING_SPAWN=1 (or =0 to force off).",
+          "name": "enforce_authority_delegating_spawn",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Enforce the control-injection-IPC-socket-connect detection (session D-Bus, tmux, screen, X11). When false such a connect is audit-only (auto-allowed as local IPC). When true (the default since v0.2.5) it is routed to the proxy and escalated Allow→QUEUE unless the profile's permit_control_sockets list authorises it. Independent knob — desktop tooling touches the session bus routinely, so this has a higher false-positive surface than the spawn flag. Abstract-namespace sockets (the kind X11 clients try first) ARE matched — they render as `unix:@<name>` and classify like any other path. Emergency override: GRITH_ENFORCE_CONTROL_SOCKET_CONNECT=1 (or =0 to force off).",
+          "name": "enforce_control_socket_connect",
           "type": "boolean"
         },
         {
@@ -749,6 +767,30 @@
         }
       ],
       "path": "supervisor.platform"
+    },
+    {
+      "description": null,
+      "keys": [
+        {
+          "default": [],
+          "description": "Extra project roots to trust, for layouts git cannot infer — a worktree of a DIFFERENT repository parked alongside this one, or a non-git sibling checkout. `${HOME}`, `${PROJECT_DIR}` and `~` expand as in routine_paths. Every root is canonicalised, and `/`, your home directory and any ancestor of it are refused. At most 32 roots are trusted per session.  Trust here is project-derived, never literal: credential stores (~/.ssh, ~/.aws, .npmrc, …) inside a trusted root still go to the security proxy.",
+          "name": "additional_project_roots",
+          "type": "array"
+        },
+        {
+          "default": true,
+          "description": "How far this session's project trust reaches. `${PROJECT_DIR}` in a profile's routine_paths expands to the LAUNCH DIRECTORY only, so in a multi-worktree layout the sibling worktrees of the repository you are working on get no trust at all — measured 24.9% of calls prompting there against 0.32% under the launch directory, and one `git worktree remove` producing 692 bulk-delete prompts.  Trust every git worktree of the launch repository. `git worktree list` reports the main worktree too, so launching from a subdirectory also trusts the repository root (a tool working in `repo/frontend/` stops prompting on every read of `../package.json`). Resolved once, at session start, and never re-read: a re-read would let the supervised tool widen its own trust with `git worktree add`.  git's worktree list is built from files inside the repository, which the supervised tool can write, so a reported worktree is only trusted when it also sits inside the directory the repository itself lives in, carries git's own back-pointer to this repository, and is not a credential or personal-data directory. A repository checked out directly into your home directory gets no linked-worktree trust at all (its \"enclosing directory\" would be all of $HOME) — declare additional_project_roots for that layout. Set this to false if you want project trust to reach nothing but the launch directory.",
+          "name": "include_linked_worktrees",
+          "type": "boolean"
+        },
+        {
+          "default": false,
+          "description": "Make the workspace a wall instead of a trusted island. With this on, a file read or write whose target is outside the workspace (the launch directory, its linked git worktrees, and additional_project_roots above) is DENIED rather than scored — including the read-only opens that noise_reduction.ignore_read_only waves through today. Your other projects, the rest of your home directory, mounted media: none of them are readable.  What stays reachable, because the tool cannot run otherwise: system runtime paths for READS only (/usr, /lib, /bin, /etc, …), grith's noise paths (/proc, /sys, the terminal), and the paths the tool's own profile declares as routine (~/.claude, ~/.nvm/versions/**, /tmp/<tool>-*, …).  This only ever removes access. It cannot allow anything the proxy would otherwise block — a read of /etc/shadow is still denied by the filters. Filesystem only: network and process spawn are unaffected.  Per session: `grith exec --workspace-only -- <tool>`.",
+          "name": "restrict_to_workspace",
+          "type": "boolean"
+        }
+      ],
+      "path": "supervisor.trust"
     }
   ],
   "source": "config/default.toml"

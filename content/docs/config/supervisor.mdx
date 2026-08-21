@@ -5,7 +5,7 @@ section: 'config'
 order: 6
 tier: 'community'
 version: '0.1.0'
-lastUpdated: '2026-05-14'
+lastUpdated: '2026-08-21'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/supervisor.mdx'
 ---
 
@@ -19,6 +19,8 @@ noisy a session looks to the filters.
 <ConfigKeyTable section="supervisor.noise_reduction" />
 
 <ConfigKeyTable section="supervisor.dns_inspection" />
+
+<ConfigKeyTable section="supervisor.trust" />
 
 ## Notes
 
@@ -37,6 +39,43 @@ noisy a session looks to the filters.
   agent TUIs.
 - **`require_sandbox`** — when `true`, refuses to supervise unless the process is
   running inside a container or user namespace. Belt-and-braces.
+
+## Workspace trust
+
+`${PROJECT_DIR}` in a profile's `routine_paths` expands to the directory you ran
+`grith exec` in — and only that directory. In a multi-worktree layout that means
+the sibling worktrees of the very repository you are working on get no trust at
+all, and a tool working in one of them prompts on work that would be silent one
+directory over.
+
+- **`include_linked_worktrees`** — extend the session's project trust to every
+  git worktree of the launch repository. Default `true`. The listing includes
+  the main worktree, so launching from a subdirectory trusts the repository root
+  as well. Resolved once at session start and never re-read: a re-read would let
+  the supervised tool widen its own trust with `git worktree add`.
+
+  git builds its worktree list from files inside the repository, which the
+  supervised tool can write, so a reported worktree earns trust only if it also
+  sits inside the directory the repository itself lives in, carries git's own
+  back-pointer to this repository, and is not a credential or personal-data
+  directory. A repository checked out directly into your home directory gets no
+  linked-worktree trust at all — its enclosing directory would be the whole of
+  `$HOME`. Declare `additional_project_roots` for that layout.
+
+- **`additional_project_roots`** — extra roots for layouts git cannot infer: a
+  worktree of a _different_ repository parked alongside this one, or a non-git
+  sibling checkout. `${HOME}`, `${PROJECT_DIR}` and `~` expand as in
+  `routine_paths`.
+- **`restrict_to_workspace`** — turn the workspace into a boundary rather than a
+  trusted region. File operations outside it are denied instead of scored. See
+  [Workspace-only sessions](/docs/cli/exec#workspace-only-sessions) for exactly
+  what stays reachable, and `grith exec --workspace-only` for the per-session
+  form. Default `false`.
+
+Trust here is project-derived, never literal: `/`, your home directory and any
+ancestor of it are refused however they are declared, at most 32 roots are
+trusted per session, and credential stores inside a trusted root (`~/.ssh`,
+`~/.aws`, `.npmrc`, …) still go to the security proxy.
 
 ## Platform mechanisms
 
