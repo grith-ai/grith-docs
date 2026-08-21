@@ -5,7 +5,7 @@ section: "concepts"
 order: 5
 tier: "community"
 version: "0.1.0"
-lastUpdated: "2026-05-14"
+lastUpdated: '2026-08-21'
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/quarantine-digest.mdx"
 ---
 
@@ -79,6 +79,12 @@ The reviewer can:
   future calls will auto-allow.
 - **Approve + unlock egress** — for network calls. Allows this destination for the
   rest of the session.
+- **Scope a directory** — allow the operations you pick (read, write/create,
+  delete/rename) anywhere under a directory, for this session. One decision
+  instead of one per file.
+- **Block a directory** — the mirror image: refuse those operations under a
+  directory for the rest of the session. Later calls into it are denied without
+  asking again.
 - **Allow always** *(Pro)* — adds the call to a permanent allowlist. Sparingly.
 - **Deny** — block this call; the syscall returns EPERM.
 - **Deny + terminate** — block + kill the process tree. For confirmed exfil.
@@ -87,6 +93,11 @@ The reviewer can:
 
 Each decision is recorded in the audit log with the user who made it (in multi-user
 team setups) and the rationale annotations from the filters.
+
+Scoping and blocking are session-only and are never written to your profile.
+Both are available from the in-session prompt — see
+[the in-session prompt](/docs/cli/digest#the-in-session-prompt) for the keys and
+the limits on which directories each direction will accept.
 
 ## Why batching matters
 

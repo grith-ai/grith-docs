@@ -11,7 +11,7 @@ Site: https://docs.grith.ai
 ### Start here
 
 - [What is grith](https://docs.grith.ai/docs/start/what-is-grith) — An OS-level security supervisor for AI agents — intercept every action, score it against 18 filters, route ambiguous calls to a human review queue.
-- [Installation](https://docs.grith.ai/docs/start/installation) — Install grith v0.1 on Linux x86_64 — install script, manual download, or build from source.
+- [Installation](https://docs.grith.ai/docs/start/installation) — Install grith v0.2 on Linux x86_64 and aarch64 — install script, manual download, or build from source.
 - [Quickstart](https://docs.grith.ai/docs/start/quickstart) — Five minutes from install to a supervised agent session and reviewing its first queued call.
 - [Choose your agent](https://docs.grith.ai/docs/start/choose-your-agent) — Pick the built-in supervisor profile that matches the AI agent you'll be running.
 - [Connect a model](https://docs.grith.ai/docs/start/connect-a-model) — Configure a provider for the built-in REPL: Ollama, OpenAI, Anthropic, or OpenRouter.
@@ -39,7 +39,7 @@ Site: https://docs.grith.ai
 - [grith run](https://docs.grith.ai/docs/cli/run) — Execute a single non-interactive task using the configured LLM provider.
 - [grith exec](https://docs.grith.ai/docs/cli/exec) — Supervise an external CLI tool with OS-level syscall interception.
 - [grith proxy test](https://docs.grith.ai/docs/cli/proxy-test) — Dry-run a tool call through the filter pipeline. Returns the would-be decision.
-- [grith digest](https://docs.grith.ai/docs/cli/digest) — Manage the quarantine queue: list, review, approve, deny, learn, escalate.
+- [grith digest](https://docs.grith.ai/docs/cli/digest) — Interactively review the quarantine queue and decide each held call.
 - [grith audit](https://docs.grith.ai/docs/cli/audit) — Browse and export the audit log of every filter decision.
 - [grith log](https://docs.grith.ai/docs/cli/log) — Tail the audit-backed session log, like a live feed of decisions.
 - [grith canary](https://docs.grith.ai/docs/cli/canary) — Create and manage canary tokens for exfiltration trap detection.
@@ -50,7 +50,9 @@ Site: https://docs.grith.ai
 - [grith notifications](https://docs.grith.ai/docs/cli/notifications) — Manage notification channels — Slack, Discord, Telegram, Teams, email, webhook, and more.
 - [grith config](https://docs.grith.ai/docs/cli/config) — Show or modify configuration values from the command line.
 - [grith init](https://docs.grith.ai/docs/cli/init) — Generate a default configuration file in the user config directory.
+- [grith setup](https://docs.grith.ai/docs/cli/setup) — Run the interactive first-run onboarding: welcome, provider, trial, and a short guide.
 - [grith pro](https://docs.grith.ai/docs/cli/pro) — Pro plan: log in, sync team policies, refresh license, manage billing.
+- [grith completions](https://docs.grith.ai/docs/cli/completions) — Print a shell tab-completion script for grith to stdout.
 
 ### Filter reference
 
@@ -130,13 +132,7 @@ Site: https://docs.grith.ai
 - [Notifications: Slack](https://docs.grith.ai/docs/guides/notifications-slack) — Route digest items and security events to a Slack channel via webhook.
 - [Notifications: Discord](https://docs.grith.ai/docs/guides/notifications-discord) — Route grith events to a Discord channel via webhook.
 - [Notifications: Telegram](https://docs.grith.ai/docs/guides/notifications-telegram) — Route grith events to a Telegram chat via bot API.
-- [Notifications: Microsoft Teams](https://docs.grith.ai/docs/guides/notifications-teams) — Route grith events to a Microsoft Teams channel.
-- [Notifications: Email](https://docs.grith.ai/docs/guides/notifications-email) — Route grith events to email via SMTP.
 - [Notifications: Webhook](https://docs.grith.ai/docs/guides/notifications-webhook) — Generic HMAC-signed webhook receiver — the most flexible delivery channel.
-- [Notifications: PagerDuty](https://docs.grith.ai/docs/guides/notifications-pagerduty) — Page oncall on canary fires and high-severity grith events.
-- [Notifications: Opsgenie](https://docs.grith.ai/docs/guides/notifications-opsgenie) — Page oncall via Atlassian Opsgenie.
-- [Notifications: WhatsApp](https://docs.grith.ai/docs/guides/notifications-whatsapp) — Route grith events to WhatsApp via a provider API.
-- [Notifications: Desktop](https://docs.grith.ai/docs/guides/notifications-desktop) — Native OS notifications for the local user.
 - [Notifications: WebSocket](https://docs.grith.ai/docs/guides/notifications-websocket) — Real-time event stream for the dashboard and custom integrations.
 - [Exfiltration walkthrough](https://docs.grith.ai/docs/guides/exfiltration-walkthrough) — End-to-end attack and defence: simulating an exfil attempt against a grith install.
 - [Containment walkthrough](https://docs.grith.ai/docs/guides/containment-walkthrough) — Using zones to keep an agent in its lane — worked example with two concurrent sessions.

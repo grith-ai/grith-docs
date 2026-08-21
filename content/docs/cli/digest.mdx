@@ -5,7 +5,7 @@ section: "cli"
 order: 4
 tier: "community"
 version: "0.1.0"
-lastUpdated: "2026-08-14"
+lastUpdated: "2026-08-21"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/digest.mdx"
 ---
 
@@ -16,6 +16,14 @@ grith digest review
 The digest is the queue of calls that landed between the auto-allow and auto-deny
 thresholds. `grith digest` is the CLI surface for working with it, and it has a
 single subcommand: `review`.
+
+<Callout type="info">
+There are two places you decide a held call, and they have different keys. This
+page covers `grith digest review` — the queue, reviewed from another terminal.
+The prompt that appears **inside a supervised session**, while the process is
+frozen, is documented in [The in-session prompt](#the-in-session-prompt) below;
+it is where directory scoping and blocking live.
+</Callout>
 
 ## `grith digest review`
 
@@ -39,6 +47,71 @@ from — then waits for a keystroke:
 
 Decisions apply immediately and unfreeze the originating process. The next item
 displays after each decision.
+
+## The in-session prompt
+
+When you are sitting in a `grith exec` session, a queued call freezes the process
+and puts the decision in front of you immediately, without a second terminal.
+That prompt has its own keys:
+
+| Key     | Action                                                                              |
+| ------- | ----------------------------------------------------------------------------------- |
+| `a`     | Approve once. The exact target stays allowed for the rest of the session.            |
+| `d`     | Deny. The syscall returns `EPERM`; identical retries are denied for a short window.  |
+| `l`     | Approve and save a permanent rule for this exact target.                             |
+| `s`     | **Scope…** — allow a *directory* for the operations you pick, this session.          |
+| `b`     | **Block dir…** — refuse a *directory* for the operations you pick, this session.     |
+| `t`     | Deny and stop the supervised tool.                                                   |
+| `i`     | Show raw arguments and the request id.                                               |
+| `h`     | Key help.                                                                            |
+| `esc`   | Deny this request.                                                                   |
+
+On an auto-denied call the only choice is `c` to continue — the call was over the
+deny threshold and has already been blocked.
+
+### Scoping and blocking a directory
+
+`s` and `b` open the same editor pointing in opposite directions. `ctrl-b`
+switches an open editor between them, and the `action:` row shows which way it
+is pointing:
+
+```
+┌ BLOCK DIRECTORY ─────────────────────────────────────────────┐
+│ action:   ( ) allow   (●) block   [ctrl-b] switch            │
+│ scope:    /repo/secrets/                                     │
+│           [←] wider   [→] narrower                           │
+│ [x] read   [x] write/create   [x] delete/rename              │
+│ (*) this session only   not saved to the profile             │
+│ will BLOCK: everything under /repo/secrets/ (this session)   │
+```
+
+`←` and `→` walk the directory one path component at a time; `e` opens the path
+as a text field. The status line answers on every keystroke, so a directory that
+will be refused says so before you press enter, not after. Tick the operations
+the rule covers — read, write/create, delete/rename — and press enter.
+
+Both rules last for the session and are never written to your profile.
+
+**Scoping** stops at the same floors the rest of grith uses: a directory too
+broad to be meaningful (`/home`, your home directory), or one holding credentials
+(`~/.ssh`, `~/.aws`), is refused, and a sensitive directory can be scoped for
+reads but not for writes.
+
+**Blocking** drops those floors — they exist to stop authority being handed out
+too widely, and blocking hands out nothing, so blocking your home directory or
+`~/.ssh` is allowed. It adds one refusal of its own: the trees the supervised
+tool cannot run without (`/usr`, `/lib`, `/etc`, `/proc`, and anything
+containing them) cannot be blocked. Blocking those does not protect anything —
+the tool stops at its next library load — so the editor refuses and asks for a
+directory inside them.
+
+Both directions require the directory to contain the call you are answering. A
+rule that cannot match the call that opened the prompt would be a rule that
+silently does nothing.
+
+Blocked calls are recorded in the audit log as `scoped_deny_blocked`. To fence a
+whole session rather than block directories one at a time, see
+[`grith exec --workspace-only`](/docs/cli/exec#workspace-only-sessions).
 
 ## Daemon vs no daemon
 
