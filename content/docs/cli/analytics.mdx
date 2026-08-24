@@ -1,0 +1,71 @@
+---
+title: "grith analytics"
+description: "Check, enable or disable cloud analytics sync for this machine."
+section: "cli"
+order: 17
+tier: "pro"
+version: "0.1.0"
+lastUpdated: "2026-08-24"
+editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/analytics.mdx"
+---
+
+<PlanBadge tier="pro" />
+
+```
+grith analytics [status | enable | disable]
+```
+
+Controls whether this machine publishes analytics rollups to the team
+dashboard. Cloud analytics apply to paid plans only — the account needs an
+active plan carrying both the `cloud_sync` and `usage_analytics` entitlements —
+and are **on by default** once a paid account is signed in.
+
+What a rollup does and does not contain is covered in
+[Analytics & cost](/docs/pro/analytics-and-cost).
+
+## Subcommands
+
+### `grith analytics status`
+
+Show whether cloud analytics is on for this machine.
+
+```
+grith analytics status
+```
+
+### `grith analytics enable`
+
+Turn cloud analytics on. The daemon records a consent receipt locally the first
+time analytics is turned on, including when it turns itself on for a signed-in
+paid account.
+
+```
+grith analytics enable
+grith analytics enable --yes    # skip the confirmation prompt, for scripts
+```
+
+### `grith analytics disable`
+
+Stop uploading from this machine.
+
+```
+grith analytics disable
+```
+
+`disable` stops further uploads. It does not delete data that has already
+synced — that is managed from the dashboard.
+
+## Config
+
+`general.audit_sync = false` stops cloud analytics entirely:
+
+```toml
+[general]
+audit_sync = false
+```
+
+## See also
+
+- [Analytics & cost](/docs/pro/analytics-and-cost)
+- [`[general]` config](/docs/config/general)
+- [`grith pro`](/docs/cli/pro)

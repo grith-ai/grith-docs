@@ -68,6 +68,7 @@ export const sidebarData: SidebarSection[] = [
       { slug: 'cli/init', title: 'grith init' },
       { slug: 'cli/setup', title: 'grith setup' },
       { slug: 'cli/pro', title: 'grith pro', tier: 'pro' },
+      { slug: 'cli/analytics', title: 'grith analytics', tier: 'pro' },
       { slug: 'cli/completions', title: 'grith completions' },
     ],
   },
