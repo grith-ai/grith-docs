@@ -5,7 +5,7 @@ section: "guides"
 order: 18
 tier: "pro"
 version: "0.1.0"
-lastUpdated: "2026-05-14"
+lastUpdated: "2026-08-24"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/team-setup.mdx"
 ---
 
@@ -104,9 +104,13 @@ key distribution to manage.
 
 ## Boundaries
 
-- **Audit data stays local by default.** Setting `general.audit_sync = true`
-  opts in to sending summarised audit data to grith.ai for team analytics — even
-  then, raw audit records don't leave the developer's machine.
+- **Audit records stay on the developer's machine.** On a paid plan, cloud
+  analytics is on by default and each device publishes aggregated rollups and
+  security events to the team dashboard — counts, score histograms, per-filter
+  activity and labels, never the records themselves, and never command lines,
+  paths, prompts or file contents. `grith analytics disable` or
+  `general.audit_sync = false` stops it; see
+  [Analytics & cost](/docs/pro/analytics-and-cost).
 - **Trust tables stay local.** Each developer accumulates their own
   reputation. Pro can opt into shared reputation per profile; see
   [Team sync](/docs/pro/team-sync).

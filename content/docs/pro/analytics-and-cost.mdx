@@ -1,85 +1,166 @@
 ---
 title: "Analytics & cost"
-description: "Team-scope usage analytics, decision splits, per-user cost."
+description: "Cloud analytics: what each device sends, how often, and how long it's kept."
 section: "pro"
 order: 6
 tier: "pro"
 version: "0.1.0"
-lastUpdated: "2026-05-14"
+lastUpdated: "2026-08-24"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/analytics-and-cost.mdx"
 ---
 
 <PlanBadge tier="pro" />
 
-Pro analytics aggregate audit summaries from every team device into team-scope
-dashboards. Raw audit records stay on each device; only summarised counts and
-top-N rollups flow to the dashboard.
+Cloud analytics turn each device's local decision history into team-scope
+dashboards. What leaves the machine is **aggregated rollups and security
+events** — never command lines, paths, prompts or file contents.
 
-## What's surfaced
+Cloud analytics apply to paid plans only: the account needs an active plan
+carrying both the `cloud_sync` and `usage_analytics` entitlements. It is **on
+by default** once a paid account is signed in, and the daemon records a consent
+receipt locally the first time it turns itself on.
 
-- **Decision split** — allow/queue/deny ratios by team, user, project,
-  profile.
-- **Top destinations** — most-frequently-accessed hosts, by user.
-- **Top sessions by queue events** — sessions that produced the most digest
-  items.
-- **Canary fires** — every fire is logged with full context (these aren't
-  summarised — they're rare and important).
-- **Cost** — provider spend by model and user, derived from each agent's API
-  call accounting.
-- **Threshold drift** — sessions running with thresholds that diverge from
-  the team default.
+## What gets sent
 
-## Privacy posture
+Aggregated rollups per UTC day, plus security events:
 
-What grith.ai sees:
+- **Decision counts** — allowed, queued and denied, by hour and by day.
+- **Score distribution** — composite-score sums and a versioned 30-bin
+  histogram over the 0–15 range.
+- **Filter activity** — per-filter evaluated, triggered and denied-contribution
+  counts.
+- **Labels** — session, project, profile, supervised-tool and configuration
+  labels.
+- **Model usage** — LLM provider, model, token counts, and cost in integer USD
+  micros, with the price source and pricing version.
+- **Destination rollups** — keyed by a **team-scoped HMAC**. A clear hostname
+  appears only if the team's owner enables approved labels, and that applies
+  prospectively.
+- **Security events** — queue, deny, canary and explicit data-gap events.
+- **Device health** — last contact, latest local event, dirty and archive
+  backlog, completeness tier, audit-database generation.
 
-- **Counts** — number of allows, queues, denies, canary fires.
-- **Top-N rollups** — hosts and patterns, anonymised by default.
-- **Cost** — provider, model, token totals, user ID.
+## What is never sent
 
-What grith.ai does NOT see:
+- Command lines and arguments.
+- Raw file paths and URLs.
+- Prompts and model responses.
+- File or source contents, and payload bodies.
+- Environment values and secrets.
+- Free-form task context and decision reasons.
 
-- Individual call shapes (paths, command text, payloads).
-- Audit record contents.
-- Reputation table contents.
-- Provider API keys (those flow encrypted, never to grith.ai).
-- Source code / file contents.
+None of these have a column in the wire schema or the archive schema. The
+exporter has no field to put them in.
 
-`general.audit_sync = false` disables the summaries entirely; in that mode,
-Pro analytics show no data for that device.
+<Callout type="info" title="Not anonymous">
+The payload carries team, actor and device identity — that is what makes
+per-developer cost and per-session drill-down possible. It is aggregated, not
+anonymised.
+</Callout>
 
-## Cost tracking detail
+## Cadence
 
-Each provider call's metadata (provider, model, prompt tokens, completion
-tokens) is captured locally. With `audit_sync = true`, the summarised totals
-sync hourly to the dashboard. The dashboard converts to USD using the
-provider's published rates (manually updated; not real-time).
+Each device sends a heartbeat every **30 seconds**, and a snapshot on the same
+30-second tick whenever there is anything new to send. Target visibility in the
+online dashboard is **60 seconds p95** while the device is connected — near
+real-time, not real-time.
 
-Cost is shown:
+## Devices
 
-- **Per user** — single-source-of-truth attribution.
-- **Per project** — when sessions use `--project` to tag.
-- **Per provider/model** — comparison between providers.
-- **Per week** — for trend.
+Every machine registers as a **device**: a server-issued device id plus a
+one-time secret, stored locally with owner-only permissions.
 
-## Compliance-flavoured exports
+The allowance is **two active devices per seat, capped at 50 per team**. That
+cap is enforced at cloud registration only — it never degrades local security
+or supervision. A device that cannot register still supervises normally; it
+just has nowhere to publish its rollups.
+
+Devices can be revoked from the team dashboard.
+
+## Turning it on and off
 
 ```
-GET /analytics/compliance
+grith analytics status      # show the current state for this machine
+grith analytics enable      # turn it on and record the consent receipt
+grith analytics disable     # stop uploading from this machine
 ```
 
-Returns SOC 2 / ISO 27001 / GDPR-flavoured bundles. Includes:
+`disable` stops further uploads. It does not delete data that has already
+synced — that is managed from the dashboard.
 
-- Decision counts by control objective.
-- Canary fires with full timeline.
-- Threshold change history.
-- Policy-edit audit.
+Setting `general.audit_sync = false` stops cloud analytics entirely.
+
+See [`grith analytics`](/docs/cli/analytics) for the full command reference.
+
+## Cost tracking
+
+Each provider call's metadata — provider, model, prompt tokens, completion
+tokens — is captured locally. The rollup carries the token counts and the cost
+in integer USD micros, along with the price source and the pricing version used
+to compute it, so a later price change doesn't silently restate history.
+
+Cost is attributed by the labels in the rollup: session, project, profile and
+supervised tool, against the team, actor and device the snapshot came from.
+
+## The daily archive
+
+After a UTC day closes and the server has accepted that day's rollups, the
+device exports the day's row-level analytics projection as a **Parquet** object
+and uploads it to private S3 storage. It carries the same operand-free fields
+as the rollups, one row per event — never the excluded content above.
+
+Objects are content-addressed and encrypted at rest with a customer-managed KMS
+key. The bucket blocks public access and requires TLS.
+
+<Callout type="warning" title="Checksum-verified, not signed">
+Archive integrity is **checksum-verified, not signed**. Before activating an
+object the server verifies its size, SHA-256 checksum, encryption and key
+identity. Device signing keys exist in the protocol but are not yet verified,
+so do not treat archived objects as signed, immutable or tamper-proof.
+
+This is separate from the local audit log, which is hash-chained and
+tamper-evident on the device. See
+[Logging & audit retention](/docs/ops/logging-and-audit-retention).
+</Callout>
+
+## Retention
+
+| Data | Retention |
+| --- | --- |
+| Cloud rollups | 90 days |
+| Cloud security events | 90 days |
+| Cloud analytics archive, active | 90 days |
+| Cloud analytics archive, superseded revisions | 7 days |
+| Local Pro analytics projection | 90 days |
+| Local active audit database | 30 days |
+| Local cold audit archives | No automatic expiry; user-managed |
+
+When an entitlement expires, cloud data becomes **inaccessible immediately** and
+is **deleted after a 30-day reactivation window**.
+
+Deleting a team removes both the cloud rollups and the archived objects. Object
+deletion runs as a separate job, and the deletion is not complete until that job
+succeeds.
+
+## Exporting analytics
+
+Export the local audit records behind these analytics as JSON or CSV:
+
+```
+grith audit export --format json
+grith audit export --format csv
+```
+
+The export reads the local audit database on the machine that recorded it, so
+it covers that device's own history rather than the team-wide totals shown in
+the online dashboard.
 
 For deeper compliance integration (SIEM export, custom shapes), see
 [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting).
 
 ## See also
 
+- [`grith analytics`](/docs/cli/analytics)
 - [Analytics API](/docs/api/analytics)
+- [Logging & audit retention](/docs/ops/logging-and-audit-retention)
 - [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)
-- [SIEM integration (Enterprise)](/docs/enterprise/siem-integration)

@@ -5,7 +5,7 @@ section: 'resources'
 order: 3
 tier: 'community'
 version: '0.1.0'
-lastUpdated: '2026-05-14'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/faq.mdx'
 ---
 
@@ -36,16 +36,22 @@ overhead — see [Performance & tuning](/docs/ops/performance-tuning).
 
 ### Does grith call out to grith.ai?
 
-By default, only for:
+grith contacts grith.ai for:
 
 - Update checks (daily, disable with `update_check = false`).
 - Profile update checks (weekly, disable with `profile_update_check = false`).
 - License refresh (every 6 hours on Pro).
+- Cloud analytics, on a paid plan. It is on by default and publishes aggregated
+  rollups and security events every 30 seconds — see
+  [Analytics & cost](/docs/pro/analytics-and-cost) for the full payload. Turn it
+  off with `grith analytics disable` or `general.audit_sync = false`.
 
 It does NOT send:
 
-- Audit data (unless you opt in with `audit_sync = true`).
-- Source code, file contents, payload bytes.
+- Raw audit records. Nothing uploads the audit log itself.
+- Command lines and arguments, raw file paths, URLs.
+- Prompts, model responses, source code, file contents, payload bytes.
+- Environment values and secrets.
 - Provider API keys.
 
 ## Platforms
@@ -125,8 +131,11 @@ plaintext. See [Encrypted key management](/docs/pro/encrypted-key-management).
 
 ### Where does my audit log live?
 
-Local: `~/.local/share/grith/audit/*.sqlite`. By default, never leaves your
-machine. Pro analytics use summarised counts (not raw records) if you opt in.
+Local: `~/.local/share/grith/audit/audit.db`. The audit log itself never leaves
+the machine. On a paid plan, cloud analytics publishes aggregated rollups and
+security events derived from it — counts, score histograms, per-filter activity
+and labels, never the records themselves. It is on by default and turned off
+with `grith analytics disable` or `general.audit_sync = false`.
 
 ### Can grith see my source code?
 

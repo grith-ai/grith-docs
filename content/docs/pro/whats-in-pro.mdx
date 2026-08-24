@@ -5,7 +5,7 @@ section: "pro"
 order: 1
 tier: "pro"
 version: "0.1.0"
-lastUpdated: "2026-05-14"
+lastUpdated: "2026-08-24"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/whats-in-pro.mdx"
 ---
 
@@ -22,7 +22,8 @@ shared policy, team-wide analytics, encrypted key sharing, and managed notificat
   across the team without leaking them anywhere.
 - **Centralised policies** — author policies once in the dashboard, apply to
   any subset of the team.
-- **Usage analytics** — per-developer cost, decision split, session timelines.
+- **Usage analytics** — decision counts, score distribution, per-filter
+  activity and per-developer cost, aggregated from every device on the team.
 - **Cost tracking** — provider spend by model, by user, by project.
 - **Notification channels** *(coming soon)* — managed Slack, Telegram and more,
   connected from the dashboard with no local setup.
@@ -44,7 +45,10 @@ For more than 25 users or compliance-grade needs, see
 The community core is unchanged on Pro:
 
 - All 18 filters with all the same scoring.
-- Local-first by default. Audit data stays local unless `audit_sync = true`.
+- Audit records stay on the device. Cloud analytics publishes aggregated
+  rollups and security events, never the records themselves — on by default for
+  a paid plan, off with `grith analytics disable` or `general.audit_sync = false`
+  (see [Analytics & cost](/docs/pro/analytics-and-cost)).
 - Per-device reputation table.
 - BYOK model access.
 

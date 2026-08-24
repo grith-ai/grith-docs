@@ -52,6 +52,7 @@ Site: https://docs.grith.ai
 - [grith init](https://docs.grith.ai/docs/cli/init) — Generate a default configuration file in the user config directory.
 - [grith setup](https://docs.grith.ai/docs/cli/setup) — Run the interactive first-run onboarding: welcome, provider, trial, and a short guide.
 - [grith pro](https://docs.grith.ai/docs/cli/pro) — Pro plan: log in, sync team policies, refresh license, manage billing.
+- [grith analytics](https://docs.grith.ai/docs/cli/analytics) — Check, enable or disable cloud analytics sync for this machine.
 - [grith completions](https://docs.grith.ai/docs/cli/completions) — Print a shell tab-completion script for grith to stdout.
 
 ### Filter reference
@@ -159,7 +160,7 @@ Site: https://docs.grith.ai
 - [License lifecycle](https://docs.grith.ai/docs/pro/license-lifecycle) — How Pro licenses are issued, refreshed, and revoked.
 - [Team sync](https://docs.grith.ai/docs/pro/team-sync) — Centrally-managed policies pulled to every device on schedule.
 - [Centralised policies](https://docs.grith.ai/docs/pro/centralised-policies) — Author and distribute named policy bundles from the dashboard.
-- [Analytics & cost](https://docs.grith.ai/docs/pro/analytics-and-cost) — Team-scope usage analytics, decision splits, per-user cost.
+- [Analytics & cost](https://docs.grith.ai/docs/pro/analytics-and-cost) — Cloud analytics: what each device sends, how often, and how long it's kept.
 - [Encrypted key management](https://docs.grith.ai/docs/pro/encrypted-key-management) — Provider API keys, encrypted end-to-end between admin browser and team devices.
 
 ### Enterprise
