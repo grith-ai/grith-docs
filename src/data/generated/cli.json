@@ -61,6 +61,11 @@
       "variant": "Pro"
     },
     {
+      "description": "Manage cloud analytics sync for this machine",
+      "name": "analytics",
+      "variant": "Analytics"
+    },
+    {
       "description": "Manage notification channels",
       "name": "notifications",
       "variant": "Notifications"

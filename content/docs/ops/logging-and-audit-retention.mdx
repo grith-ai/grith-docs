@@ -5,7 +5,7 @@ section: "ops"
 order: 3
 tier: "community"
 version: "0.1.0"
-lastUpdated: "2026-05-14"
+lastUpdated: "2026-08-24"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/logging-and-audit-retention.mdx"
 ---
 
@@ -80,6 +80,42 @@ zstd-compressed NDJSON — and only then removes them from the active database.
 The archive is written before the delete, so an interrupted prune leaves the
 records in both places rather than losing them.
 
+## Cloud analytics
+
+On a paid plan the daemon also publishes analytics to the team dashboard. What
+goes up is **aggregated** — decision counts, score histograms, per-filter
+activity, labels and security events. Audit records themselves are never
+uploaded; there is no raw-record sync, and the local audit log stays the only
+place the records exist. See
+[Analytics & cost](/docs/pro/analytics-and-cost) for the full payload and
+[`grith analytics`](/docs/cli/analytics) to turn it off.
+
+Retention differs on each side:
+
+| Data | Retention |
+| --- | --- |
+| Local active audit database | 30 days (`retain_full_days`) |
+| Local cold archives | No automatic expiry; user-managed |
+| Local Pro analytics projection | 90 days |
+| Cloud rollups and security events | 90 days |
+| Cloud analytics archive, active | 90 days |
+| Cloud analytics archive, superseded revisions | 7 days |
+
+## Integrity
+
+Two different guarantees, worth keeping apart:
+
+- **The local audit log is hash-chained.** Each record links to the hash of its
+  predecessor, so a removed or edited record shows up as a fork or a gap. That
+  makes the local log tamper-evident: `grith audit diagnose` verifies the chain
+  read-only, and `grith audit compact` re-verifies it after rewriting the file.
+  Retention prunes on a contiguous cutoff precisely so the chain survives.
+- **The cloud analytics archive is checksum-verified, not signed.** Before
+  activating an uploaded object the server verifies its size, SHA-256 checksum,
+  encryption and key identity. Device signing keys exist in the protocol but are
+  not yet verified, so archived objects are not signed, immutable or
+  tamper-proof.
+
 ## Reclaiming disk space
 
 Deleting rows from SQLite does not shrink the database file: the freed pages go
@@ -153,4 +189,5 @@ prompts, model outputs, or human-typed messages. For full session capture
 - [`grith audit`](/docs/cli/audit) — CLI for browsing/exporting
 - [Audit API](/docs/api/audit)
 - [`[general]` config](/docs/config/general)
+- [Analytics & cost (Pro)](/docs/pro/analytics-and-cost)
 - [SIEM integration](/docs/enterprise/siem-integration)

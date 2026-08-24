@@ -5,7 +5,7 @@ section: "cli"
 order: 16
 tier: "pro"
 version: "0.1.0"
-lastUpdated: "2026-05-14"
+lastUpdated: "2026-08-24"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/pro.mdx"
 ---
 
@@ -80,15 +80,17 @@ Sessions in flight continue; new ones start on the community tier.
 
 ### `grith pro sync`
 
-Upload audit records to the cloud and pull the latest team policies and shared
-filter configs.
+Pull the latest team-managed artefacts from the dashboard: team policy JSON,
+shared configs, and encrypted provider keys.
 
 ```
 grith pro sync
 ```
 
-Pulled artefacts: supervisor profiles, scoring thresholds (`[proxy]`), filter config
-files (`config/filters/*.toml`), notification channel configs, canary registry.
+`sync` does not upload audit records. Analytics leave the device through cloud
+analytics instead, on their own cadence — see
+[Analytics & cost](/docs/pro/analytics-and-cost) for what is sent and
+[`grith analytics`](/docs/cli/analytics) for turning it on and off.
 
 ### `grith pro upgrade`
 
@@ -133,3 +135,4 @@ Reach for `grith pro` when:
 - [Authentication](/docs/pro/authentication)
 - [License lifecycle](/docs/pro/license-lifecycle)
 - [Team sync](/docs/pro/team-sync)
+- [`grith analytics`](/docs/cli/analytics)

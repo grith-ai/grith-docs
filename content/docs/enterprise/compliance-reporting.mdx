@@ -5,7 +5,7 @@ section: "enterprise"
 order: 4
 tier: "enterprise"
 version: "0.1.0"
-lastUpdated: "2026-05-14"
+lastUpdated: "2026-08-24"
 editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/enterprise/compliance-reporting.mdx"
 ---
 
@@ -56,24 +56,31 @@ Returns a signed bundle (JSON + CSV) downloadable via a one-time link.
 
 ## Retention
 
-By default, audit data summaries are retained on the dashboard for **24 months**,
-sufficient for typical audit windows (12 months + lookback). Raw audit records
+Cloud-held analytics are retained for **90 days** — rollups, security events and
+the active analytics archive alike. Raw audit records are never uploaded; they
 stay on each developer's device (local SQLite, retention per
-[`audit.retain_full_days`](/docs/ops/logging-and-audit-retention)).
+[`audit.retain_full_days`](/docs/ops/logging-and-audit-retention)). See
+[Analytics & cost](/docs/pro/analytics-and-cost) for the full retention table.
 
-For longer retention requirements, see [SIEM integration](/docs/enterprise/siem-integration)
-— SIEM platforms typically have longer retention by default.
+Anything that has to outlive 90 days must be exported and retained by you;
+`grith audit export` writes the device's own records to JSON or CSV.
 
-## Signing
+## Integrity
 
-Each compliance bundle is signed by grith.ai with a per-team key. Auditors can
-verify integrity:
+Exports are **not** cryptographically signed, and grith does not publish a
+verification key. What integrity evidence exists is different in each place,
+and the distinction matters to an auditor:
 
-```
-gpg --verify bundle.signed
-```
+- **On the device**, audit records form a hash chain. Any edit or deletion
+  inside the retained window breaks the chain, which `grith audit diagnose`
+  reports, so the local log is tamper-evident.
+- **In the cloud**, analytics archives are checksum-verified: the server checks
+  an uploaded object's size, SHA-256 checksum, encryption and key identity
+  before it becomes the active archive for a day. That establishes the object
+  is the one the device declared — not that it is immutable or signed.
 
-The verification key is downloadable from the dashboard.
+Describe grith's evidence to auditors in those terms rather than as a signed
+artefact.
 
 ## Custom controls
 
