@@ -291,7 +291,7 @@ Commands:
   activate     Fetch and activate a fresh license
   refresh      Force an on-demand license refresh against grith.ai
   logout       Remove credentials and license
-  sync         Pull team policies, shared configs and provider keys; push reputation data
+  sync         Upload audit records to cloud and pull team policies
   upgrade      Open the upgrade/pricing page in the default browser
   start-trial  Start a free Pro trial (one-click when available, else opens signup)
   billing      Show current plan and billing details; open billing portal in browser
