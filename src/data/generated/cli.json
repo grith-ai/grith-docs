@@ -6,115 +6,118 @@
   },
   "commands": [
     {
+      "args": [
+        "<TASK>"
+      ],
       "description": "Execute a single task non-interactively",
       "name": "run",
-      "variant": "Run",
-      "args": ["<TASK>"],
-      "subcommands": []
+      "subcommands": [],
+      "variant": "Run"
     },
     {
+      "alias": "onboarding",
       "description": "Run the interactive first-run setup (welcome, provider, trial, guide)",
       "name": "setup",
-      "variant": "Setup",
-      "alias": "onboarding",
-      "subcommands": []
+      "subcommands": [],
+      "variant": "Setup"
     },
     {
       "description": "Create default configuration",
+      "doc_note": "Overwrites an existing config.toml unconditionally - no backup, no merge.",
       "name": "init",
-      "variant": "Init",
       "subcommands": [],
-      "doc_note": "Overwrites an existing config.toml unconditionally - no backup, no merge."
+      "variant": "Init"
     },
     {
       "description": "Show or modify configuration",
+      "doc_note": "Bare `grith config` prints the effective configuration. `set` accepts a fixed 58-key whitelist, not arbitrary dotted paths. There is no get, list, edit, validate or reload.",
       "name": "config",
-      "variant": "Config",
       "subcommands": [
         {
-          "name": "set",
-          "description": "Set a configuration value"
+          "description": "Set a configuration value",
+          "name": "set"
         }
       ],
-      "doc_note": "Bare `grith config` prints the effective configuration. `set` accepts a fixed 58-key whitelist, not arbitrary dotted paths. There is no get, list, edit, validate or reload."
+      "variant": "Config"
     },
     {
       "description": "Browse audit logs",
+      "doc_note": "`export` writes data to stdout and its count banner to stderr, so redirecting to a file gives clean output. `compact` and `rebuild-analytics` both refuse while the daemon owns the database, and both refuse on a quarantined chain; `diagnose` is the one that still works in quarantine.",
       "name": "audit",
-      "variant": "Audit",
       "subcommands": [
         {
-          "name": "diagnose",
-          "description": "Inspect the audit chain: verification outcome, forks, gaps (read-only)"
+          "description": "Inspect the audit chain: verification outcome, forks, gaps (read-only)",
+          "name": "diagnose"
         },
         {
-          "name": "export",
-          "description": "Export audit logs as JSON or CSV"
+          "description": "Export audit logs as JSON or CSV",
+          "name": "export"
         },
         {
-          "name": "compact",
-          "description": "Reclaim free pages left by pruning: rewrites + atomically swaps the audit database. A manual maintenance op (never automatic); requires that no daemon is running and the chain is not quarantined"
+          "description": "Reclaim free pages left by pruning: rewrites + atomically swaps the audit database. A manual maintenance op (never automatic); requires that no daemon is running and the chain is not quarantined",
+          "name": "compact"
         },
         {
-          "name": "rebuild-analytics",
-          "description": "Rebuild the analytics projection from the audit database and cold archives"
+          "description": "Rebuild the analytics projection from the audit database and cold archives",
+          "name": "rebuild-analytics"
         }
       ],
-      "doc_note": "`export` writes data to stdout and its count banner to stderr, so redirecting to a file gives clean output. `compact` and `rebuild-analytics` both refuse while the daemon owns the database, and both refuse on a quarantined chain; `diagnose` is the one that still works in quarantine."
+      "variant": "Audit"
     },
     {
       "description": "Manage digest queue",
+      "doc_note": "In `review`, `q` auto-denies the item currently on screen before quitting.",
       "name": "digest",
-      "variant": "Digest",
       "subcommands": [
         {
-          "name": "review",
-          "description": "Interactive digest review"
+          "description": "Interactive digest review",
+          "name": "review"
         }
       ],
-      "doc_note": "In `review`, `q` auto-denies the item currently on screen before quitting."
+      "variant": "Digest"
     },
     {
       "description": "Manage canary tokens used for exfiltration trap detection",
+      "doc_note": "The registry is in-memory. These subcommands mutate a throwaway registry the daemon never sees; the only durable registration is [[canary.tokens]] in config/filters/canary.toml plus a daemon restart.",
       "name": "canary",
-      "variant": "Canary",
       "subcommands": [
         {
-          "name": "list",
-          "description": "List registered canary tokens"
+          "description": "List registered canary tokens",
+          "name": "list"
         },
         {
-          "name": "add",
-          "description": "Add a canary token"
+          "description": "Add a canary token",
+          "name": "add"
         },
         {
-          "name": "remove",
-          "description": "Remove a canary token by ID"
+          "description": "Remove a canary token by ID",
+          "name": "remove"
         },
         {
-          "name": "rotate",
-          "description": "Rotate a canary token by ID (keeps label, replaces value)"
+          "description": "Rotate a canary token by ID (keeps label, replaces value)",
+          "name": "rotate"
         }
       ],
-      "doc_note": "The registry is in-memory. These subcommands mutate a throwaway registry the daemon never sees; the only durable registration is [[canary.tokens]] in config/filters/canary.toml plus a daemon restart."
+      "variant": "Canary"
     },
     {
       "description": "Security proxy commands",
+      "doc_note": "`proxy test` exit codes: 0 allow, 1 queue, 2 deny.",
       "name": "proxy",
-      "variant": "Proxy",
       "subcommands": [
         {
-          "name": "test",
-          "description": "Dry-run a tool call against the proxy"
+          "description": "Dry-run a tool call against the proxy",
+          "name": "test"
         }
       ],
-      "doc_note": "`proxy test` exit codes: 0 allow, 1 queue, 2 deny."
+      "variant": "Proxy"
     },
     {
+      "args": [
+        "[COMMAND]... (after --)"
+      ],
       "description": "Supervise an external CLI tool with OS-level syscall interception",
-      "name": "exec",
-      "variant": "Exec",
-      "args": ["[COMMAND]... (after --)"],
+      "doc_note": "Also accepts three bare verbs - `list`, `kill <id>`, `prune` - matched only when there is no --, no --profile and no --attach. A fail-closed thin client: it refuses to start a session without a version-matched daemon, and has no in-process fallback.",
       "flags": [
         "--profile <PROFILE>",
         "--attach <ATTACH>",
@@ -123,209 +126,216 @@
         "--allow-queued",
         "--workspace-only"
       ],
+      "name": "exec",
       "subcommands": [],
-      "doc_note": "Also accepts three bare verbs - `list`, `kill <id>`, `prune` - matched only when there is no --, no --profile and no --attach. A fail-closed thin client: it refuses to start a session without a version-matched daemon, and has no in-process fallback."
+      "variant": "Exec"
     },
     {
       "description": "List or manage active supervisor sessions",
       "name": "supervisor",
-      "variant": "Supervisor",
       "subcommands": [
         {
-          "name": "list",
-          "description": "List active supervisor sessions"
+          "description": "List active supervisor sessions",
+          "name": "list"
         },
         {
-          "name": "status",
-          "description": "Show details of a specific session"
+          "description": "Show details of a specific session",
+          "name": "status"
         },
         {
-          "name": "kill",
-          "description": "Terminate a supervisor session and detach from the process"
+          "description": "Terminate a supervisor session and detach from the process",
+          "name": "kill"
         }
-      ]
+      ],
+      "variant": "Supervisor"
     },
     {
+      "alias": "dashboard",
       "description": "Manage the grith daemon (dashboard server + shared subsystems)",
       "name": "daemon",
-      "variant": "Daemon",
-      "alias": "dashboard",
       "subcommands": [
         {
-          "name": "start",
-          "description": "Start the daemon (dashboard server + shared subsystems) as a background process"
+          "description": "Start the daemon (dashboard server + shared subsystems) as a background process",
+          "name": "start"
         },
         {
-          "name": "stop",
-          "description": "Stop the running daemon"
+          "description": "Stop the running daemon",
+          "name": "stop"
         },
         {
-          "name": "restart",
-          "description": "Restart the daemon (stop the running one, then start this build)"
+          "description": "Restart the daemon (stop the running one, then start this build)",
+          "name": "restart"
         },
         {
-          "name": "status",
-          "description": "Check if the daemon is running"
+          "description": "Check if the daemon is running",
+          "name": "status"
         },
         {
-          "name": "pair",
-          "description": "Authorise a browser for the dashboard (mints a single-use pairing link)"
+          "description": "Authorise a browser for the dashboard (mints a single-use pairing link)",
+          "name": "pair"
         }
-      ]
+      ],
+      "variant": "Daemon"
     },
     {
       "description": "Manage Pro plan: login, status, sync, activate, logout",
+      "doc_note": "`sync` pulls team policies, shared configs and provider keys, and pushes reputation data. The raw audit-record upload was retired, so it uploads no audit records. Without a licence, activate / refresh / billing / sync exit 1 with \"Not logged in\"; status reports it at exit 0.",
       "name": "pro",
-      "variant": "Pro",
       "subcommands": [
         {
-          "name": "login",
-          "description": "Authenticate with grith.ai (device auth by default, API key optional)"
+          "description": "Authenticate with grith.ai (device auth by default, API key optional)",
+          "name": "login"
         },
         {
-          "name": "status",
-          "description": "Show plan status, license expiry, team info"
+          "description": "Show plan status, license expiry, team info",
+          "name": "status"
         },
         {
-          "name": "activate",
-          "description": "Fetch and activate a fresh license"
+          "description": "Fetch and activate a fresh license",
+          "name": "activate"
         },
         {
-          "name": "refresh",
-          "description": "Force an on-demand license refresh against grith.ai"
+          "description": "Force an on-demand license refresh against grith.ai",
+          "name": "refresh"
         },
         {
-          "name": "logout",
-          "description": "Remove credentials and license"
+          "description": "Remove credentials and license",
+          "name": "logout"
         },
         {
-          "name": "sync",
-          "description": "Pull team policies, shared configs and provider keys; push learned reputation"
+          "description": "Pull team policies, shared configs and provider keys; push learned reputation",
+          "name": "sync"
         },
         {
-          "name": "upgrade",
-          "description": "Open the upgrade/pricing page in the default browser"
+          "description": "Open the upgrade/pricing page in the default browser",
+          "name": "upgrade"
         },
         {
-          "name": "start-trial",
-          "description": "Start a free Pro trial (one-click when available, else opens signup)"
+          "description": "Start a free Pro trial (one-click when available, else opens signup)",
+          "name": "start-trial"
         },
         {
-          "name": "billing",
-          "description": "Show current plan and billing details; open billing portal in browser"
+          "description": "Show current plan and billing details; open billing portal in browser",
+          "name": "billing"
         }
       ],
-      "doc_note": "The binary's own --help text for `sync` still says \"Upload audit records to cloud\". That is stale: the raw audit-record upload was retired, and `sync` uploads no audit records. Without a licence, activate / refresh / billing / sync exit 1 with \"Not logged in\"; status reports it at exit 0."
+      "variant": "Pro"
     },
     {
       "description": "Manage cloud analytics sync for this machine",
+      "doc_note": "`verify-archives` defaults to yesterday back 29 days and exits non-zero when any day disagrees, so it can run as a check.",
       "name": "analytics",
-      "variant": "Analytics",
       "subcommands": [
         {
-          "name": "status",
-          "description": "Show cloud analytics sync status for this machine"
+          "description": "Show cloud analytics sync status for this machine",
+          "name": "status"
         },
         {
-          "name": "verify-archives",
-          "description": "Rebuild archived days from cloud storage and check they still match the analytics the server accepted"
+          "description": "Rebuild archived days from cloud storage and check they still match the analytics the server accepted",
+          "name": "verify-archives"
         },
         {
-          "name": "enable",
-          "description": "Turn on cloud analytics sync (records your consent)"
+          "description": "Turn on cloud analytics sync (records your consent)",
+          "name": "enable"
         },
         {
-          "name": "disable",
-          "description": "Turn off cloud analytics sync on this machine"
+          "description": "Turn off cloud analytics sync on this machine",
+          "name": "disable"
         }
       ],
-      "doc_note": "`verify-archives` defaults to yesterday back 29 days and exits non-zero when any day disagrees, so it can run as a check."
+      "variant": "Analytics"
     },
     {
       "description": "Manage notification channels",
+      "doc_note": "Parked in v0.3.1. Every subcommand prints the same \"Notifications are coming soon.\" message and exits 0.",
       "name": "notifications",
-      "variant": "Notifications",
       "subcommands": [
         {
-          "name": "status",
-          "description": "Show notification channel status and health"
+          "description": "Show notification channel status and health",
+          "name": "status"
         },
         {
-          "name": "channels",
-          "description": "List all available notification channels"
+          "description": "List all available notification channels",
+          "name": "channels"
         },
         {
-          "name": "test",
-          "description": "Send a test notification to a specific channel"
+          "description": "Send a test notification to a specific channel",
+          "name": "test"
         }
       ],
-      "doc_note": "Parked in v0.3.1. Every subcommand prints the same \"Notifications are coming soon.\" message and exits 0."
+      "variant": "Notifications"
     },
     {
       "description": "View audit-backed session logs",
+      "doc_note": "--session accepts a UUID or a session name. --limit defaults to 100 and is clamped.",
+      "flags": [
+        "--tail",
+        "--session <SESSION>",
+        "--limit <LIMIT>"
+      ],
       "name": "log",
-      "variant": "Log",
-      "flags": ["--tail", "--session <SESSION>", "--limit <LIMIT>"],
       "subcommands": [],
-      "doc_note": "--session accepts a UUID or a session name. --limit defaults to 100 and is clamped."
+      "variant": "Log"
     },
     {
       "description": "Manage supervisor profiles",
+      "doc_note": "`audit` is the only subcommand. There is no list, show, create, validate or diff - the profile set is compiled into the binary.",
       "name": "profile",
-      "variant": "Profile",
       "subcommands": [
         {
-          "name": "audit",
-          "description": "Audit a forensic trace file against a profile"
+          "description": "Audit a forensic trace file against a profile",
+          "name": "audit"
         }
       ],
-      "doc_note": "`audit` is the only subcommand. There is no list, show, create, validate or diff - the profile set is compiled into the binary."
+      "variant": "Profile"
     },
     {
       "description": "Manage the reputation system",
+      "doc_note": "This is the learned Beta trust table, not the destination-reputation filter. It is applied after the pipeline and only on a QUEUE.",
       "name": "reputation",
-      "variant": "Reputation",
       "subcommands": [
         {
-          "name": "show",
-          "description": "Show the learned reputation table with trust scores"
+          "description": "Show the learned reputation table with trust scores",
+          "name": "show"
         },
         {
-          "name": "reset",
-          "description": "Reset all learned reputation data"
+          "description": "Reset all learned reputation data",
+          "name": "reset"
         }
       ],
-      "doc_note": "This is the learned Beta trust table, not the destination-reputation filter. It is applied after the pipeline and only on a QUEUE."
+      "variant": "Reputation"
     },
     {
+      "args": [
+        "<SHELL>  [bash, elvish, fish, powershell, zsh]"
+      ],
       "description": "Generate a shell completion script for grith",
+      "doc_note": "Works even when the config on disk is broken.",
       "name": "completions",
-      "variant": "Completions",
-      "args": ["<SHELL>  [bash, elvish, fish, powershell, zsh]"],
       "subcommands": [],
-      "doc_note": "Works even when the config on disk is broken."
+      "variant": "Completions"
     }
   ],
   "global_flags": [
     {
-      "flag": "--config <CONFIG>",
-      "description": "Path to configuration file"
+      "description": "Path to configuration file",
+      "flag": "--config <CONFIG>"
     },
     {
-      "flag": "--log-level <LOG_LEVEL>",
-      "description": "Log level (trace, debug, info, warn, error)"
+      "description": "Log level (trace, debug, info, warn, error)",
+      "flag": "--log-level <LOG_LEVEL>"
     },
     {
-      "flag": "--no-color",
-      "description": "Disable colored output"
+      "description": "Disable colored output",
+      "flag": "--no-color"
     },
     {
-      "flag": "--project <PROJECT>",
-      "description": "Override the project name (defaults to current directory name)"
+      "description": "Override the project name (defaults to current directory name)",
+      "flag": "--project <PROJECT>"
     },
     {
-      "flag": "--skip-onboarding",
-      "description": "Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)"
+      "description": "Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)",
+      "flag": "--skip-onboarding"
     }
   ],
   "partial": false,

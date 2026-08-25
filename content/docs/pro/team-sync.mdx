@@ -48,11 +48,6 @@ Audit records. The raw audit log stays on the machine that wrote it, full stop. 
 it, and the team dashboard has no view of it - what the team sees is a security-event timeline
 built from the analytics projection, which carries counts and summaries rather than records.
 
-<Callout type="warning" title="A stale help string">
-`grith pro sync --help` still reads "Upload audit records to cloud and pull team policies". The
-upload half was retired; the command only pulls team state and pushes reputation.
-</Callout>
-
 The digest queue, the local learned-rules file and your `config.toml` are also local-only.
 
 ## See also

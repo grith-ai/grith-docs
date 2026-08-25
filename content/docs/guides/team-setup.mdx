@@ -47,9 +47,9 @@ provider API keys into `provider-keys/` - deleting any key the team has since re
 team's shared learned rules into a local cache. It **pushes** the machine's learned reputation
 table. It refuses on a community licence.
 
-<Callout type="info" title="The help text is out of date">
-  `grith pro sync --help` still says "Upload audit records to cloud and pull team policies". The raw
-  audit-record upload was retired. Sync uploads no audit records, and there is no command that does.
+<Callout type="info" title="No command uploads your audit log">
+  The raw audit-record upload was retired. Sync uploads no audit records, and there is no
+  command that does.
 </Callout>
 
 Provider keys land encrypted at rest, sealed to your grith API key rather than a passphrase or the
