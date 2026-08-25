@@ -1,18 +1,32 @@
 ---
-title: "grith notifications"
-description: "Manage notification channels — Slack, Discord, Telegram, Teams, email, webhook, and more."
-section: "cli"
+title: 'grith notifications'
+description: 'What the command does today: prints a status message and exits.'
+section: 'cli'
 order: 12
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/notifications.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/notifications.mdx'
 ---
 
-The `grith notifications` command will manage your managed notification channels.
+```
+grith notifications status | channels | test <CHANNEL>
+```
 
-<Callout type="info" title="Coming soon">
-Managed notifications are coming soon. You'll set them up from your grith dashboard
-with no local configuration, and inspect them with the `grith notifications`
-command. This page will cover it when it ships.
-</Callout>
+All three subcommands print the same message and exit `0`. `test` still requires a
+`<CHANNEL>` argument - without one it exits `2` with a usage error, before reaching
+the message.
+
+<Terminal>
+{`$ grith notifications status
+Notifications are coming soon.
+
+Get alerts — and approve or deny — from Telegram, Slack and more,
+set up from your dashboard with no local configuration. It's on the
+way; this command will light up when it arrives.`}
+</Terminal>
+
+The `--help` descriptions for `status`, `channels` and `test` describe the intended
+feature, not what the command does today.
+
+See [Notifications](/docs/pro/notifications).

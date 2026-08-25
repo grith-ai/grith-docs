@@ -1,66 +1,63 @@
 ---
-title: "grith reputation"
-description: "Inspect and reset the adaptive trust table that quiets the digest over time."
-section: "cli"
+title: 'grith reputation'
+description: 'Inspect or reset the trust table grith learns from your approve and deny decisions.'
+section: 'cli'
 order: 11
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/reputation.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/reputation.mdx'
 ---
 
 ```
-grith reputation [show | reset]
+grith reputation show [--profile <PROFILE>]
+grith reputation reset [--profile <PROFILE>]
 ```
 
-The reputation table holds per-call-shape trust scores accumulated from your past
-approvals and denials. See [Adaptive reputation](/docs/concepts/adaptive-reputation)
-for the concept.
+The learned table records how you have answered prompts, so that a target you have
+approved eight times stops asking. A fresh install has nothing in it.
 
-## Subcommands
+<Terminal>
+{`$ grith reputation show
+No reputation data. Data is learned from approve/deny decisions during grith exec sessions.`}
+</Terminal>
 
-### `grith reputation show`
+## The table
 
-Print the trust table, one row per call shape.
+`show` prints four columns - `KEY`, `TRUST`, `OBS`, `STATUS` - sorted by trust descending,
+with keys truncated at 58 characters. `--profile` filters to entries learned under one
+profile.
 
-```
-$ grith reputation show
-TRUST  OBS  DENIES  SHAPE
-0.96   42   0       file_read ${PROJECT_DIR}/**
-0.94   38   1       network  api.anthropic.com
-0.92   91   2       shell    git status
-0.85   17   2       file_write ${PROJECT_DIR}/**
-0.04   1    8       network  *.suspicious-cdn.example
-...
-```
+`STATUS` is derived at display time, not stored:
 
-Pass `--profile <name>` to scope the table to a single profile.
+| Status | Condition |
+| --- | --- |
+| `auto-allow` | trust at or above 0.92 **and** at least 8 observations |
+| `distrusted` | trust below 0.3 **and** at least 5 observations |
+| `prompting` | everything else |
 
-### `grith reputation reset`
+The `auto-allow` pair matches the `[reputation]` defaults - `auto_allow_trust = 0.92`,
+`auto_allow_min_observations = 8` - but this column is computed from fixed numbers, so
+retuning [`[reputation]`](/docs/config/reputation) changes what the daemon does without
+changing what `show` labels it. The `distrusted` pair has no configuration key at all.
 
-Wipe the trust table. Use after switching to a different agent, after a security
-audit, or if you accidentally trained the table on the wrong things.
+## `reset`
 
-```
-grith reputation reset                          # wipe the whole table
-grith reputation reset --profile claude-code    # scope to one profile
-```
+Clears the daemon-owned table and confirms with
+`Reset all daemon-owned reputation data.`, or the per-profile equivalent when you pass
+`--profile`. There is no undo; the table rebuilds as you answer prompts again.
 
-## Decay
+The store is `~/.config/grith/reputation.toml`, or `$GRITH_CONFIG_DIR/reputation.toml`
+when that variable is set.
 
-The trust table decays automatically over time. You don't need to manually prune. The
-decay constant lives in `[reputation] decay_lambda` — see [`[reputation]`
-config](/docs/config/reputation).
-
-## Backing store
-
-The table is persisted to `~/.cache/grith/reputation/<profile>.bin` (CBOR binary).
-Safe to delete — you'll lose accumulated trust but nothing critical. The daemon
-rewrites on a schedule (every 5 minutes by default).
+<Callout type="warning" title="Two different things are called reputation">
+This table is **not** the [destination reputation filter](/docs/filters/13-destination-reputation).
+The filter scores domains inside the pipeline. This table is applied afterwards, in the
+daemon, and only to a call that queued - it can turn a queue into an allow, and it can
+never rescue a deny.
+</Callout>
 
 ## See also
 
-- [Adaptive reputation](/docs/concepts/adaptive-reputation)
-- [Composite scoring](/docs/concepts/composite-scoring)
-- [`[reputation]` config](/docs/config/reputation)
-- [Reputation API (IPC)](/docs/api/reputation)
+- [Adaptive reputation](/docs/concepts/adaptive-reputation) - when the table is consulted
+- [`[reputation]`](/docs/config/reputation) - the thresholds

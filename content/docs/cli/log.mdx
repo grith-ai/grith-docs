@@ -1,72 +1,52 @@
 ---
-title: "grith log"
-description: "Tail the audit-backed session log, like a live feed of decisions."
-section: "cli"
+title: 'grith log'
+description: 'A readable feed of decisions, historic or live, filtered to one session.'
+section: 'cli'
 order: 6
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/log.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/log.mdx'
 ---
 
 ```
 grith log [--tail] [--session <ID|NAME>] [--limit <N>]
 ```
 
-A live feed of decisions, formatted for humans, backed by the audit database. Useful
-during development when you want to see what an agent is doing in near real time.
+The same records as [`grith audit`](/docs/cli/audit), formatted to read rather than to
+export. Newest last.
 
-## Options
+<Terminal>
+{`$ grith log --limit 5
+No logs found.`}
+</Terminal>
 
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--tail` | off | Follow the log; stays running and prints new events as they happen. |
-| `--session <ID\|NAME>` | all | Filter to a single session by id (UUID) or human-readable name. |
-| `--limit <N>` | 100 | Max events to print (in non-tail mode). |
+## Flags
 
-## Examples
+| Flag | What it does |
+| --- | --- |
+| `--tail` | Follow new entries. Polls roughly once a second and stops cleanly on Ctrl+C. |
+| `--session <ID\|NAME>` | Filter to one session. Accepts a UUID **or** the session name from the task context. |
+| `--limit <N>` | Records per read, default 100, clamped to 1-5000. |
 
-Tail everything:
+`--limit` is a clamp, not a validation: pass `0` or `100000` and you get 1 or 5000, with
+no warning.
 
-```
-grith log --tail
-```
+## The line format
 
-Tail one session:
+Each record is one line: a `[HH:MM:SS.mmm]` timestamp, then `ALLOW`, `QUEUE` or `DENY`
+padded to five columns, then the call and its target.
 
-```
-grith log --tail --session abc12345-...
-```
+Five common call types get a short label - `fs.read`, `fs.write`, `fs.list`,
+`shell.exec` and `http.request`. Everything else keeps its full type name. The decision is
+coloured green, amber and red respectively unless you pass `--no-color`.
 
-The last 20 events for one session:
-
-```
-grith log --session abc12345-... --limit 20
-```
-
-## Output format
-
-```
-[09:14:01] abc1234 | claude-code | file_read /proj/README.md          → allow  (0.4)
-[09:14:01] abc1234 | claude-code | file_read /proj/package.json       → allow  (0.4)
-[09:14:23] abc1234 | claude-code | file_read ~/.ssh/config            → queue  (4.2)
-[09:14:34] abc1234 | claude-code | (decision: deny by review)
-```
-
-Columns are: timestamp, abbreviated session id, profile, operation + target,
-decision, and composite score.
-
-## Use cases
-
-- **Development** — start an agent, run `grith log --tail` in a side terminal,
-  understand the call shape it's actually making.
-- **Tuning** — see in real time whether your threshold changes are landing.
-- **Triage** — `--tail` a single session to watch its decisions as they happen.
-
-For structured/programmatic use, use [`grith audit export`](/docs/cli/audit) — it's
-the same data, in JSON.
+<Callout type="info" title="This reads the audit database">
+There is no separate log file. `grith log` is a view over the audit records, so anything
+it shows is also in `grith audit export`, and retention applies equally.
+</Callout>
 
 ## See also
 
-- [`grith audit`](/docs/cli/audit) — full audit reference
-- [Audit API](/docs/api/audit)
+- [`grith audit`](/docs/cli/audit) - export and integrity
+- [Logging and audit retention](/docs/ops/logging-and-audit-retention) - how long records live

@@ -1,66 +1,114 @@
 ---
-title: "Sync & policies"
-description: "Pro sync state and centralised policy CRUD."
-section: "api"
+title: 'Sync and policies'
+description: 'What team sync has pulled to this machine, how to apply it, and the local policy store behind the policy editor.'
+section: 'api'
 order: 9
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/sync-and-policies.mdx"
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/sync-and-policies.mdx'
 ---
 
 <PlanBadge tier="pro" />
 
-<ApiRouteTable group="Sync & policies" showHeadings={false} />
+Every route here is Pro-gated inside the handler. Without a Pro licence they return
+`403 FEATURE_GATED` - `cloud_sync` for the sync routes, `policy_editor` for the policies.
 
-## Sync state
+| Method | Path                   | Feature         |
+| ------ | ---------------------- | --------------- |
+| GET    | `/api/sync/status`     | `cloud_sync`    |
+| GET    | `/api/sync/configs`    | `cloud_sync`    |
+| POST   | `/api/sync/apply`      | `cloud_sync`    |
+| GET    | `/api/policies`        | `policy_editor` |
+| GET    | `/api/policies/{name}` | `policy_editor` |
+| POST   | `/api/policies`        | `policy_editor` |
+| PUT    | `/api/policies/{name}` | `policy_editor` |
+| DELETE | `/api/policies/{name}` | `policy_editor` |
 
-`GET /sync/status` reports the device's view of the team-managed config bundle:
+`GET /api/sync/status` sits in the open bucket, so it needs no dashboard token - but it
+still refuses on Community. The other seven take the dashboard token, and the three
+mutations take `x-grith-csrf` as well.
 
-```json
-{
-  "last_pull": "2026-05-14T09:00:00Z",
-  "last_push": "2026-05-13T18:30:00Z",
-  "pending_changes": 0,
-  "bundle_id": "..."
-}
-```
+These routes describe what is already on disk. The network fetch is
+[`grith pro sync`](/docs/cli/pro), which pulls team policies, configs and provider keys and
+pushes reputation. It uploads no audit records.
 
-`GET /sync/configs` lists synced configs (profiles, filter configs, channel
-configs, scoring overrides).
+## GET /api/sync/status
 
-`POST /sync/configs` applies a sync bundle. Body is signed by the dashboard;
-signature is verified before any state is mutated.
+<CodeBlock
+  language="json"
+  title="GET /api/sync/status"
+  code={`{
+  "last_synced": "2026-08-24T09:00:00Z",
+  "policies_count": 3,
+  "configs_count": 2,
+  "provider_keys_count": 1,
+  "has_learned_rules": true
+}`}
+/>
+
+The counts are files on disk under the config directory, not a remote query. `last_synced`
+is `null` before the first pull.
+
+## GET /api/sync/configs
+
+`{configs, total}`, where each entry is `{name, size_bytes}` for one synced JSON file,
+sorted by name.
+
+## POST /api/sync/apply
+
+Merges every synced JSON config into `team-config.toml` in the config directory, in sorted
+filename order, so the normal config precedence picks it up on the next daemon start.
+Unreadable or unparseable files are skipped with a warning rather than failing the merge.
+
+<CodeBlock
+  language="json"
+  title="POST /api/sync/apply"
+  code={`{ "status": "ok", "configs_applied": 2, "team_config_path": "/home/u/.config/grith/team-config.toml" }`}
+/>
+
+The route is `POST /api/sync/apply`. It takes no body.
 
 ## Policies
 
-Policies are reusable named bundles of (threshold overrides, filter configs,
-profile, allowed channels). Listed and managed via the dashboard, exposed here
-for automation.
+A policy is a named JSON file in `<config_dir>/policies/`. It carries `name`,
+`description`, `version`, `created_at`, `updated_at` and `rules`:
 
-```
-GET    /policies              # list
-GET    /policies/{name}       # fetch one
-POST   /policies              # create
-PUT    /policies/{name}       # update
-DELETE /policies/{name}       # delete
-```
-
-A policy shape:
-
-```json
-{
+<CodeBlock
+  language="json"
+  title="A policy"
+  code={`{
   "name": "tight-prod",
   "description": "Hardened for production sessions",
-  "thresholds": { "auto_allow": 2.0, "auto_deny": 6.0 },
-  "profile_override": "minimal",
-  "filter_configs": { "egress": "policies/tight-prod/egress.toml" },
-  "channels_allowed": ["pagerduty", "slack-prod"]
-}
-```
+  "version": 3,
+  "created_at": "2026-08-01T10:00:00+00:00",
+  "updated_at": "2026-08-24T09:00:00+00:00",
+  "rules": {
+    "proxy": { "auto_allow_threshold": 2.0, "auto_deny_threshold": 6.0 },
+    "filters": { "behavioural": false },
+    "allowlists": { "paths": [], "commands": [], "domains": [] }
+  }
+}`}
+/>
+
+`GET /api/policies` returns `{policies, total}` sorted by name. `POST` is `201` with the
+stored policy and starts `version` at 1; `PUT` bumps `version` and `updated_at`; `DELETE`
+is `204`.
+
+Validation happens on create and update, and every failure is `400 VALIDATION_ERROR`:
+
+- `name` must be 1-64 characters, ASCII alphanumeric and hyphens only. Checked on create;
+  on update the name comes from the path and an unknown one is `404` instead.
+- Both thresholds must be within `0.0`-`10.0`, and `auto_allow_threshold` must be strictly
+  below `auto_deny_threshold`.
+- Every key in `filters` must be a filter the running proxy actually registered. An unknown
+  id is rejected by name.
+
+A duplicate name on create is `409 ALREADY_EXISTS`; an unknown name on read, update or
+delete is `404 NOT_FOUND`.
 
 ## See also
 
-- [Team sync (Pro)](/docs/pro/team-sync)
-- [Centralised policies (Pro)](/docs/pro/centralised-policies)
-- [`grith pro sync`](/docs/cli/pro)
+- [Team sync](/docs/pro/team-sync)
+- [Centralised policies](/docs/pro/centralised-policies)
+- [`grith pro`](/docs/cli/pro)

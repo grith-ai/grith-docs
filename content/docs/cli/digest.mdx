@@ -1,126 +1,75 @@
 ---
-title: "grith digest"
-description: "Interactively review the quarantine queue and decide each held call."
-section: "cli"
+title: 'grith digest'
+description: 'List the quarantine queue, and review held calls one keypress at a time.'
+section: 'cli'
 order: 4
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-08-21"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/digest.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/digest.mdx'
 ---
 
 ```
+grith digest
 grith digest review
 ```
 
-The digest is the queue of calls that landed between the auto-allow and auto-deny
-thresholds. `grith digest` is the CLI surface for working with it, and it has a
-single subcommand: `review`.
+The digest is the queue of calls that scored above the allow threshold and at or below
+the deny threshold - above 3.0, up to and including 8.0. Bare `grith digest` prints the
+pending count, then up to 20 items, each as its score in brackets, the call type and a
+one-line summary of the arguments, highest score first.
 
-<Callout type="info">
-There are two places you decide a held call, and they have different keys. This
-page covers `grith digest review` — the queue, reviewed from another terminal.
-The prompt that appears **inside a supervised session**, while the process is
-frozen, is documented in [The in-session prompt](#the-in-session-prompt) below;
-it is where directory scoping and blocking live.
-</Callout>
+<Terminal>
+{`$ grith digest
+Digest queue: 0 pending items
+  No pending digest items.`}
+</Terminal>
 
-## `grith digest review`
+`grith digest review` opens the interactive reviewer.
 
-Interactive review mode. It shows the next pending item with its forensics — the
-call, each filter's contribution, the composite score, and the session it came
-from — then waits for a keystroke:
+<Terminal>
+{`$ grith digest review
+No pending digest items to review.`}
+</Terminal>
+
+## Review keys
+
+One keypress, case-insensitive.
 
 | Key | Action |
 | --- | --- |
-| `a` | Approve once. |
-| `l` | Approve + learn (train reputation for similar future calls). |
-| `u` | Approve + unlock egress containment for the session (network calls). |
-| `d` | Deny. |
-| `t` | Deny + terminate the supervised process tree. |
-| `e` | Escalate for senior review (Pro). |
-| `p` | Approve + add the call shape to the permanent allowlist (Pro). |
-| `s` | Skip — leave the item queued and move to the next. |
-| `j` / `k` | Move to the next / previous item. |
-| `v` | Toggle the detail view. |
-| `q` | Quit review mode. |
+| `a` | Approve |
+| `d` | Deny |
+| `l` | Approve, and learn the decision |
+| `e` | Escalate |
+| `u` | Approve, and unlock egress containment |
+| `t` | Deny, and terminate the session |
+| `p` | Approve, and add a permanent allowlist entry |
+| `s` | Skip |
+| `v` | Toggle list and detail view |
+| `j` / `k` | Next / previous item |
+| `q` | Quit |
 
-Decisions apply immediately and unfreeze the originating process. The next item
-displays after each decision.
+`q` leaves the reviewer. Anything you have not answered stays pending and is still there
+next time.
 
-## The in-session prompt
+<Callout type="warning" title="The inline prompt is the one where quitting denies">
+These keys are also used by the single-item prompt the [`grith run`](/docs/cli/run) agent
+loop shows when a call queues mid-task. There the same keypresses are decisions on the one
+item in front of you, and `q`, `Esc` or letting the timeout expire all deny it. Only the
+multi-item `grith digest review` treats `q` as a plain exit.
+</Callout>
 
-When you are sitting in a `grith exec` session, a queued call freezes the process
-and puts the decision in front of you immediately, without a second terminal.
-That prompt has its own keys:
+## Where items come from
 
-| Key     | Action                                                                              |
-| ------- | ----------------------------------------------------------------------------------- |
-| `a`     | Approve once. The exact target stays allowed for the rest of the session.            |
-| `d`     | Deny. The syscall returns `EPERM`; identical retries are denied for a short window.  |
-| `l`     | Approve and save a permanent rule for this exact target.                             |
-| `s`     | **Scope…** — allow a *directory* for the operations you pick, this session.          |
-| `b`     | **Block dir…** — refuse a *directory* for the operations you pick, this session.     |
-| `t`     | Deny and stop the supervised tool.                                                   |
-| `i`     | Show raw arguments and the request id.                                               |
-| `h`     | Key help.                                                                            |
-| `esc`   | Deny this request.                                                                   |
-
-On an auto-denied call the only choice is `c` to continue — the call was over the
-deny threshold and has already been blocked.
-
-### Scoping and blocking a directory
-
-`s` and `b` open the same editor pointing in opposite directions. `ctrl-b`
-switches an open editor between them, and the `action:` row shows which way it
-is pointing:
-
-```
-┌ BLOCK DIRECTORY ─────────────────────────────────────────────┐
-│ action:   ( ) allow   (●) block   [ctrl-b] switch            │
-│ scope:    /repo/secrets/                                     │
-│           [←] wider   [→] narrower                           │
-│ [x] read   [x] write/create   [x] delete/rename              │
-│ (*) this session only   not saved to the profile             │
-│ will BLOCK: everything under /repo/secrets/ (this session)   │
-```
-
-`←` and `→` walk the directory one path component at a time; `e` opens the path
-as a text field. The status line answers on every keystroke, so a directory that
-will be refused says so before you press enter, not after. Tick the operations
-the rule covers — read, write/create, delete/rename — and press enter.
-
-Both rules last for the session and are never written to your profile.
-
-**Scoping** stops at the same floors the rest of grith uses: a directory too
-broad to be meaningful (`/home`, your home directory), or one holding credentials
-(`~/.ssh`, `~/.aws`), is refused, and a sensitive directory can be scoped for
-reads but not for writes.
-
-**Blocking** drops those floors — they exist to stop authority being handed out
-too widely, and blocking hands out nothing, so blocking your home directory or
-`~/.ssh` is allowed. It adds one refusal of its own: the trees the supervised
-tool cannot run without (`/usr`, `/lib`, `/etc`, `/proc`, and anything
-containing them) cannot be blocked. Blocking those does not protect anything —
-the tool stops at its next library load — so the editor refuses and asks for a
-directory inside them.
-
-Both directions require the directory to contain the call you are answering. A
-rule that cannot match the call that opened the prompt would be a rule that
-silently does nothing.
-
-Blocked calls are recorded in the audit log as `scoped_deny_blocked`. To fence a
-whole session rather than block directories one at a time, see
-[`grith exec --workspace-only`](/docs/cli/exec#workspace-only-sessions).
-
-## Daemon vs no daemon
-
-If the daemon is running, `grith digest review` talks to its REST API. Otherwise it
-reads the local-session digest file directly. The behaviour is the same in both
-cases.
+Anything a [supervised session](/docs/cli/exec) queues while nobody is watching, plus
+anything the agent loop in [`grith run`](/docs/cli/run) queues. An interactive
+`grith exec` session queues the item too, but its TUI dialog resolves it on the spot, so
+it is already answered before you would ever run `grith digest`. Headless sessions record
+their queued calls as informational entries - the decision was already made, fail-closed
+or by `--allow-queued`, and the entry is there to read rather than to answer.
 
 ## See also
 
-- [Reviewing the digest](/docs/start/reviewing-the-digest) — workflow walkthrough
-- [The quarantine digest](/docs/concepts/quarantine-digest) — concept
-- [Digest API](/docs/api/digest) — REST routes for programmatic decisions
+- [The quarantine digest](/docs/concepts/quarantine-digest) - what queuing does to the process
+- [Composite scoring](/docs/concepts/composite-scoring) - why an item landed here

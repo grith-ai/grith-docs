@@ -1,80 +1,62 @@
 ---
-title: "grith supervisor"
-description: "List and manage active supervisor sessions."
-section: "cli"
+title: 'grith supervisor'
+description: 'List active supervised sessions, inspect one in detail, or terminate it.'
+section: 'cli'
 order: 8
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/supervisor.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/supervisor.mdx'
 ---
 
 ```
-grith supervisor [list | status | kill]
+grith supervisor [list]
+grith supervisor status <SESSION_ID>
+grith supervisor kill <SESSION_ID>
 ```
 
-Inspect and control active supervised sessions — the process trees grith is
-currently watching.
+The read side of [`grith exec`](/docs/cli/exec). Session ids are UUIDs; `list` is the
+default when no subcommand is given.
 
-## Subcommands
+<Terminal>
+{`$ grith supervisor
+No active supervisor sessions.
+Capacity: 0/2 sessions`}
+</Terminal>
 
-### `grith supervisor list`
+<Callout type="info" title="That capacity number is the licence cap">
+The ceiling is the **lower** of the licence cap and `supervisor.max_concurrent_sessions`.
+Community licences cap at 2 and the config ships at 4, so a stock Community install
+reports `0/2`. Paid licences cap at 64, at which point the config value is the binding
+limit and the same install would report `0/4`.
+</Callout>
 
-One row per active session.
+## `status`
 
-```
-$ grith supervisor list
-SESSION                                 PROFILE      PID    UPTIME  AGENT
-abc12345-...-7e9f                       claude-code  17421  12m4s   claude
-b8d5...-0001                            generic-cli  18910  3m20s   bash
-```
+Prints the session id, tool, root pid, uptime, intercepted / allowed / queued / denied
+counts, how many events noise reduction filtered, containment state, and how many
+processes are in the session's tree.
 
-### `grith supervisor status <SESSION_ID>`
+<Terminal>
+{`$ grith supervisor status 00000000-0000-0000-0000-000000000000
+Session not found: 00000000-0000-0000-0000-000000000000
+Use \`grith exec list\` to see active sessions.`}
+</Terminal>
 
-Full status of one session: profile, zone, process tree, recent calls, decision
-counts, current frozen state (if any).
+## `kill`
 
-```
-$ grith supervisor status abc12345
-Session abc12345-...-7e9f
-  Profile:        claude-code
-  Zone:           dayjob
-  Started:        2026-05-14 09:02:13 (12m4s ago)
-  Root PID:       17421 (claude)
-  Tree size:      4 processes
-  Calls:          834 (allow 781, queue 38, deny 15)
-  Frozen now:     no
-  Last activity:  2s ago
-```
+Sends SIGTERM to the session's root pid and prints
+`Terminated session <id8> (tool: <t>, pid: <p>)`. The supervised tool gets a chance to
+exit cleanly; grith detaches either way.
 
-### `grith supervisor kill <SESSION_ID>`
+## `supervisor` and `exec list` show the same sessions
 
-Terminate the process tree. Sends SIGTERM, waits 5 seconds, then SIGKILL if anything's
-still running. Audit logs a session-killed event.
-
-```
-grith supervisor kill abc12345
-```
-
-Useful when you've discovered something in the audit log mid-session and want to stop
-the agent immediately without going through the digest. Also useful when an agent
-hangs after `--attach` and you can't reach its TUI.
-
-## Daemon requirement
-
-These commands read the daemon's session registry, so the daemon has to be running.
-Every `grith exec` runs against the daemon — auto-starting one when none is running —
-so all active sessions are registered there. There is no standalone, per-process mode:
-if no trusted daemon can be established, `grith exec` fails closed and starts nothing.
-Start a daemon explicitly if you want one that outlives the session:
-
-```
-grith daemon start
-grith supervisor list
-```
+[`grith exec list`](/docs/cli/exec) reads the same daemon registry with a slightly
+different row format and a capacity line counting live rows rather than the licence cap.
+Use whichever is to hand. The difference that matters: `exec` refuses outright when the
+daemon is unreachable, whereas `supervisor` falls back to an in-process daemon and warns.
 
 ## See also
 
-- [`grith exec`](/docs/cli/exec) — start a supervised session
-- [`grith daemon`](/docs/cli/daemon) — the daemon
-- [Supervisor API (IPC)](/docs/api/supervisor) — REST routes
+- [Daemon and sessions](/docs/concepts/daemon-and-sessions) - who owns what
+- [`grith exec`](/docs/cli/exec) - starting a session

@@ -1,79 +1,100 @@
 ---
-title: "grith config"
-description: "Show or modify configuration values from the command line."
-section: "cli"
+title: 'grith config'
+description: 'Print the effective configuration, or set one key from a fixed 58-key whitelist.'
+section: 'cli'
 order: 13
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/config.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/config.mdx'
 ---
 
 ```
-grith config [set <KEY> <VALUE>]
-```
-
-Show the current configuration, or set a single value.
-
-## Show
-
-With no subcommand, prints the merged configuration:
-
-```
-$ grith config
-[general]
-log_level = "info"
-audit_dir = "/home/you/.local/share/grith/audit"
-plan_tier = "community"
-...
-```
-
-## Set
-
-```
+grith config
 grith config set <KEY> <VALUE>
 ```
 
-Set a single key. Dotted notation walks into sections.
+`grith config` prints the **effective** configuration - every layer already merged - as
+TOML on stdout. Around 260 lines, so pipe it.
 
-Examples:
+<Terminal>
+{`$ grith config | head -9
+[general]
+log_level = "info"
+audit_dir = "~/.local/share/grith/audit"
+plan_tier = "community"
+update_check = true
+audit_sync = true
+profile_update_check = true
+onboarded = false
+exec_notice_seen = false`}
+</Terminal>
 
-```
-grith config set general.log_level debug
-grith config set proxy.auto_allow_threshold 3.5
-grith config set supervisor.default_profile claude-code
-```
+This is the fastest way to answer "what is grith actually using right now", because it
+shows the result of the file layers, `--config` and any `GRITH_*` variables together.
 
-The change is written to the user config (`~/.config/grith/config.toml`) and takes
-effect on the next call (or after daemon restart for server-affecting keys like
-`server.port`).
+## `grith config set`
 
-## Where values come from
+Sets one key and rewrites `$HOME/.config/grith/config.toml`. On success it prints
+`Set <key>: <old> -> <new>` followed by `Saved to <path>`.
 
-Layered, highest priority first:
+The key must be on a **fixed whitelist of 58 keys**. It is not an arbitrary dotted path
+into the TOML, so a key that exists in the file is not necessarily settable this way.
 
-1. CLI flags (`--config`, `--log-level`, etc.)
-2. `GRITH_*` environment variables (e.g. `GRITH_LOG_LEVEL=debug`)
-3. Project-local `.grith/config.toml` (if present)
-4. User config `~/.config/grith/config.toml`
-5. Built-in defaults (`config/default.toml` in the grith repo)
+<Terminal>
+{`$ grith config set foo.bar 1
+Error: configuration error: unknown config key: foo.bar`}
+</Terminal>
 
-`grith config` shows the merged result.
+Values are parsed to the field's type, and `general.plan_tier` is checked separately:
 
-## Reset
+<Terminal>
+{`$ grith config set general.plan_tier gold
+Error: configuration error: invalid plan_tier 'gold', expected one of: ["community", "pro", "enterprise"]`}
+</Terminal>
 
-Delete the user config to revert to defaults:
+Setting `plan_tier` grants nothing - the [licence](/docs/pro/license-lifecycle) decides
+the tier, and the daemon overwrites the key at start.
 
-```
-rm ~/.config/grith/config.toml
-grith init
-```
+### Keys you are most likely to want
 
-`grith init` writes a copy of the default config back to the user path with the
-shipping comments intact.
+| Key | Type | Default |
+| --- | --- | --- |
+| `general.log_level` | string | `info` |
+| `general.audit_dir` | string | `~/.local/share/grith/audit` |
+| `general.audit_sync` | bool | `true` |
+| `general.update_check` | bool | `true` |
+| `proxy.auto_allow_threshold` | float | `3.0` |
+| `proxy.auto_deny_threshold` | float | `8.0` |
+| `proxy.review_timeout_seconds` | integer | `300` |
+| `server.enabled` | bool | `true` |
+| `server.host` | string | `127.0.0.1` |
+| `server.port` | port | `3141` |
+| `server.auto_open_dashboard` | bool | `true` |
+| `supervisor.enabled` | bool | `true` |
+| `supervisor.default_profile` | string | `generic` |
+| `supervisor.max_concurrent_sessions` | integer | `4` |
+| `supervisor.freeze_timeout_seconds` | integer | `300` |
+| `llm.default_provider` | string | `ollama` |
+
+Most of the rest is the fifteen `[supervisor.dns_inspection]` tunables and the fifteen
+`[notifications]` channel keys, plus the remaining `[llm]` model and base-URL keys, the
+`[supervisor]` replay windows and the bookkeeping flags in `[general]`. Anything not on
+the list is edited in the file.
+
+<Callout type="warning" title="Two workspace keys are not settable">
+`supervisor.trust.restrict_to_workspace` and `supervisor.trust.additional_project_roots`
+are not on the whitelist. Edit `config.toml` directly, or turn the boundary on for a
+single session with [`grith exec --workspace-only`](/docs/cli/exec).
+</Callout>
+
+## What does not exist
+
+There is no `grith config get`, `list`, `edit`, `validate` or `reload`. To read a value,
+grep the output of `grith config`. Changes are picked up when the process that reads them
+next starts - restart the daemon with `grith daemon restart`.
 
 ## See also
 
-- [`grith init`](/docs/cli/init)
-- [Configuration overview](/docs/config/overview)
-- [Configuration sections](/docs/config/general)
+- [Configuration overview](/docs/config/overview) - layers, precedence and the merge trap
+- [`grith init`](/docs/cli/init) - create the file in the first place

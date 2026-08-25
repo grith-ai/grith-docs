@@ -1,55 +1,109 @@
 ---
-title: "Filter overview"
-description: "The 18 filters grith runs on every supervised call, organised into three phases."
-section: "filters"
+title: 'Filter overview'
+description: 'The 18 filters grith runs on every supervised call, in the order they run, and what each one can add to the score.'
+section: 'filters'
 order: 0
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/overview.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/overview.mdx'
 ---
 
-Every call your agent makes is run past **18 filters**, organised into three phases.
-A filter's only job is to contribute a number to the composite score. The threshold
-table at the end of the pipeline routes the call to one of three outcomes:
+Every supervised call is scored by **18 filters**. All 18 are on by default - every config
+toggle in this section is an off switch, not an on switch. A filter's only job is to return a
+number. The sum of those numbers is the composite score, and the composite alone decides the
+outcome:
 
-- **Auto-allow** — composite score below `proxy.auto_allow_threshold` (default `3.0`)
-- **Quarantine** — composite score between the thresholds; routed to the digest queue
-- **Auto-deny** — composite score above `proxy.auto_deny_threshold` (default `8.0`)
+- **allow** - composite 3.0 or below
+- **queue** - composite above 3.0, up to and including 8.0
+- **deny** - composite above 8.0
 
-Filters within a phase run in parallel. Phases run in order: static → pattern → context.
-The budget is roughly &lt;1ms / ~3ms / ~5ms — ~10ms typical, ~15ms worst-case.
+Both boundaries are strict `>`, so exactly 3.0 allows and exactly 8.0 queues.
 
 ## The 18 filters
 
-<FilterTable />
+They run in three phases. Filters inside a phase run concurrently; the phases run in order.
+This is also the order `grith proxy test` prints them.
 
-## Reading the table
+| #   | Filter                                                                | Phase   | Score           | What it looks at                                                 |
+| --- | --------------------------------------------------------------------- | ------- | --------------- | ---------------------------------------------------------------- |
+| 1   | [operation-risk](/docs/filters/01-operation-risk-scoring)             | static  | 0.0 - 5.0       | The kind of call - read, write, spawn, chown, mount              |
+| 2   | [path-match](/docs/filters/02-static-path-matching)                   | static  | 3.0 - 5.0       | 15 anchored path rules in `paths.toml`                           |
+| 3   | [sensitive-path-heuristic](/docs/filters/03-sensitive-path-heuristic) | static  | 0.5 - 5.0       | Built-in heuristics for credential-shaped paths                  |
+| 4   | [allowlist](/docs/filters/04-allowlist-denylist)                      | static  | -1.0 / +3.0     | Your own allow and deny patterns                                 |
+| 5   | [argument](/docs/filters/05-argument-length-structure)                | static  | 1.0 - 2.0       | Oversized arguments, metacharacters, traversal                   |
+| 6   | [capability](/docs/filters/06-capability-enforcement)                 | static  | 10.0            | Whether the caller was granted this class of operation           |
+| 7   | [secret-scan](/docs/filters/07-secret-credential-scanning)            | pattern | 1.0 - 5.0       | 1618 credential patterns over the call's arguments               |
+| 8   | [command](/docs/filters/08-command-structure-analysis)                | pattern | 2.0 - 4.0       | 12 shell-shape rules in `commands.toml`                          |
+| 9   | [destructive-action](/docs/filters/09-destructive-action)             | pattern | 3.5 - 9.0       | Format, wipe, drop, teardown - and whether it targets production |
+| 10  | [egress-policy](/docs/filters/10-egress-policy)                       | pattern | -1.0 - 7.0      | Where the call is going, and what shape the payload is           |
+| 11  | [dlp-gate](/docs/filters/11-dlp-gate)                                 | pattern | 1.0 / 5.0 / 9.0 | Secrets in outbound arguments                                    |
+| 12  | [canary](/docs/filters/12-canary-detection)                           | pattern | 9.5             | Your canary tokens leaving the machine                           |
+| 13  | [reputation](/docs/filters/13-destination-reputation)                 | context | -1.0 - 4.0      | Destination against the shipped domain lists                     |
+| 14  | [behavioural](/docs/filters/14-behavioural-anomaly)                   | context | 1.0 - 3.0       | Authority-changing calls against the session baseline            |
+| 15  | [taint](/docs/filters/15-taint-tracking)                              | context | 1.5 - 5.0       | Sensitive data read earlier in the session, leaving now          |
+| 16  | [session-containment](/docs/filters/16-session-containment)           | context | 2.0 - 4.5       | Egress in the 600s after a sensitive read                        |
+| 17  | [rate-limit](/docs/filters/17-rate-limiting)                          | context | 1.0 - 3.0       | Per-category call volume                                         |
+| 18  | [egress-rate](/docs/filters/18-egress-rate)                           | context | 1.5 - 5.0       | Outbound volume, destination spread, read-then-send              |
 
-- **Phase** determines when the filter runs. Static filters do cheap structural checks
-  against pre-built indexes. Pattern filters do regex / parser work. Context filters
-  look up state from the running session and historical baseline.
-- **Latency budget** is the wall-clock target for the phase, not the individual filter.
-  Filters within a phase are concurrent.
-- **Score** is the inclusive range a filter can contribute. Negative values *lower* the
-  composite score (i.e. argue for allow). A value of `DENY` means the filter is a hard
-  gate — when it fires, the call is denied regardless of any other filter.
+After phase 3, the [meta-rules](/docs/filters/meta-rules) adjust the composite once.
 
-## What's not visible in the table
+## What the phases are for
 
-- The **scoring engine** doesn't sum scores naively. It applies weights and ceilings
-  from `[reputation]` (e.g. `ceiling_filter_threshold = 5.0` for capped contributions).
-  See [Composite scoring](/docs/concepts/composite-scoring).
-- The **reputation system** can subtract from the composite when the destination and
-  call shape have been observed-and-approved many times — see
-  [Adaptive reputation](/docs/concepts/adaptive-reputation).
-- **Canary detection** and **capability enforcement** are hard gates; they don't
-  contribute score, they short-circuit to DENY.
+**Static** filters judge the shape of the call - operation type, path string, argument
+length. No content is read and no session history is consulted, so the same call always
+scores the same.
+
+**Pattern** filters read the call's arguments: regex sets, a shell tokeniser, destination
+parsing. This is where a payload gives itself away.
+
+**Context** filters need accumulated state - what this session has already read, how many
+calls it has made, where it has already connected.
+
+## Early termination
+
+At the end of each phase grith checks the running total. **If it is already above 8.0, the
+call is denied there and then** - later phases never run and the meta-rules never run. That
+is why a real deny prints fewer than 18 lines under an `18 active` header:
+
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/.ssh/id_rsa"}'
+
+Proxy Test Result
+==================================================
+  Tool call:   FileRead(/home/u/.ssh/id_rsa)
+  Score:       9.0
+  Decision:    DENY
+  Reason:      Access to SSH private key; read access to key/certificate file
+  Eval time:   0.02ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
+
+  Filter Breakdown:
+    . operation-risk         0.0
+    + path-match             5.0  [critical]  Access to SSH private key
+    + sensitive-path-heuristic   4.0  [error]  read access to key/certificate file
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+
+  Exit code:   2 (deny)`}
+</Terminal>
+
+Six lines, not eighteen. Phase 1 reached 9.0 and stopped.
+
+## Two things filters cannot do
+
+**A filter cannot return a verdict.** There is no allow/deny/queue field on a filter result -
+only a score. What reads as a hard deny is always a score deliberately set above the deny
+line: `capability` at 10.0, `canary` at 9.5, `destructive-action` at 9.0.
+
+**A filter's score is not capped, and the sum is not normalised.** The composite is a plain
+sum of every matched filter's score. It can also go _down_: `allowlist`, `egress-policy` and
+`reputation` each emit -1.0 when they recognise something as routine.
 
 ## See also
 
-- [Three-phase pipeline](/docs/concepts/three-phase-pipeline) — why the phases are
-  ordered this way and what each contributes
-- [Scoring rules](/docs/filters/scoring-rules) — the math behind the composite
-- [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) — when and how
-  to move the default `3.0 / 8.0` thresholds
+- [Composite scoring](/docs/concepts/composite-scoring) - the thresholds and the arithmetic
+- [Meta-rules](/docs/filters/meta-rules) - the five composite adjustments
+- [Filter config files](/docs/config/filter-config-files) - where the TOML rules live

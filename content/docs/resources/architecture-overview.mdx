@@ -1,131 +1,113 @@
 ---
-title: "Architecture overview"
-description: "The big-picture diagram of grith — daemon, supervisor, filter pipeline, dashboard."
-section: "resources"
+title: 'Architecture overview'
+description: 'One daemon owns the audit log, the digest and the filter pipeline; every supervised session is a thin client that fails closed without it.'
+section: 'resources'
 order: 1
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/architecture-overview.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/architecture-overview.mdx'
 ---
 
-```
-                                ┌────────────────────────────┐
-                                │       grith daemon         │
-                                │  (long-lived, per-user)    │
-                                │                            │
-                                │  ┌──────────────────────┐  │
-                                │  │  filter pipeline     │  │
-                                │  │  (18 filters)        │  │
-                                │  └──────────────────────┘  │
-                                │  ┌──────────────────────┐  │
-                                │  │  digest queue        │  │
-                                │  └──────────────────────┘  │
-                                │  ┌──────────────────────┐  │
-                                │  │  audit log (SQLite)  │  │
-                                │  └──────────────────────┘  │
-                                │  ┌──────────────────────┐  │
-                                │  │  reputation table    │  │
-                                │  └──────────────────────┘  │
-                                │  ┌──────────────────────┐  │
-                                │  │  notification        │  │
-                                │  │  dispatcher          │  │
-                                │  └──────────────────────┘  │
-                                │  ┌──────────────────────┐  │
-                                │  │  HTTP/WS server      │──┼──▶  dashboard browser
-                                │  │  (127.0.0.1:3141)    │  │
-                                │  └──────────────────────┘  │
-                                └─────────▲──────────────────┘
-                                          │ IPC (UNIX socket)
-                                          │
-              ┌───────────────────────────┴──────────────────────────┐
-              │                                                      │
-   ┌──────────┴──────────┐                              ┌────────────┴────────┐
-   │  grith exec ─ thin- │                              │  grith exec ─ thin- │
-   │  client supervisor  │                              │  client supervisor  │
-   │  (ptrace + seccomp) │                              │  (ptrace + seccomp) │
-   │                     │                              │                     │
-   │  ┌───────────────┐  │                              │  ┌───────────────┐  │
-   │  │   agent A     │  │                              │  │   agent B     │  │
-   │  │   (claude)    │  │                              │  │   (codex)     │  │
-   │  └───────────────┘  │                              │  └───────────────┘  │
-   └─────────────────────┘                              └─────────────────────┘
-```
+grith is one binary in three roles. A long-lived **daemon** owns every piece of shared
+state. A **supervisor** wraps an agent in ptrace and seccomp and asks the daemon for
+each decision. The **CLI** is the third: `exec`, `supervisor` and `reputation` go through
+the daemon over loopback HTTP; every other command builds its own subsystems and reads the
+same files from disk.
 
-## The pieces
+<ArchitectureDiagram />
 
-### `grith` binary
+## The daemon owns the shared state
 
-A single statically-linked executable. Runs in three roles depending on how
-it's invoked:
+One process per user, started by `grith daemon start` or auto-started by the first
+supervised session. It holds:
 
-- **Daemon** — `grith daemon start`. Long-lived. Owns the shared subsystems.
-- **Thin-client supervisor** — `grith exec`. Short-lived. Wraps an agent with
-  ptrace+seccomp. Talks to the daemon over IPC for filter decisions.
-- **CLI** — `grith digest review`, `grith audit`, etc. Short-lived. Talks
-  to the daemon over the HTTP API.
+- the audit database, as the single exclusive writer
+- the digest queue of calls waiting for a review
+- the security proxy and its 18 filters
+- the session registry, which enforces the concurrency cap
+- the canary registry and the reputation table
+- the HTTP and WebSocket server on `127.0.0.1:3141`, which also serves the dashboard
 
-`grith exec` always talks to a daemon over IPC, auto-starting one when none is
-running (that daemon idle-shuts-down after the session). If a trusted daemon can't
-be established, `grith exec` fails closed and starts nothing — there is no
-in-process or no-daemon mode. For anything multi-session, keep a persistent daemon
-running so the audit database and reputation table are shared.
+`grith dashboard` is a retained alias for `grith daemon`, so both spellings work.
 
-### Filter pipeline
+## Sessions are thin clients
 
-18 filters in 3 phases. See [Three-phase pipeline](/docs/concepts/three-phase-pipeline).
+`grith exec` does the ptrace and seccomp work locally and owns nothing else. Its digest
+store, audit sink and session record are all remote shims over the daemon.
 
-### Digest queue
+Transport is **loopback HTTP with a bearer token** - there is no unix socket. The token
+lives in `~/.config/grith/daemon.token` and is rotated on every daemon start.
 
-The quarantine queue for ambiguous calls. SQLite-backed in daemon mode.
-See [The quarantine digest](/docs/concepts/quarantine-digest).
+`grith exec` fails closed. Without a running daemon of the exact same version it never
+spawns the target at all: there is no in-process fallback and no unsupervised mode. That
+includes `server.enabled = false`, which makes `grith exec` refuse outright.
 
-### Audit log
+## How one call is decided
 
-SQLite database at `~/.local/share/grith/audit/`. Indexed for fast queries.
-See [Logging & audit retention](/docs/ops/logging-and-audit-retention).
+1. The supervised process traps. The child installs a seccomp-BPF filter that returns
+   TRACE for 84 curated syscall identities and ALLOW for everything else; `execve`,
+   `clone` and `fork` arrive as ptrace events instead.
+2. The supervisor reads the registers and builds a typed tool call - `FileRead`,
+   `ShellExec`, `NetConnect` and so on.
+3. Cheap local answers come first: noise paths, the session allowlist the profile
+   declares, and the session's own reviewer memory. **A session-allowlist match means
+   the proxy is never invoked** - no filters, no score.
+4. Anything left goes to the daemon over loopback HTTP.
+5. Filters run in three phases. A phase that pushes the score past the deny line ends
+   the evaluation there - later phases and the meta-rules never run.
+6. The five meta-rules run once, after phase 3.
+7. The composite is compared to the thresholds: allow at or below 3.0, queue above 3.0
+   up to and including 8.0, deny above 8.0.
+8. The decision returns to the supervisor. ALLOW resumes the syscall. DENY rewrites the
+   syscall number so the kernel skips it and sets the return register to `EPERM` - one
+   failed call, not a kill, except an authority-delegating spawn caught at exec, which
+   is SIGKILLed. QUEUE holds the calling thread at its kernel stop until a reviewer
+   answers; its sibling threads keep running.
+9. Every proxy-evaluated decision is appended to the hash-chained audit database, and a
+   materialiser folds the audit tail into the local analytics projection.
 
-### Reputation table
+Early termination is visible in the output. This read never reaches phase 2, so six
+filters print under an `18 active` header:
 
-In-memory hashmap, periodically flushed to
-`~/.cache/grith/reputation/<profile>.bin`. See
-[Adaptive reputation](/docs/concepts/adaptive-reputation).
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/.ssh/id_rsa"}'
+Proxy Test Result
+==================================================
+  Tool call:   FileRead(/home/u/.ssh/id_rsa)
+  Score:       9.0
+  Decision:    DENY
+  Reason:      Access to SSH private key; read access to key/certificate file
+  Eval time:   0.03ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
 
-### Notification dispatcher
+  Filter Breakdown:
+    . operation-risk         0.0
+    + path-match             5.0  [critical]  Access to SSH private key
+    + sensitive-path-heuristic   4.0  [error]  read access to key/certificate file
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
 
-Owns per-channel delivery state and rate limits. Delivers events to Slack /
-Telegram / etc. See [`grith notifications`](/docs/cli/notifications).
+  Exit code:   2 (deny)`}
+</Terminal>
 
-### HTTP/WS server
+## Where state lives
 
-Serves the dashboard SPA, REST endpoints, and WebSocket event stream.
-Loopback-only by default. See [API overview](/docs/api/overview).
-
-## How a call flows
-
-1. Agent makes a syscall (e.g. `openat`).
-2. Seccomp filter in the supervised process traps the syscall to the thin-client
-   supervisor.
-3. Supervisor reads the syscall args, constructs a `ToolCallType` shape.
-4. Supervisor sends the call shape to the daemon over IPC.
-5. Filter pipeline runs Phase 1 → 2 → 3, emits composite score.
-6. Composite compared to thresholds → allow / queue / deny.
-7. Decision returns to supervisor.
-8. If allow: supervisor lets the syscall continue with `ptrace(PTRACE_SYSCALL)`.
-9. If deny: supervisor rewrites the syscall number so the kernel skips it + sets return reg to EPERM.
-10. If queue: supervisor leaves the thread in ptrace-stop until a decision arrives.
-11. Audit record is written regardless of decision.
-
-Total budget for the round-trip: under 15ms typical.
-
-## Cross-repo
-
-- **`../grith/`** — the Rust workspace, all production code.
-- **`../grith-website/`** — the marketing site (grith.ai).
-- **this repo** — the docs (docs.grith.ai).
+| Path                                   | Holds                                                 |
+| -------------------------------------- | ----------------------------------------------------- |
+| `~/.config/grith/config.toml`          | Your configuration overlay                            |
+| `~/.config/grith/daemon.token`         | IPC bearer token, rotated each daemon start           |
+| `~/.config/grith/dashboard.token`      | Browser token, stable across restarts                 |
+| `~/.config/grith/daemon.json`          | Instance id, pid, port, version, owned audit DB       |
+| `~/.config/grith/reputation.toml`      | The learned reputation table                          |
+| `~/.local/share/grith/audit/audit.db`  | Hash-chained audit log and the analytics projection   |
+| `~/.local/share/grith/audit/digest.db` | The quarantine queue                                  |
+| `~/.local/share/grith/audit/cold/`     | Archived records older than the full-retention window |
 
 ## See also
 
-- [Three-phase pipeline](/docs/concepts/three-phase-pipeline)
 - [Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions)
 - [Syscall interception](/docs/concepts/syscall-interception)
+- [The three-phase pipeline](/docs/concepts/three-phase-pipeline)

@@ -1,88 +1,98 @@
 ---
 title: '[server]'
-description: 'Daemon HTTP server settings — host, port, TLS, rate limits.'
+description: 'The local HTTP API and dashboard - bind address, native TLS, idle shutdown and the four rate-limit buckets.'
 section: 'config'
-order: 7
+order: 6
 tier: 'community'
-version: '0.1.0'
-lastUpdated: '2026-05-14'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/server.mdx'
 ---
 
-The `[server]` section controls the daemon's HTTP API and dashboard server. Only
-relevant when running `grith daemon`.
+The daemon's HTTP server. It binds `127.0.0.1:3141` and serves both the dashboard and the API
+that `grith exec` talks to over loopback.
 
-<ConfigKeyTable section="server" />
+| Key                     | Default            | What it does                                                                                                                          |
+| ----------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`               | `true`             | Turn the server off. `grith exec` needs it and refuses to start a session without it.                                                 |
+| `host`                  | `"127.0.0.1"`      | Bind address.                                                                                                                         |
+| `port`                  | `3141`             | Bind port. `0` is a fatal validation error.                                                                                           |
+| `dashboard_dir`         | `"dashboard/dist"` | On-disk dashboard build to serve instead of the copy baked into the binary. Ignored unless the path exists and holds an `index.html`. |
+| `idle_shutdown_seconds` | `30`               | Seconds after the last session exits before an auto-started daemon shuts down. `0` disables it.                                       |
+| `auto_open_dashboard`   | `true`             | Open the dashboard in a browser on startup.                                                                                           |
 
-<ConfigKeyTable section="server.rate_limit" />
+`idle_shutdown_seconds` applies to daemons that `grith exec` started for you. An explicit
+`grith daemon start` disables idle shutdown regardless.
 
 ## TLS
 
-By default the daemon binds to `127.0.0.1` only — there is no remote attack
-surface. To expose the API beyond loopback, either configure native TLS:
+`[server.tls]` is real native TLS. Point it at a certificate and key and the daemon serves
+HTTPS.
 
-```toml
-[server]
+<ConfigExample
+  code={`[server]
 host = "0.0.0.0"
 
 [server.tls]
 cert_path = "/etc/grith/cert.pem"
-key_path  = "/etc/grith/key.pem"
-```
+key_path = "/etc/grith/key.pem"`}
+/>
 
-— or front the daemon with a reverse proxy that terminates TLS. The reverse-proxy
-path is usually simpler and more secure (centralised cert management, modern
-cipher suite policies, etc).
+Both keys or neither - the section is all-or-nothing and a partial one fails to parse:
 
-See [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
+<Terminal>
+  {`$ grith --config tls.toml config
+Error: configuration error: failed to parse tls.toml: TOML parse error at line 4, column 1
+  |
+4 | [server.tls]
+  | ^^^^^^^^^^^^
+missing field \`key_path\``}
+</Terminal>
+
+Binding a non-loopback address without TLS starts, but logs a security warning: everything,
+including tokens, crosses the network in plain text. A TLS-terminating reverse proxy is a
+valid alternative if you already run one - see
+[Reverse proxy and TLS](/docs/guides/reverse-proxy-tls) - but it is an alternative, not the
+only path.
 
 ## Rate limits
 
-The rate limits apply per-source-IP. Defaults are conservative; tighten for
-shared deployments, loosen for high-traffic local use:
+Four buckets, each a limit on the whole server rather than per client. Over the limit is a
+`429` with a `Retry-After` header and a `RATE_LIMITED` body.
 
-- **`general_rps`** — most GET endpoints.
-- **`write_rps`** — POST/PUT/DELETE on non-IPC routes.
-- **`proxy_test_rps`** — `/proxy/test` specifically. The dry-run endpoint is
-  cheap, so the limit can be relatively generous, but it does run the full
-  filter pipeline.
+| Key              | Default | Covers                                                          |
+| ---------------- | ------- | --------------------------------------------------------------- |
+| `enabled`        | `true`  | The limiter as a whole.                                         |
+| `general_rps`    | `100`   | Read endpoints.                                                 |
+| `write_rps`      | `10`    | Writes.                                                         |
+| `proxy_test_rps` | `20`    | `POST /api/proxy/test` - cheap to call, runs the full pipeline. |
+| `ipc_rps`        | `10000` | Daemon IPC, the bucket `grith exec` uses. Do not lower it.      |
 
-IPC endpoints (`/ipc/*`) are not rate-limited at this layer; they're already
-loopback-restricted.
+Any of the four rates set to `0` while the limiter is enabled is a fatal validation error.
 
-## Dashboard
+<ConfigExample
+  code={`[server.rate_limit]
+general_rps = 200
+write_rps = 20`}
+/>
 
-`dashboard_dir` points at the static dashboard bundle. The grith binary ships with
-its dashboard at `dashboard/dist`. If you build a custom dashboard, point at
-your bundle here.
+## Dashboard access
 
-### Auto-open & browser authorisation
+`auto_open_dashboard` opens the dashboard on daemon start, handing the token off through the
+URL fragment so it never appears in the terminal. It is skipped automatically on headless and
+SSH sessions, where the CLI prints a single-use pairing link instead.
 
-`auto_open_dashboard` (default `true`) controls whether `grith dashboard start`,
-`grith run`, and `grith exec` open the dashboard in your browser on startup. The
-auth token is handed off through the URL fragment and **never printed to the
-terminal**; auto-open is skipped automatically on headless / SSH sessions, where
-the CLI prints a single-use pairing link instead.
+To disable it for one run, the environment override must be spelled `true` or `false` - a
+bare `0` is silently ignored. See
+[Environment variables](/docs/config/environment-variables).
 
-```toml
-[server]
-auto_open_dashboard = false   # never auto-open; always print a pairing link
-```
+<Terminal command="GRITH_AUTO_OPEN_DASHBOARD=false grith daemon start" />
 
-Override for a single run with the environment variable:
-
-```bash
-GRITH_AUTO_OPEN_DASHBOARD=0 grith dashboard start
-```
-
-The dashboard is authenticated on loopback by a per-server token even though it
-binds `127.0.0.1` only — see
-[`grith dashboard` → Browser authorisation](/docs/cli/daemon#browser-authorisation)
-and [Trust boundaries](/docs/security/trust-boundaries).
+The dashboard is token-authenticated even on loopback. `grith daemon` and `grith dashboard`
+are the same command.
 
 ## See also
 
-- [`grith dashboard`](/docs/cli/daemon)
+- [`grith daemon`](/docs/cli/daemon)
+- [API authentication](/docs/api/authentication)
 - [Running as a daemon](/docs/ops/running-as-a-daemon)
-- [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls)
-- [API overview](/docs/api/overview)

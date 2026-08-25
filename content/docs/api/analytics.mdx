@@ -1,62 +1,94 @@
 ---
-title: "Analytics"
-description: "Pro analytics: summary, cost, activity, and compliance bundles."
-section: "api"
-order: 8
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/analytics.mdx"
+title: 'Analytics'
+description: 'The two local analytics-v2 routes, what each tier gets, and the freshness block that tells you how far behind the projection is.'
+section: 'api'
+order: 6
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/analytics.mdx'
 ---
 
-<PlanBadge tier="pro" />
+| Method | Path                     | Tier      |
+| ------ | ------------------------ | --------- |
+| GET    | `/api/analytics/v2/free` | Community |
+| GET    | `/api/analytics/v2/pro`  | Pro       |
 
-<ApiRouteTable group="Analytics" showHeadings={false} />
+Both are sensitive reads: send the dashboard token as `x-grith-csrf` once one exists. Both
+read a projection that lives inside the audit database - there is no separate analytics
+store, and no endpoint that computes anything from scratch.
 
-Pro analytics roll up the audit data and reputation table into team-friendly
-shapes. Requires a valid Pro license; without one, the routes return
-`403 PLAN_REQUIRED`.
+Free is a first-class server response, not a client-side mask over the Pro payload. The
+feature check on `/pro` runs before any storage access, so a Community caller never
+receives richer rows for a browser to hide.
 
-## `GET /analytics/summary`
+## GET /api/analytics/v2/free
 
-Top-line stats over a window.
+A 7-day window.
 
-```json
-{
-  "window": "24h",
-  "calls": 9482,
-  "decisions": { "allow": 8920, "queue": 487, "deny": 75 },
-  "sessions": 14,
-  "cost_estimate_usd": 4.22
-}
-```
+<CodeBlock
+  language="json"
+  title="GET /api/analytics/v2/free"
+  code={`{
+  "protocol_version": 2,
+  "schema_version": 1,
+  "access": "free",
+  "window": { "start_day": "2026-08-18", "end_day": "2026-08-24", "current_day_partial": true },
+  "decisions": {
+    "total": 4812, "allow": 4702, "queue": 96, "deny": 14,
+    "allow_rate_ppm": 977140, "queue_rate_ppm": 19950, "deny_rate_ppm": 2909
+  },
+  "chain_health": "healthy",
+  "latest_audit_record_at": "2026-08-24T09:14:23.481920Z",
+  "recent_queue_and_deny": [],
+  "freshness": {
+    "materialized_through_at": "2026-08-24T09:14:00.000000Z",
+    "materialized_through_sequence": 48120,
+    "dirty_day_count": 0,
+    "rebuilding": false,
+    "gap_count": 0
+  },
+  "pro_available": false
+}`}
+/>
 
-## `GET /analytics/cost`
+Rates are parts per million, not percentages. Timestamps are RFC 3339 with exactly six
+fractional digits - a wire contract, because row checksums hash the serialised form.
+`chain_health` is `healthy`, `gap`, `broken`, `quarantined` or `unknown`, and
+`recent_queue_and_deny` holds up to 20 recent security events. `pro_available` reports
+whether this install's licence would allow the Pro route.
 
-Provider cost breakdown by model and user.
+## GET /api/analytics/v2/pro
 
-```json
-{
-  "by_provider": [
-    { "provider": "anthropic", "model": "claude-sonnet-4-5", "tokens": 1_240_000, "cost_usd": 3.41 }
-  ],
-  "by_user": [...]
-}
-```
+The same window machinery over 30 and 90 days, with rollups instead of a single count:
+`usage_rows`, `filter_rows`, `session_rows`, `llm_rows`, `destination_rows`,
+`security_events`, plus `windows`, `generated_at`, the same `freshness` block,
+`export_formats` (`json` and `csv`), `export_max_days` (90) and `truncated`.
 
-## `GET /analytics/activity`
+`truncated` is true when a rollup family was clipped to its schema row cap. The rows that
+get dropped are the oldest days, never a silent slice out of the middle.
 
-Call volume trends, per-session timelines, decision splits over time.
+Without a Pro licence this route is `403 FEATURE_GATED` with `feature` set to
+`usage_analytics`.
 
-## `GET /analytics/compliance` <PlanBadge tier="enterprise" />
+## Freshness, and why it is on every response
 
-Structured evidence bundles for export, **designed to support** compliance
-reporting workflows (SOC 2 / ISO 27001 / GDPR-flavoured report shapes). grith is
-not itself certified against any framework — these bundles give your auditors the
-deterministic execution data they need. See
-[Compliance reporting](/docs/enterprise/compliance-reporting).
+Both routes run a bounded catch-up before reading - at most four batches, at most eight
+days - so a first read over a large backlog cannot hold the storage lock for minutes. The
+daemon's background worker drains the rest. `freshness` is how the response tells you it
+did not finish: `materialized_through_at` and `materialized_through_sequence` are how far
+the projection has been built, `dirty_day_count` is how many days still need rebuilding,
+and `rebuilding` is true while a rebuild is in flight.
+
+To force the projection to be rebuilt from the audit records, run
+[`grith audit rebuild-analytics`](/docs/cli/audit).
+
+## 503 ANALYTICS_UNAVAILABLE
+
+Returned when the process holding the audit database is an older grith that does not
+maintain the projection. The message names the fix: `grith daemon restart`.
 
 ## See also
 
-- [Analytics & cost (Pro)](/docs/pro/analytics-and-cost)
-- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)
+- [Analytics (Pro)](/docs/pro/analytics) - what syncs, what never leaves the machine
+- [`grith analytics`](/docs/cli/analytics)

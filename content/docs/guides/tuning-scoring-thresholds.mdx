@@ -1,98 +1,127 @@
 ---
-title: "Tuning scoring thresholds"
-description: "When and how to move auto_allow_threshold and auto_deny_threshold."
-section: "guides"
+title: 'Tuning scoring thresholds'
+description: 'Where the allow and deny lines actually fall, how to move them, and when moving them is the wrong fix.'
+section: 'guides'
 order: 1
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/tuning-scoring-thresholds.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/tuning-scoring-thresholds.mdx'
 ---
 
-The most common knobs you'll touch in grith are `proxy.auto_allow_threshold` and
-`proxy.auto_deny_threshold`. Defaults are `3.0` and `8.0`. This page walks through
-when to move them and how to verify the change is doing what you want.
+Two numbers decide what happens to every tool call: `proxy.auto_allow_threshold` (3.0) and
+`proxy.auto_deny_threshold` (8.0). Everything a filter contributes is added into one composite
+score, and the score is routed against those two lines.
 
-## Symptoms
+## Where the lines fall
 
-| Symptom | Likely cause | Knob |
-| --- | --- | --- |
-| Digest is constantly full of trivial-looking quarantines | `auto_allow_threshold` too low | raise to 3.5 or 4.0 |
-| Things you'd want to review are auto-allowing | `auto_allow_threshold` too high | lower to 2.5 or 2.0 |
-| Calls auto-denying that you'd have approved | `auto_deny_threshold` too low | raise to 9.0 or 10.0 |
-| Definitively-bad calls landing in the queue instead of denying | `auto_deny_threshold` too high | lower to 7.0 or 6.5 |
+Both boundaries are strict greater-than, so both boundary values land on the less restrictive
+side.
 
-## Measure before you move
+| Composite score                    | Decision         |
+| ---------------------------------- | ---------------- |
+| 3.0 or below                       | allow            |
+| above 3.0, up to and including 8.0 | queue for review |
+| above 8.0                          | deny             |
 
-Don't tune blind. Look at the audit log:
+A score of exactly 8.0 queues. It does not deny. That is deliberate: on the boundary a human gets
+to look, rather than the tool getting a bare `EPERM` it cannot explain.
 
-```
-grith audit --limit 200 | grep queue | head
-```
+<Terminal>
+  {`$ grith proxy test '{"type":"FileRead","path":"/home/u/.aws/credentials"}'
+Proxy Test Result
+==================================================
+  Tool call:   FileRead(/home/u/.aws/credentials)
+  Score:       8.0
+  Decision:    QUEUE (Critical)
+  Reason:      Score 8.0 in escalation zone
+  Eval time:   1.79ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active`}
+</Terminal>
 
-Open a few sample items:
+## Look at the score before you move the line
 
-```
-grith digest show <id>
-```
+`grith proxy test` runs the real pipeline on a call you describe and prints every filter's
+contribution. Run it on the call that annoyed you rather than guessing.
 
-If the filter contributions look reasonable for "yes, this needs review", the
-threshold is right. If they look like routine work that shouldn't have queued,
-the threshold is too tight (or your profile is missing routine entries — that's
-often the better fix).
+| Call                                   | Score | Decision |
+| -------------------------------------- | ----- | -------- |
+| `FileRead /home/u/project/src/main.rs` | 0.0   | allow    |
+| `FileWrite /home/u/project/out.txt`    | 0.5   | allow    |
+| `ProcessSpawn npm install`             | 1.0   | allow    |
+| `HttpRequest GET registry.npmjs.org`   | -1.5  | allow    |
+| `FileRead /etc/passwd`                 | 2.8   | allow    |
+| `NetConnect 198.51.100.7:443`          | 3.5   | queue    |
+| `FileRead /home/u/.env`                | 6.0   | queue    |
+| `FileRead /home/u/.aws/credentials`    | 8.0   | queue    |
+| `ShellExec rm -rf /`                   | 10.0  | deny     |
 
-## Make the change
+Note the negative score. On that npm row `egress-policy` and `reputation` each returned -1.0 - a
+trusted outbound destination and a known-safe domain - against +0.5 for the request itself. The
+`allowlist` filter subtracts the same -1.0 for an explicit allow entry, so evidence can subtract as
+well as add. Raising the allow threshold to silence something that already scores 6.0 also waves
+through everything between 3.0 and 6.0 that you have not looked at.
 
-```
-grith config set proxy.auto_allow_threshold 3.5
-```
+## Making the change
 
-Or edit `~/.config/grith/config.toml`:
+Edit `~/.config/grith/config.toml`:
 
-```toml
-[proxy]
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[proxy]
 auto_allow_threshold = 3.5
-auto_deny_threshold  = 8.0
-```
+auto_deny_threshold  = 8.0`}
+/>
 
-The change applies to the next call. No restart needed.
+Or `grith config set proxy.auto_allow_threshold 3.5`, which rewrites the whole user config file
+(losing comments) rather than patching one line.
 
-## Re-measure
+Either way the daemon reads thresholds at startup. Run `grith daemon restart` before you expect
+the new numbers to apply - a running session keeps the values it was born with.
 
-Run for a day or two. Then:
+<Callout type="warning" title="Do not hand-write a sparse config file">
+  Every config layer contributes its Rust struct defaults for keys it omits, so a two-line
+  `config.toml` overwrites more than the two lines you wrote. Start from what `grith init` wrote, or
+  use `grith config set`.
+</Callout>
 
-```
-grith audit --limit 500 | awk '{print $5}' | sort | uniq -c
-```
+## What the daemon refuses
 
-Look at the decision distribution. A well-tuned setup has roughly:
+Both thresholds are validated at load, so a bad pair stops the next command rather than
+silently clamping. `--config` is the quickest way to try a file before it becomes your live one:
 
-- 85–95% auto-allow.
-- 5–10% queue.
-- 1–5% auto-deny.
+<Terminal>
+  {`$ grith --config config.toml config
+Error: configuration invalid:
+proxy.auto_allow_threshold (9) must be less than auto_deny_threshold (8)`}
+</Terminal>
 
-If the queue ratio is over 15%, raise `auto_allow_threshold`. If under 2%,
-consider lowering it.
+<Terminal>
+  {`$ grith --config config.toml config
+Error: configuration invalid:
+proxy thresholds must be in range [0.0, 10.0]`}
+</Terminal>
 
-## When profile is the better fix
+The rules are: allow must be strictly less than deny, and both must sit within 0.0 to 10.0.
 
-If the digest is full of *the same shape of call over and over* — e.g. "reading
-`~/.config/claude-code/auth.json`" — that's not a threshold problem. That's a
-missing `routine_paths` entry in your profile. Fix the profile, not the
-threshold.
+## When the threshold is the wrong fix
 
-The threshold is a global knob. Tightening it to silence one chatty pattern
-makes everything else less safe.
+If the same shape of call queues over and over, the threshold is not the problem - that one call
+is. Answering the prompt with `[l]` records a profile-scoped learned rule that is merged into the
+session allowlist on every future session with that profile, so you are not asked again; sensitive
+targets are never saved that way. In the digest, `p` writes a durable entry to
+`~/.config/grith/filters/allowlist.toml` instead.
 
-## Per-session thresholds (Pro)
+Approvals also feed the [learned reputation table](/docs/concepts/adaptive-reputation), which can
+auto-allow a queued call once its key has at least eight observations and enough trust. It never
+revisits a denial.
 
-A Pro plan can attach per-session policy bundles that override thresholds for
-specific session profiles (e.g. tighter for production, looser for sandbox
-exploration). See [Centralised policies](/docs/pro/centralised-policies).
+The threshold is a global knob. Loosening it to quieten one chatty pattern loosens everything
+else at the same time.
 
 ## See also
 
 - [Composite scoring](/docs/concepts/composite-scoring)
-- [`[proxy]` config](/docs/config/proxy)
-- [Adaptive reputation](/docs/concepts/adaptive-reputation) — automated tightening
-- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)
+- [`[proxy]` configuration](/docs/config/proxy)
+- [`grith proxy test`](/docs/cli/proxy-test)

@@ -1,0 +1,142 @@
+---
+title: '10. Egress policy'
+description: 'Where a call is going, on what port, over what scheme - and whether the payload is shaped like exfiltration.'
+section: 'filters'
+order: 10
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/10-egress-policy.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 2, pattern |
+| **Score** | -1.0 to 7.0; the main bands are set by `mode` |
+| **Source** | `crates/grith-proxy/src/filters/egress_policy.rs` |
+| **Config** | `config/filters/egress.toml` |
+
+The destination filter. It reads HTTP requests, socket connects, listens, DNS queries and the
+argv of any spawn that might carry a URL.
+
+## Mode decides the two score bands
+
+`mode` in `egress.toml` sets what a blocked or reviewable destination is worth. **The default
+is `review`.**
+
+| Mode | Blocked | Review |
+| --- | --- | --- |
+| `monitor` | 2.0 | 1.0 |
+| `review` (default) | **6.5** | **3.5** |
+| `enforce` | 9.0 | 4.5 |
+
+At the default, a blocked destination lands at 6.5 - queued, not denied, unless something else
+pushes it over 8.0. Switch to `enforce` and a blocked destination denies on its own.
+
+## Destination rules, in order
+
+The first one that matches decides.
+
+| Rule | Score |
+| --- | --- |
+| `blocked-scheme` - `ftp`, `sftp`, `tftp`, `gopher`, `file`, `data` | blocked |
+| `blocked-domain` - anything in `blocked_domains`, empty by default | blocked |
+| `blocked-port` - 21, 23, 25 | blocked |
+| `private-address-egress` - only when `allow_private_ip = false` | review |
+| `review-scheme` - `smtp`, `dns`, `ws`, `wss` | review |
+| `review-port` - 53, 110, 143, 445, 587, 2525 | review |
+| `trusted-destination` - a host in `trusted_domains` | **-1.0** |
+| `profile-trusted-destination` - a host the active profile declares | **-1.0** |
+| `unknown-destination` - anything else | review, or **0.5** for a DNS query |
+
+Trust matching is subdomain-aware: `github.com` covers `api.github.com`.
+
+`allow_private_ip` is `true` by default, so localhost and RFC1918 addresses are neither
+reviewed nor treated as unknown - a dev server on loopback is local development, not egress.
+
+<Terminal>
+{`$ grith proxy test '{"type":"HttpRequest","method":"GET","url":"https://api.github.com/repos/grith-ai/grith"}'
+
+  Score:       -1.5
+  Decision:    ALLOW
+
+  Filter Breakdown:
+    + operation-risk         0.5  [notice]  HTTP request: GET https://api.github.com/repos/grith-ai/grith
+    + egress-policy         -1.0  [notice]  Trusted outbound destination from http_request: api.github.com
+    + reputation            -1.0  [notice]  Known safe domain: api.github.com`}
+</Terminal>
+
+## What ships trusted
+
+Package registries and language toolchains, code hosting, LLM providers, container registries,
+first-party deploy APIs, and **grith's own control plane** - `grith.ai` and `api.grith.ai`.
+The full list is `trusted_domains` in `config/filters/egress.toml`.
+
+Shared-tenancy deploy domains are deliberately excluded. `*.vercel.app`, `*.netlify.app`,
+`*.fly.dev`, `*.herokuapp.com` and `*.workers.dev` let anyone host arbitrary content under a
+trusted parent, which would make them zero-auth exfiltration sinks under subdomain matching.
+AWS and Azure object storage - `amazonaws.com`, `*.windows.net`, `*.blob.core.windows.net` -
+are left out for the same reason: a benign deploy takes a one-time approval, and an upload to
+an attacker's bucket is not silently trusted. `googleapis.com` predates that decision and is
+trusted, so Google Cloud Storage is the one object store that does not queue.
+
+## Ports, protocols and shape
+
+Beyond the destination rules, three more signals can raise the score to the review band.
+
+**Unusual ports** - 4444, 5555, 6666, 6667, 6697, 8443, 8888, 9090, 9999, 1337, 31337.
+
+**Command tokens** in a spawn or shell call. `nslookup`, `dig`, `ftp` and `sftp` are blocked
+tokens; `curl`, `wget`, `nc`, `netcat` and `scp` are review tokens. Matching is by basename
+equality on each argv element, so `/usr/bin/curl` matches and `incremental` does not. A review
+token is suppressed when every destination in the command is trusted.
+
+**Payload shape** - a base64 run of 40 characters or more, a segment with Shannon entropy at
+or above 4.5 bits per character, a URL over 2000 characters, or command arguments over 4000.
+Shape is only *scored* for an untrusted destination, but the `exfil_shape` flag is set
+whenever a shape rides any real destination, so the [meta-rules](/docs/filters/meta-rules) can
+escalate a shaped payload to a trusted host when reputation or taint corroborates.
+
+## Binding a listener
+
+A loopback bind scores nothing. A non-loopback bind is 5.0 unless the profile declares it:
+
+| Shape | Score |
+| --- | --- |
+| Loopback | 0.0 |
+| Wildcard, declared with `allow_clamp = true` | 0.0 - the supervisor rewrites the address to loopback |
+| Wildcard, declared with `allow_clamp = false` | 5.0 |
+| Wildcard, undeclared | 5.0 |
+| Specific non-loopback interface | 5.0 |
+| Non-loopback, port 0 | 0.5 |
+
+Port 0 asks the kernel to pick a port. Nothing external can rendezvous with a port it cannot
+know, so it is scored for the audit trail rather than prompted on.
+
+## DNS
+
+A DNS query to an unknown host scores 0.5, not the full review score - routine name resolution
+should not queue, and the connection that follows is scored separately. Tunnelling shapes are
+caught regardless, including under a trusted parent zone: encoded or high-entropy subdomain
+labels score the review band, plus 2.0 more for a data-bearing query type (TXT, NULL, CNAME,
+ANY).
+
+<Terminal>
+{`$ grith proxy test '{"type":"DnsQuery","domain":"a3f9c2e1b7d4a8f6c0e2b5d9.exfil.example.net","query_type":"TXT"}'
+
+  Score:       6.0
+  Decision:    QUEUE (High)
+
+  Filter Breakdown:
+    + operation-risk         0.5  [notice]  DNS query: a3f9c2e1b7d4a8f6c0e2b5d9.exfil.example.net (TXT)
+    + egress-policy          5.5  [error]  Possible DNS tunnelling in query: TXT query with encoded subdomain (29 chars, entropy 4.12)`}
+</Terminal>
+
+A raw socket - `AF_PACKET`, `AF_NETLINK` - scores 7.0 regardless of mode, because it bypasses
+the IP stack entirely.
+
+## See also
+
+- [13. Destination reputation](/docs/filters/13-destination-reputation) - the domain-list filter
+- [18. Egress rate](/docs/filters/18-egress-rate) - volume rather than destination
+- [Meta-rules](/docs/filters/meta-rules) - what `exfil_shape` feeds

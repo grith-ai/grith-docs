@@ -1,67 +1,92 @@
 ---
-title: "Built-in profiles"
-description: "The supervisor profiles that ship with grith — pick the right one for your agent."
-section: "profiles"
+title: 'Built-in profiles'
+description: 'The 11 profiles compiled into grith, what each one trusts, and how a session gets one.'
+section: 'profiles'
 order: 2
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/built-in-profiles.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/built-in-profiles.mdx'
 ---
 
-grith ships 11 built-in profiles covering the popular AI agents. Pick the one
-matching your agent on every `grith exec`; if your agent isn't listed, start with
-`generic-cli` or write a [custom profile](/docs/profiles/writing-a-custom-profile).
+grith ships 11 profiles, compiled into the binary: three base profiles and eight named tool profiles. Most sessions never pass `--profile` at all - grith detects the tool from the command basename, and falls back to `generic` when it does not recognise it.
 
-## Quick reference
+The counts below are the effective ones, after the `extends` chain and the `[defaults]` block have merged. See [how profiles work](/docs/profiles/how-profiles-work) for what each column trusts and what it does not.
 
-| Profile | For | Capabilities |
-| --- | --- | --- |
-| [`claude-code`](/docs/profiles/claude-code) | Anthropic Claude Code CLI | read/write home, shell, network, exec |
-| [`codex`](/docs/profiles/codex) | OpenAI Codex CLI | read/write home, shell, network, exec |
-| [`aider`](/docs/profiles/aider) | Aider git-aware agent | read/write home, shell, network |
-| [`goose`](/docs/profiles/goose) | Block's Goose | read/write home, shell, network, exec |
-| [`copilot`](/docs/profiles/copilot) | GitHub Copilot CLI | read/write home, shell (limited), network |
-| [`cursor`](/docs/profiles/cursor) | Cursor's helper subprocesses | read/write home, shell, network |
-| [`cline`](/docs/profiles/cline) | Cline / Claude Dev extension CLI | read/write home, shell, network, exec |
-| [`openclaw`](/docs/profiles/openclaw) | OpenClaw fork | read/write home, shell, network, exec |
-| [`generic-cli`](/docs/profiles/generic-cli) | Standard CLI tools (git, npm, ...) | read/write home, shell |
-| `grith-repl` | the built-in REPL | minimal |
-| `generic` | strictest baseline | read/write project only |
+| Profile       | Selected by                | Paths | Commands | Destinations |
+| ------------- | -------------------------- | ----- | -------- | ------------ |
+| `generic`     | the default                | 34    | 64       | 0            |
+| `generic-cli` | `--profile generic-cli`    | 34    | 65       | 7            |
+| `grith-repl`  | grith's own REPL           | 34    | 64       | 0            |
+| `claude-code` | `claude`, `claude-code`    | 49    | 95       | 31           |
+| `codex`       | `codex`                    | 42    | 92       | 21           |
+| `aider`       | `aider`                    | 38    | 74       | 7            |
+| `goose`       | `goose`                    | 38    | 78       | 7            |
+| `copilot`     | `copilot`, `copilot-cli`   | 37    | 85       | 17           |
+| `cursor`      | `cursor-agent`             | 37    | 85       | 20           |
+| `cline`       | `cline`                    | 36    | 81       | 12           |
+| `openclaw`    | `openclaw`                 | 39    | 80       | 23           |
 
-## How to pick
+## The base profiles
 
-1. **You're running a named agent** — use its profile.
-2. **You're running a wrapper around a named agent** — use the wrapped agent's
-   profile.
-3. **You're shelling around in bash with tools** — `generic-cli`.
-4. **You're paranoid or exploring what an agent does** — `generic`. Everything
-   non-project will land in the digest.
+### `generic`
 
-## Switching profiles
+The shipped default, and what every unrecognised tool runs under. Its own block declares a single entry, `${PROJECT_DIR}/**`; everything else it trusts comes from `[defaults]`, which is why it still covers `git`, `ssh`, the ordinary file and text utilities and the toolchain scratch directories under `/tmp`. It trusts no network destination at all, so every outbound connection is scored.
 
-A profile is set per `grith exec` invocation. The same agent can run under
-different profiles in different terminals — useful when you want to test a tighter
-profile against the same task that's working under a looser one.
+### `generic-cli`
 
-## Tuning a built-in
+Opt-in only, via `--profile generic-cli`. Auto-detection never returns it and no named tool profile inherits from it. It adds `code` and seven GitHub, VS Code and Microsoft destinations on top of `generic` - the right starting point for ordinary developer CLI work, or for an agent that has no profile of its own.
 
-Don't edit the shipping `profiles.toml` directly — your changes get overwritten on
-upgrade. Instead, **extend** in your user profiles directory:
+### `grith-repl`
 
-```toml
-# ~/.config/grith/profiles/my-claude-code.toml
-[profiles.my-claude-code]
-extends = "claude-code"
-routine_paths = [
-    "${HOME}/work/special-project/**",
-]
-```
+Names the learned-rule scope for grith's own REPL. It is not a profile you select for a supervised session.
 
-Then `grith exec --profile my-claude-code -- claude`.
+## The tool profiles
+
+### `claude-code`
+
+Claude Code, detected from `claude` or `claude-code`. The widest profile in the set: Anthropic and Claude endpoints, the npm, PyPI and crates registries, GitHub, and the Chromium and VS Code state directories Claude Code touches. Its launch contract adds `--dangerously-skip-permissions --settings {"sandbox":{"enabled":false}}` to the tool's own command line, turning off Claude Code's inner sandbox so grith is the single boundary rather than one of two. `${HOME}/.pki/nssdb/*` is read-only: certificate-store reads auto-allow, a write to the store goes to the proxy.
+
+### `codex`
+
+OpenAI Codex CLI, detected from `codex`. Its launch contract adds `--dangerously-bypass-approvals-and-sandbox`, for the same single-boundary reason. It is the only profile with a listener policy, covering the Codex MCP transport's kernel-assigned localhost port; in v0.3.1 that entry widened to cover the IPv6 form of the same bind (`[::]:0`), which was still prompting. It also names five namespace helpers (`bwrap`, `bubblewrap`, `firejail`, `nsenter`, `unshare`), which stay dormant in practice: the fail-safe requires the same binary to sit under a routine exec root, and `/usr/bin` is not one.
+
+### `aider`
+
+Aider, detected from `aider`. Python and git centred - `pip`, `flake8`, `streamlit`, `${HOME}/.aider*` - with destinations covering OpenAI, Anthropic, DeepSeek, OpenRouter, PyPI, Hugging Face and PostHog.
+
+### `goose`
+
+Goose, detected from `goose`. Rust-native with no sandbox of its own, so grith is the only boundary the session has. Trusts the Anthropic, OpenAI, OpenRouter and Statsig endpoints plus the usual Rust, Python and Node toolchains.
+
+### `copilot`
+
+GitHub Copilot CLI, detected from `copilot` or `copilot-cli`. GitHub and Copilot API endpoints, the npm, PyPI and crates registries, and Node as the runtime. `${HOME}/.config/github-copilot/apps.json` is read-only: Copilot may read its own credential index, and a write to it goes to the proxy.
+
+### `cursor`
+
+Cursor CLI, detected from `cursor-agent` - not from `cursor`. Its launch contract adds `--sandbox disabled`, because Cursor's own sandbox conflicts with ptrace. `${HOME}/.config/cursor/auth.json` is read-only on the same terms as Copilot's.
+
+### `cline`
+
+Cline CLI, detected from `cline`. Cline platform endpoints for telemetry, plus Anthropic, OpenAI and OpenRouter, and Node as the runtime.
+
+### `openclaw`
+
+OpenClaw, detected from `openclaw`. The only profile that does not extend `generic`, and the only one that trusts a listen address (`127.0.0.1`). It covers browser automation through Chromium, messaging integrations through `signal-cli`, and container work through `docker` and `docker-compose`.
+
+<Callout type="warning" title="A routine command is not an enforcement bypass">
+  `openclaw` lists `docker` in its routine commands, and `docker` still cannot be spawned without review: a spawn that hands authority to another process is never short-circuited by the session allowlist, whatever the profile says.
+</Callout>
+
+## If your tool is not listed
+
+Run it anyway. An unrecognised command lands on `generic`, which trusts the project directory and the common toolchain, and everything else it does goes through normal scoring - you will see more prompts on the first session and fewer as you approve the calls that repeat.
+
+If that is too chatty for a routine CLI, `--profile generic-cli` widens it slightly. There is no way to add a profile of your own; the customisation that does exist is covered in [how profiles work](/docs/profiles/how-profiles-work).
 
 ## See also
 
 - [How profiles work](/docs/profiles/how-profiles-work)
-- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)
-- [Choose your agent](/docs/start/choose-your-agent) — getting-started page
+- [Choose your agent](/docs/start/choose-your-agent)
+- [grith exec](/docs/cli/exec)

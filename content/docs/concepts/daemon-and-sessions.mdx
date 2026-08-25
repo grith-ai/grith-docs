@@ -1,147 +1,114 @@
 ---
-title: 'Daemon and thin-client sessions'
-description: 'Why grith optionally runs as a daemon, and what changes when it does.'
+title: 'The daemon and thin-client sessions'
+description: 'One process owns the audit log, the filters and the queue; every supervised session is a client of it over loopback HTTP.'
 section: 'concepts'
-order: 12
+order: 6
 tier: 'community'
-version: '0.1.0'
-lastUpdated: '2026-05-14'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/daemon-and-sessions.mdx'
 ---
 
-The simplest way to use grith is one-shot per session: `grith exec` spawns the agent,
-supervises it, exits when the agent exits. That works fine for a single terminal,
-single agent, single user.
-
-A persistent daemon is what you run for everything else — multiple concurrent
-sessions, the dashboard, notification channels, team sync. The daemon is a
-long-running grith process that owns the shared subsystems (audit, digest,
-reputation, server) and lets thin clients (each `grith exec` invocation) talk to
-them. Even a lone `grith exec` uses a daemon: when you haven't started one, it
-auto-starts a throwaway daemon that shuts down when the session ends.
-
-## Auto-started vs persistent daemon
-
-Every `grith exec` runs against a daemon — the only question is whether it starts one
-for you or connects to one you already have running. There is no daemon-less mode: if a
-trusted, version-compatible daemon can't be established, `grith exec` fails closed and
-starts nothing.
-
-Auto-started (no daemon already running):
-
-```
-grith exec -- claude
-# No daemon found → grith starts one in the background, then registers this session
-```
-
-The daemon grith starts idle-shuts-down once the session ends. For the life of the
-session it still owns the shared subsystems — one audit database, one digest queue,
-one reputation table, one session registry.
-
-Persistent (`grith daemon start` first):
-
-```
-grith exec -- claude
-# Detects the running daemon, registers as a thin-client session
-```
-
-A persistent daemon outlives individual sessions, so:
-
-- The audit log is one central SQLite database across every session.
-- Digest is one central queue, reviewable from any terminal or the dashboard at
-  `http://127.0.0.1:3141`.
-- Notification channels (configured once in the daemon) deliver review prompts.
-- The reputation table is shared across all sessions.
-- Concurrent sessions register together and count against your plan's concurrent-session limit.
+grith runs one daemon per machine. It owns everything that has to be single-writer or
+shared, and every supervised session talks to it as a client. There is no second mode,
+no embedded fallback and no way to run a session without it.
 
 ## What the daemon owns
 
-- The **server** (`crates/grith-server/`) — REST API, WebSocket, dashboard.
-- The **digest queue** — single SQLite table, atomic decisions.
-- The **audit database** — central, indexed, retention-managed.
-- The **reputation table** — saved to disk every 5 minutes by default.
-- The **notification dispatcher** — owns channel state and rate-limit budgets.
-- The **license** — refreshed in-band on Pro plans.
-- The **canary registry** — same tokens visible to every session.
+- The **audit database**, as the exclusive writer. The lock is an `flock` held for the
+  process lifetime, so the kernel releases it however the process dies. Everything else -
+  `grith audit`, `grith log`, `grith digest` - opens the database read-only and says so.
+- The **security proxy** and all 18 filters, including the compiled secret-pattern set
+  that is expensive to build and pointless to build twice.
+- The **digest queue**.
+- The **session registry**, the canary registry and the learned reputation table.
+- The **HTTP and WebSocket server** on `127.0.0.1:3141`, which serves the dashboard.
 
-A daemon restart can drop in-flight digest items (the process freeze in the thin
-client times out and auto-denies). On the Pro plan,
-restarts are clean — the daemon flushes pending state to disk before stopping and
-recovers it on start.
+Because there is one filter registry and one reputation table, two sessions on the same
+machine score consistently and learn from each other's approvals.
 
-## Thin-client sessions
+## Sessions are thin clients
 
-When a daemon is running, `grith exec` becomes a thin client:
+`grith exec`, `grith supervisor` and `grith reputation` are thin-client commands. They
+find the daemon, authenticate, and do their work through it.
 
-```
-grith exec --profile claude-code -- claude
+The transport is loopback HTTP with a bearer token, not a unix socket. The token lives in
+`~/.config/grith/daemon.token` at mode `0600` and is **rotated on every daemon start**; a
+client that gets a 401 re-reads it from disk, so a daemon restart heals a live session
+rather than killing it.
 
-# Internally:
-1. Connect to daemon UNIX socket
-2. POST /ipc/sessions  → daemon assigns session id, returns config snapshot
-3. fork + exec the supervised target, attach ptrace
-4. On each interesting syscall, POST /ipc/proxy/evaluate with the call shape
-5. Apply daemon's decision (allow / queue / deny)
-6. On exit, DELETE /ipc/sessions/{id}
-```
+Inside a supervised session the digest store, the audit sink and the session registration
+are all remote shims. A supervised call is scored by asking the daemon over that channel,
+which is why the audit log is complete and the reputation table is shared.
 
-The supervisor (ptrace machinery) still runs in the thin-client process — it has to,
-because that's the process attached to the agent. But the filter pipeline runs in
-the daemon, which means scoring decisions can use _global_ context (other sessions'
-recent behaviour, the central reputation table) that the thin client wouldn't have.
+## `grith exec` fails closed
 
-## Starting and stopping the daemon
+There is **no in-process fallback daemon**. If `grith exec` cannot reach a healthy,
+version-matched daemon, it refuses to start and your tool is never spawned. The failure
+modes it distinguishes are worth knowing:
 
-```
-grith dashboard start   # background; prints connection details + opens/pairs the browser
-grith dashboard status
-grith dashboard pair     # (re)authorise a browser
-grith dashboard stop
-```
+| Condition | Meaning |
+| --- | --- |
+| `SpawnFailed` | The daemon could not be started |
+| `PortOwnedByForeignProcess` | Something that is not grith holds port 3141 |
+| `VersionMismatch` | A daemon of a different build is running |
+| `TokenRejected` | The IPC token did not authenticate |
+| `AuditQuarantined` | The audit chain failed verification - no session is admitted |
+| `AuditReadOnly` | The audit database cannot be written |
 
-`grith dashboard start` spawns the daemon in the background and returns. It's
-also auto-started for you by `grith run` and `grith exec` (those instances
-idle-shut-down with the session; an explicit start persists until you stop it).
+`AuditQuarantined` is the sharp one. If the hash chain is broken, the daemon refuses to
+admit sessions rather than write new records onto a chain it cannot vouch for.
+`grith audit diagnose` is read-only and works in exactly that state.
 
-The daemon is local-only by default — binds to `127.0.0.1:3141`. To expose it (for
-the dashboard from another machine, or for a webhook receiver), either configure
-`[server.tls]` with cert + key, or run a reverse proxy in front. See
-[Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
+Setting `server.enabled = false` makes `grith exec` refuse outright.
 
-## When you'd not keep a persistent daemon
+## Starting and stopping
 
-- Single-user laptop, one terminal at a time — the daemon `grith exec` auto-starts is enough.
-- Containerised agents where each container is its own short-lived session.
-- CI runs where the agent runs once and exits.
+Most people never start it by hand. `grith exec`, `grith run` and the REPL auto-start a
+daemon if one is not already listening, re-execing themselves detached and polling until
+a daemon of the same version answers.
 
-When you'd keep a persistent daemon:
+The difference between an auto-started daemon and `grith daemon start` is what happens
+when the last session ends:
 
-- More than one supervised session in flight.
-- You want the dashboard.
-- You want notifications routed through Slack / Telegram / etc.
-- You're on Pro and using team policies / sync.
+- **Auto-started**: a watchdog polls the session registry every 5 seconds and shuts the
+  daemon down 30 seconds after the registry empties.
+- **Explicitly started**: idle shutdown is disabled. It stays up until you stop it.
 
-## The auth model
+A separate reaper runs regardless, evicting sessions whose root process is dead and whose
+heartbeat has gone stale.
 
-The daemon binds loopback-only, but loopback reachability is not treated as
-authorisation:
+`grith daemon stop` asks over the authenticated shutdown route first and falls back to
+`SIGTERM`. The command is also spelled `grith dashboard` - a retained alias, and several
+messages the binary prints still use it. Both work.
 
-- **IPC routes** (`/ipc/*`, `/server/shutdown`) require the daemon bearer token
-  (`~/.config/grith/daemon.token`, `0600`), constant-time compared.
-- **Browser routes** require the per-server dashboard token — mutations and
-  sensitive reads on every request, gated via the `x-grith-csrf` header (or
-  `?token=` for WebSockets). Low-sensitivity status stays open. The browser
-  receives the token through the [pairing flow](/docs/cli/daemon#browser-authorisation),
-  never the terminal.
+## Runtime files
 
-Exposing beyond loopback additionally requires TLS (or a reverse proxy). For team
-setups, the Pro plan adds short-lived bearer tokens issued by the dashboard for
-cross-machine review. See
-[Trust boundaries](/docs/security/trust-boundaries) and
-[Notification security](/docs/security/notification-security).
+All under `~/.config/grith/`:
+
+| File | What it is |
+| --- | --- |
+| `dashboard.pid` | The daemon's pid and port |
+| `daemon.token` | The IPC bearer, `0600`, rotated on every start |
+| `dashboard.token` | The browser token, `0600`, stable across restarts |
+| `daemon.json` | Instance id, pid, port, version, protocol version, audit database path |
+| `reputation.toml` | The learned reputation table |
+
+`daemon.token` and `daemon.json` are removed on exit. `dashboard.token` is deliberately
+kept, so a browser tab you already paired stays authorised across a restart.
+
+## Capacity
+
+`supervisor.max_concurrent_sessions` defaults to 4, but the licence caps it: a community
+licence allows **2** concurrent supervised sessions, paid plans allow 64. The effective
+limit is the lower of the two, which on a stock paid install means the config value of 4
+is what bites, not the licence.
+
+Capacity is **reserved before your tool is spawned**, so a rejection can never arrive
+after code has already run.
 
 ## See also
 
-- [grith daemon](/docs/cli/daemon) — CLI reference
-- [Running as a daemon](/docs/ops/running-as-a-daemon) — operations guide
-- [API overview](/docs/api/overview) — what the daemon serves
+- [`grith daemon`](/docs/cli/daemon)
+- [`grith exec`](/docs/cli/exec)
+- [Running as a daemon](/docs/ops/running-as-a-daemon)

@@ -1,120 +1,95 @@
 ---
-title: "Session containment"
-description: "Per-session isolation zones — keeping an agent in its lane."
-section: "concepts"
-order: 10
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/session-containment.mdx"
+title: 'Session containment'
+description: 'Two different mechanisms share the name: a sticky session-lifetime lock armed by high taint, and a 600-second scoring window.'
+section: 'concepts'
+order: 8
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/session-containment.mdx'
 ---
 
-A supervised session has a **zone** — the set of paths, networks, and resources it's
-supposed to use. The session containment filter ([15](/docs/filters/15-session-containment))
-scores calls based on whether they stay inside that zone.
+Two separate things are called containment, and they behave differently. One is a
+session-lifetime state that suspends grith's shortcuts; the other is a filter that adds
+score for ten minutes. They can be active at the same time and neither implies the other.
 
-This is a softer kind of policy than the static path filter. Path matching enforces
-"do not read this". Containment enforces "this session is about project A; project B's
-files don't belong here, even if the path itself is fine".
+## Sticky containment
 
-## Why zones
+**Armed by** registering a high-level taint - a read, write, chmod, rename or delete
+touching `.ssh`, `id_rsa`, `id_ed25519`, `private_key` or `shadow`. Direction does not
+matter: a write to `~/.ssh/authorized_keys` arms it as surely as a read of `~/.ssh/id_rsa`.
 
-A laptop runs many concurrent projects. Two agents running side by side — one for
-your day-job repo, one for an open-source side project — each have legitimate access
-to *their* files. They mostly shouldn't have access to each other's. Mixing them is
-how an attack against one project escalates into a breach of the other.
+Medium-level taint - `.env`, `.aws`, `credentials`, `secrets`, `.gnupg`, `.kube/config` -
+does **not** arm it. That is deliberate, to keep ordinary startup reads of agent
+credential files from locking a session down.
 
-Zones make that mixing explicit. The day-job session is in zone `dayjob`; the side-
-project session is in zone `oss`. A call from `dayjob` that opens a file under the
-`oss` project's directory is *in policy* (paths look fine) but *out of zone* — and
-that gets score.
+**It has no TTL.** Once set it stays set. An attacker cannot wait it out. It clears only
+when the session ends, and the first reason is kept for forensics; the `session_end` audit
+record carries a `containment_triggered` flag.
 
-## Zone definition
+**What it does** is suspend the shortcuts, so the pipeline gets to see everything:
 
-Zones live in `config/filters/containment.toml`:
+- The `ignore_read_only` fast path is bypassed.
+- **The session allowlist is not consulted at all.** Even a profile-trusted destination
+  like `api.openai.com` re-runs the full pipeline.
+- Exact-command delegating approvals are suspended.
+- Approve replay and IPC grants are suspended.
 
-```toml
-[zones.dayjob]
-paths = ["${HOME}/work/dayjob/**"]
-network = ["dayjob-vpn-host", "github.com/your-org/**"]
-description = "Day job project"
+One thing is not gated: the noise-path short-circuit. `/proc`, `/sys`, `/dev/pts`,
+`/dev/tty` and CA certificate directories stay noise regardless, because they were never
+carrying anything.
 
-[zones.oss]
-paths = ["${HOME}/oss/**"]
-network = ["github.com/grith-ai/**"]
-description = "Side projects"
+<Callout type="warning" title="A retry wrapper clears it">
+  Session lifecycle is user-initiated. A CI wrapper that automatically re-runs
+  `grith exec` on failure starts a new session, which resets the scope and therefore
+  clears containment. That is an operator choice, not a bug, but it is worth knowing you
+  have made it.
+</Callout>
 
-[zones.experiments]
-paths = ["${HOME}/scratch/**", "/tmp/scratch-**"]
-network = []
-description = "Disposable, no network"
-```
+## Windowed containment
 
-A zone has:
+The `session-containment` filter is the second mechanism. It is one of the 18 and it
+contributes score like any other.
 
-- **paths** — globs of where the session can read/write.
-- **network** — hostnames the session can reach.
-- **description** — for the dashboard.
+**Armed by** a read of a sensitive source, matched on path segment or basename, or by any
+call carrying taint. The window is **600 seconds** and re-arms on each new trigger.
 
-## Binding a session to a zone
+**While the window is open** it adds:
 
-```
-grith exec --profile claude-code --zone dayjob -- claude
-```
+| Operation | Added |
+| --- | --- |
+| Network or HTTP egress | +4.5 |
+| Outbound-capable process spawn | +4.0 |
+| Shell execution | +3.5 |
+| Control-class unix socket - session D-Bus, X11, tmux, screen | +2.0 |
 
-`--zone` sets the session's zone. Without it, the session uses the default zone
-(empty / matches everything, then containment scoring is a no-op).
+Control sockets get the reduced figure on purpose: a keyring read under containment should
+not be pushed past the auto-deny line by the window alone.
 
-The dashboard's "new session" UI also lets you pick a zone.
+Spawn scrutiny applies only to **outbound-capable** binaries. A contained session running
+a build - hundreds of `rustc` and linker spawns - is not penalised for any of them.
 
-## Cross-zone calls
+## Which one you are looking at
 
-A call that escapes the session's zone (writes to a path outside, opens a connection
-to a host not listed) doesn't auto-deny — it gets *scored*. The containment filter
-contributes positive score, weighted by:
+| | Sticky | Windowed |
+| --- | --- | --- |
+| Where it lives | Session state | Filter 16 in the pipeline |
+| Trigger | High taint only | Sensitive read or any taint |
+| Duration | The whole session | 600 seconds, re-armable |
+| Effect | Suspends allowlists and replay | Adds 2.0 to 4.5 to the composite |
+| Visible in `proxy test` | No | Yes, as `session-containment` |
 
-- How far outside the zone (one directory over vs. a totally unrelated home).
-- The risk level of the operation (writing out is heavier than reading out).
-- Whether the cross-zone target overlaps another zone (e.g. dayjob writing into oss
-  is heavier than dayjob writing into a non-zoned temp dir).
+If prompts are appearing for destinations you allowlisted, that is sticky containment. If
+scores are 4-ish higher than you expect but the allowlist still works, that is the window.
 
-A cross-zone call that crosses the auto-deny threshold is denied. One that lands in the
-queue is shown with the "out of zone" annotation, so the reviewer knows immediately
-what's interesting about it.
+## Releasing the window
 
-## Unlocking a destination
-
-If a call legitimately needs to cross zones, the digest offers an "unlock egress"
-action (for network) or a routine "approve" (for paths). Unlock-egress adds the
-destination to the session's accepted set for the remainder of the session only — no
-permanent zone change.
-
-For permanent additions, edit `containment.toml` and reload (`grith config reload`).
-
-## What this is not
-
-Zones are **not a sandbox**. The kernel is still doing the operations; the filter
-just contributes score. A determined call across a permissive zone with enough
-trust-table credit will run.
-
-If you want hard isolation, run grith inside a container or behind a Linux user
-namespace. Zones are a logical organisation tool, not a kernel boundary.
-
-## Typical use
-
-The two patterns we see most:
-
-1. **One zone per project**, declared once in `containment.toml`, referenced from
-   `--zone` on every `grith exec`. The agent stays focused.
-2. **No zones, just routine paths in the profile**. Smaller setups don't need the
-   ceremony; the path filter does most of the work.
-
-If you find yourself unlocking the same cross-zone destination over and over, that's
-a sign the destination should be in the zone definition. The dashboard surfaces
-"frequently unlocked" entries as candidates for zone-edit.
+The `unlock-egress` action on a digest item approves the call and unregisters the
+containment tracker for that session, which closes the window. It does not clear sticky
+containment - nothing does, short of ending the session.
 
 ## See also
 
-- [Filter 15: Session containment](/docs/filters/15-session-containment)
-- [grith exec](/docs/cli/exec) — `--zone` flag
-- [Supervisor profiles](/docs/concepts/supervisor-profiles) — profiles vs zones
+- [Taint tracking](/docs/concepts/taint-tracking)
+- [Filter 16: session containment](/docs/filters/16-session-containment)
+- [Containment walkthrough](/docs/guides/containment-walkthrough)

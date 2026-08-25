@@ -1,57 +1,130 @@
 ---
-title: "Configuration overview"
-description: "Where grith reads config from, the file format, and the top-level sections."
-section: "config"
+title: 'Configuration overview'
+description: 'The five config layers, the sparse-file trap that bricks the CLI, and how to write config safely.'
+section: 'config'
 order: 0
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/overview.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/overview.mdx'
 ---
 
-grith is configured by TOML. The shipping defaults live in `config/default.toml` inside
-the grith repo, and that file is the source of truth for this reference.
+Write config with `grith init` or `grith config set`. Hand-writing a short config file has a
+failure mode that stops the CLI dead - see [the sparse-file trap](#the-sparse-file-trap) below.
 
-## Precedence
+`grith config` prints the effective configuration, every key, after all layers are applied.
 
-When grith starts, configuration values are layered from highest priority to lowest:
+<Terminal>
+  {`$ grith config
+2026-08-24T17:05:10.719720Z  INFO grith: grith starting version="0.3.1"
+[general]
+log_level = "info"
+audit_dir = "~/.local/share/grith/audit"
+plan_tier = "community"
+update_check = true
+audit_sync = true
+profile_update_check = true
+onboarded = false
+exec_notice_seen = false`}
+</Terminal>
 
-1. **CLI flags** (`--config`, `--log-level`, `--project`, etc.)
-2. **Environment variables** prefixed `GRITH_` (e.g. `GRITH_LOG_LEVEL=debug`)
-3. **Project-local config** at `.grith/config.toml`
-4. **User config** at `~/.config/grith/config.toml`
-5. **Built-in defaults** from `config/default.toml`
+## Layers
 
-A value set at a higher layer fully overrides the same key at a lower one. There is no
-deep-merge for arrays: an array reassignment replaces the whole array.
+Five layers, applied in order. Later wins.
 
-## Top-level sections
+| #   | Layer          | Where                                                                                        |
+| --- | -------------- | -------------------------------------------------------------------------------------------- |
+| 1   | Base defaults  | `config/default.toml`, compiled into the binary. Required - grith will not start without it. |
+| 2   | User config    | `~/.config/grith/config.toml`                                                                |
+| 3   | Project config | `./.grith/config.toml`, relative to the directory you run the command in                     |
+| 4   | Explicit file  | `--config <path>`, available on every subcommand                                             |
+| 5   | Environment    | `GRITH_*` variables. See [Environment variables](/docs/config/environment-variables).        |
 
-<ConfigKeyTable section="general" />
+`--log-level` is applied after all five and is the only CLI flag that behaves as a config
+layer. `--config` and `--project` are inputs to the layering, not values in it.
 
-<ConfigKeyTable section="proxy" />
+<Callout type="warning" title="The user path is literal">
+  The user config path is `$HOME/.config/grith`, resolved from `$HOME` directly. It does not honour
+  `XDG_CONFIG_HOME`. Licence, credentials, provider keys and the persistent allowlist use a
+  different resolver that does.
+</Callout>
 
-<ConfigKeyTable section="reputation" />
+## The sparse-file trap
 
-<ConfigKeyTable section="digest" />
+Every layer is deserialised into the config struct and then deep-merged, so a file that omits
+a key still contributes that key's Rust default - which is not always the value
+`default.toml` ships. A two-line overlay is enough to break the CLI:
 
-<ConfigKeyTable section="supervisor" />
+<Terminal>
+{`$ cat config.toml
+[general]
+log_level = "debug"
 
-<ConfigKeyTable section="server" />
+$ grith --config config.toml config
+Error: configuration invalid:
+supervisor.default_profile must be set in TOML or via GRITH_SUPERVISOR_PROFILE`}
 
-Each section above has further nested sub-sections (e.g. `[proxy.filters.reputation]`,
-`[supervisor.platform]`, `[server.rate_limit]`). Browse the per-section pages from
-the sidebar for the full nested tree.
+</Terminal>
 
-## Reloading
+`default.toml` sets `default_profile = "generic"`; the struct default is the empty string,
+which validation rejects. Five keys differ this way, and all five shift the moment any user,
+project or `--config` file exists:
 
-`[server] enabled = true` exposes `PUT /config` over the local API. The dashboard, the
-CLI's `grith config set`, and direct curl all route through that endpoint. Most config
-changes apply on the next call; some (e.g. server port) require a daemon restart.
+| Key                                  | Ships as                                 | After any overlay file       |
+| ------------------------------------ | ---------------------------------------- | ---------------------------- |
+| `supervisor.default_profile`         | `"generic"`                              | `""` - fatal                 |
+| `supervisor.max_concurrent_sessions` | `4`                                      | `64`                         |
+| `llm.openai.model`                   | `"gpt-4o-mini"`                          | `"gpt-4o"`                   |
+| `llm.anthropic.model`                | `"claude-sonnet-4-5-20250514"`           | `"claude-sonnet-4-20250514"` |
+| `llm.openrouter.model`               | `"anthropic/claude-sonnet-4-5-20250514"` | `"auto"`                     |
 
-## See also
+Both safe routes write a complete file. **`grith init`** writes the whole of `default.toml`,
+comments intact, to `~/.config/grith/config.toml` - unconditionally, with no backup and no
+merge. **`grith config set`** loads the effective config, changes one key and writes it all
+back; comments are lost. If you do hand-write a file, keep `supervisor.default_profile` in it
+and check the result with `grith config`.
 
-- [grith config](/docs/cli/config) — CLI surface for read/modify
-- [grith init](/docs/cli/init) — generate a starter config
-- [Filter config files](/docs/config/filter-config-files) — the standalone TOML files
-  for filter-specific data (paths, secrets, egress, etc.)
+## What `grith config set` accepts
+
+A fixed whitelist of keys, not arbitrary dotted paths:
+
+<Terminal>
+  {`$ grith config set supervisor.trust.restrict_to_workspace true
+2026-08-24T17:05:10.733695Z  INFO grith: grith starting version="0.3.1"
+Error: configuration error: unknown config key: supervisor.trust.restrict_to_workspace`}
+</Terminal>
+
+The [`grith config` reference](/docs/cli/config) lists the keys worth knowing about.
+Everything else - all of
+`[supervisor.coverage]`, `[supervisor.trust]`, `[audit]`, `[reputation]`, `[proxy.filters.*]`,
+`[server.tls]` - is edited in the file. There is no `grith config reload`, `get`, `list`,
+`edit` or `validate`; `set` is the only subcommand.
+
+## When a change takes effect
+
+Config is read at process start, so a change reaches a running daemon on restart:
+
+<Terminal command="grith daemon stop && grith daemon start" />
+
+The dashboard writes two proxy thresholds and `auto_open_dashboard` through
+`PUT /api/config`. That updates the file; it does not mutate the live proxy, and its own
+response says the thresholds apply after a restart. Filter toggles saved from the dashboard
+persist to the file but do not change which filters the daemon registers.
+
+Validation aborts the command rather than degrading quietly - a threshold pair the wrong way
+round, a log level outside `trace|debug|info|warn|error`, a provider outside
+`ollama|openai|anthropic|openrouter`, `server.port = 0`, or a blank `default_profile`:
+
+<Terminal>
+  {`$ grith --config bad.toml config
+Error: configuration invalid:
+proxy.auto_allow_threshold (9) must be less than auto_deny_threshold (8)`}
+</Terminal>
+
+## Where to go next
+
+- [`[supervisor]`](/docs/config/supervisor) - syscall coverage, workspace trust, DNS
+- [`[proxy]`](/docs/config/proxy) - thresholds and filter switches
+- [`[audit]`](/docs/config/audit) - what is recorded and for how long
+- [Filter config files](/docs/config/filter-config-files) - the data files filters load
+- [Environment variables](/docs/config/environment-variables)

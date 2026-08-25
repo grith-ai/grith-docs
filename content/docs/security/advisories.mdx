@@ -1,75 +1,62 @@
 ---
-title: "Security advisories"
-description: "Published CVEs and security fixes for grith."
-section: "security"
-order: 6
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/advisories.mdx"
+title: 'Security advisories'
+description: 'Where advisories are published, which versions get fixes, and how fast.'
+section: 'security'
+order: 4
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/advisories.mdx'
 ---
 
-Published security advisories for grith. Subscribe to the RSS feed at
-[`/changelog.xml`](/changelog.xml) to be notified of new advisories.
+No security advisory has been published against grith to date.
 
-## How to subscribe
+When one is, it appears in three places: [GitHub Security
+Advisories](https://github.com/grith-ai/grith/security/advisories) on `grith-ai/grith`, the release
+notes for the version carrying the fix, and `CHANGELOG.md`. Watch the repository's releases to be
+told about them.
 
-- **RSS** — [`https://docs.grith.ai/changelog.xml`](/changelog.xml). Filter the
-  feed for `category=security` to get advisories only.
-- **GitHub Security Advisories** — at
-  [github.com/grith-ai/grith/security/advisories](https://github.com/grith-ai/grith/security/advisories).
-- **Mailing list** — sign up at [grith.ai/security/announce](https://grith.ai/security/announce).
+## Supported versions
 
-## Current advisories
+| Version | Status |
+| --- | --- |
+| v0.3.1 | Current release. Fixes land here. |
+| v0.2.5 | Previous release. Security fixes only. |
+| Anything older | Not supported. |
 
-<Callout type="info" title="No advisories yet">
-No security advisories have been published against grith to date (current
-release: v0.1.4, May 2026). When the first one ships, it will appear here
-with a CVE identifier, affected versions, and remediation steps.
-</Callout>
+There is no backport branch. Upgrading is the fix path.
 
-## Advisory format
+## Severity and fix targets
 
-Each advisory will include:
+| Severity | What it covers | Fix target |
+| --- | --- | --- |
+| Critical | Remote code execution, privilege escalation, a supervisor bypass giving unrestricted syscall access | 48 hours |
+| High | Exfiltration past the filters, audit-log tampering, secret exposure in API responses | 5 business days |
+| Medium | Denial of service, non-secret information disclosure, a filter bypass for specific patterns | 15 business days |
+| Low | Minor information leakage, UI issues, documentation errors with security implications | Scheduled, not expedited |
 
-- **Identifier** — `GHSA-...` or `CVE-...`.
-- **Severity** — CVSS v3.1 score and rating.
-- **Affected versions** — version range.
-- **Fixed in** — the version that contains the patch.
-- **Description** — what the issue is.
-- **Impact** — what an attacker could do.
-- **Reproduction** — minimal PoC (published only after the fix is widely
-  available).
-- **Mitigation** — workarounds for users who can't upgrade immediately.
-- **Credit** — researcher acknowledgement (if they accepted credit).
-- **Timeline** — report date, fix date, disclosure date.
+Researchers who report a confirmed issue are credited in the release notes and the changelog,
+unless they would rather stay anonymous.
 
-## Patching policy
+## Hearing about a fix
 
-- **Critical** (CVSS ≥ 9.0) — patch released within 7 days of confirmation.
-- **High** (CVSS 7.0–8.9) — within 30 days.
-- **Medium** (CVSS 4.0–6.9) — included in the next planned release.
-- **Low** (CVSS < 4.0) — fixed when convenient.
+`[general] update_check` defaults to `true`. The REPL and `grith run` offer an interactive upgrade
+prompt when a newer release exists; `grith exec` prints a single line to stderr naming the new
+version and the install command, and carries on. Both need a terminal on stderr, so redirected logs
+and CI stay clean - the prompt additionally needs a terminal on stdin, because it has a question to
+ask. Setting `GRITH_NO_UPDATE_CHECK` to any value turns both off.
 
-## Update notification
+There is no `grith update` subcommand. See [Updating grith](/docs/ops/updating-grith) for what the
+prompt does, and where it refuses.
 
-`grith` checks for updates daily by default (`general.update_check = true`).
-When an update is available, a one-line notice appears at REPL start and
-daemon start. Security updates are flagged separately so you can tell "this
-is a security patch" from "this is a feature release".
+## Before you install anything
 
-To disable update checks:
-
-```toml
-[general]
-update_check = false
-```
-
-(Disable only if you have an alternative notification mechanism — air-gapped
-deployments etc. should subscribe to the RSS feed or mailing list instead.)
+Every release asset is signed with keyless sigstore, and every tarball ships a SHA-256 file, a
+CycloneDX SBOM and SLSA build provenance. [Verifying releases](/docs/ops/verifying-releases) has the
+exact `sha256sum` and `cosign` commands.
 
 ## See also
 
-- [Responsible disclosure](/docs/security/responsible-disclosure)
-- [Threat model](/docs/security/threat-model)
-- [Release process](/docs/ops/release-process)
+- [Responsible disclosure](/docs/security/responsible-disclosure) - how to report one.
+- [Limitations](/docs/security/limitations) - known limits, which are not advisories.
+- [Verifying releases](/docs/ops/verifying-releases)

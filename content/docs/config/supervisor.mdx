@@ -1,103 +1,149 @@
 ---
 title: '[supervisor]'
-description: 'OS-level supervisor settings — interception mechanism, default profile, noise reduction.'
+description: 'Session limits, the seven syscall-coverage flags, how far workspace trust reaches, and DNS inspection.'
 section: 'config'
-order: 6
+order: 5
 tier: 'community'
-version: '0.1.0'
-lastUpdated: '2026-08-21'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/supervisor.mdx'
 ---
 
-The `[supervisor]` section controls how `grith exec` intercepts syscalls and how
-noisy a session looks to the filters.
+Everything `grith exec` does at the syscall layer. The two sections most worth reading are
+[`[supervisor.coverage]`](#supervisorcoverage) - which decides what is actually enforced -
+and [`[supervisor.trust]`](#supervisortrust).
 
-<ConfigKeyTable section="supervisor" />
+| Key                                      | Default     | What it does                                                                          |
+| ---------------------------------------- | ----------- | ------------------------------------------------------------------------------------- |
+| `enabled`                                | `true`      | Turn supervision off. `grith exec` becomes a pass-through.                            |
+| `default_profile`                        | `"generic"` | Used when `--profile` is not passed. Blank is a fatal validation error.               |
+| `freeze_timeout_seconds`                 | `300`       | How long a held call waits for a reviewer before it is denied.                        |
+| `deny_replay_seconds`                    | `60`        | How long a deny keeps auto-denying identical retries. `0` disables.                   |
+| `approve_replay_seconds`                 | `60`        | How long an approval keeps auto-allowing identical retries. `0` disables.             |
+| `max_concurrent_sessions`                | `4`         | Local cap on concurrent supervised sessions.                                          |
+| `pty_forwarding`                         | `true`      | Required for interactive agents. Off breaks agent TUIs.                               |
+| `attach_mode`                            | `"traceme"` | Linux attach mechanism.                                                               |
+| `require_sandbox`                        | `false`     | Abort rather than supervise when the platform backend is degraded.                    |
+| `pty_ownership_enforce`                  | `false`     | Deny writes to a `/dev/pts` that is not the tool's own terminal. Audit-only when off. |
+| `enforce_authority_delegating_spawn`     | `true`      | Escalate a spawn of `docker`, `systemd-run`, `systemctl`, `at` and similar.           |
+| `enforce_control_socket_connect`         | `true`      | Escalate a connect to a control-injection socket - session D-Bus, tmux, screen, X11.  |
+| `dbus_message_inspection`                | `true`      | Decide D-Bus per method call rather than per connection.                              |
+| `authority_lost_terminate_after_seconds` | `0`         | Kill a session this long after the daemon stops accounting for it. `0` never does.    |
 
-<ConfigKeyTable section="supervisor.platform" />
+<Callout type="warning" title="The licence cap wins">
+  `max_concurrent_sessions` only tightens. The daemon enforces the lower of this and the licence
+  entitlement - 2 on Community, 64 on a paid plan. A stock paid install still stops at 4 until you
+  raise this value.
+</Callout>
 
-<ConfigKeyTable section="supervisor.noise_reduction" />
+`attach_mode = "seize"` is scaffolding: the spawn path refuses it. Leave it at `traceme`.
 
-<ConfigKeyTable section="supervisor.dns_inspection" />
+<SinceTag version="0.3.1" /> `dbus_message_inspection` is why a Chromium or Electron-based tool no
+longer prompts on every D-Bus connect: the connect arms message inspection instead, and only the
+method calls a curated allowlist does not vouch for escalate. Anything the supervisor cannot decode
+escalates the whole connection, and tmux, screen and X11 keep connect-time escalation because there
+is no per-message destination to decide on. No effect when `enforce_control_socket_connect` is off.
 
-<ConfigKeyTable section="supervisor.trust" />
+## `[supervisor.coverage]`
 
-## Notes
+Seven independent flags over the syscall categories added for staged rollout. **This section
+is absent from the shipped config file** - add it to change anything.
 
-- **`enabled`** — when `false`, `grith exec` falls back to a no-op pass-through
-  (useful for testing wrapper compatibility without enforcing). Audit log still
-  records calls.
-- **`default_profile`** — applied when `--profile` isn't passed to `grith exec`.
-  Conservative default: `generic`.
-- **`freeze_timeout_seconds`** — how long a frozen process can wait for a digest
-  decision before grith auto-denies. Should match (or be slightly less than)
-  `[proxy] review_timeout_seconds`.
-- **`max_concurrent_sessions`** — soft cap on simultaneous supervised sessions.
-  Exceeding it returns an error from `grith exec` rather than degrading
-  performance.
-- **`pty_forwarding`** — required for interactive agents. Disabling breaks
-  agent TUIs.
-- **`require_sandbox`** — when `true`, refuses to supervise unless the process is
-  running inside a container or user namespace. Belt-and-braces.
+| Key                           | Default | Covers                                                                                              |
+| ----------------------------- | ------- | --------------------------------------------------------------------------------------------------- |
+| `category1_hard_deny`         | `true`  | Kernel module load/unload and `kexec`. Hard deny.                                                   |
+| `category2_proxy`             | `false` | `chown` and the `mount` family, proxy-evaluated.                                                    |
+| `category2_crossprocess`      | `true`  | `ptrace`, `process_vm_readv`, `process_vm_writev` against a target **outside** the supervised tree. |
+| `category3_namespace`         | `false` | `unshare` and `setns`.                                                                              |
+| `category4_arch_priv`         | `true`  | `sethostname`, `iopl`, `swapon`, `reboot` and similar. Hard deny.                                   |
+| `deny_self_seccomp_notify`    | `true`  | A tracee installing its own `NEW_LISTENER` seccomp filter.                                          |
+| `observe_self_seccomp_filter` | `false` | Audit-only record of a tracee installing a plain seccomp filter.                                    |
 
-## Workspace trust
+**At defaults, `chown`, `mount`, `unshare` and `setns` are not enforced.** A disabled
+category falls through to the not-security-relevant branch and is allowed silently. Both are
+off because sandboxes and rootless container runtimes do real mount, chown and namespace work,
+so enabling them without calibrating the profile first produces prompts on legitimate
+operations.
 
-`${PROJECT_DIR}` in a profile's `routine_paths` expands to the directory you ran
-`grith exec` in — and only that directory. In a multi-worktree layout that means
-the sibling worktrees of the very repository you are working on get no trust at
-all, and a tool working in one of them prompts on work that would be silent one
-directory over.
+`deny_self_seccomp_notify` is the one to think twice about. It closes the proven escape that
+out-ranks grith's own interception; its only known collateral is rootless container runtimes
+that use seccomp-notify, which fail loudly rather than quietly.
 
-- **`include_linked_worktrees`** — extend the session's project trust to every
-  git worktree of the launch repository. Default `true`. The listing includes
-  the main worktree, so launching from a subdirectory trusts the repository root
-  as well. Resolved once at session start and never re-read: a re-read would let
-  the supervised tool widen its own trust with `git worktree add`.
+<ConfigExample
+  title="Enable the two staged categories"
+  code={`[supervisor.coverage]
+category2_proxy = true
+category3_namespace = true`}
+/>
 
-  git builds its worktree list from files inside the repository, which the
-  supervised tool can write, so a reported worktree earns trust only if it also
-  sits inside the directory the repository itself lives in, carries git's own
-  back-pointer to this repository, and is not a credential or personal-data
-  directory. A repository checked out directly into your home directory gets no
-  linked-worktree trust at all — its enclosing directory would be the whole of
-  `$HOME`. Declare `additional_project_roots` for that layout.
+## `[supervisor.trust]`
 
-- **`additional_project_roots`** — extra roots for layouts git cannot infer: a
-  worktree of a _different_ repository parked alongside this one, or a non-git
-  sibling checkout. `${HOME}`, `${PROJECT_DIR}` and `~` expand as in
-  `routine_paths`.
-- **`restrict_to_workspace`** — turn the workspace into a boundary rather than a
-  trusted region. File operations outside it are denied instead of scored. See
-  [Workspace-only sessions](/docs/cli/exec#workspace-only-sessions) for exactly
-  what stays reachable, and `grith exec --workspace-only` for the per-session
-  form. Default `false`.
+How far a session's project trust reaches. Both widening keys are resolved **once** at session
+start and never re-read - a re-read would let the supervised tool grant itself more trust by
+creating directories.
 
-Trust here is project-derived, never literal: `/`, your home directory and any
-ancestor of it are refused however they are declared, at most 32 roots are
-trusted per session, and credential stores inside a trusted root (`~/.ssh`,
-`~/.aws`, `.npmrc`, …) still go to the security proxy.
+| Key                        | Default | What it does                                                         |
+| -------------------------- | ------- | -------------------------------------------------------------------- |
+| `include_linked_worktrees` | `true`  | Extend project trust to every git worktree of the launch repository. |
+| `additional_project_roots` | `[]`    | Extra roots for layouts git cannot infer.                            |
+| `restrict_to_workspace`    | `false` | Deny file operations outside the workspace instead of scoring them.  |
 
-## Platform mechanisms
+`${PROJECT_DIR}` in a profile expands to the launch directory and nothing else, so without
+`include_linked_worktrees` only the tree you started in is trusted. Because the listing
+includes the main worktree, launching from `repo/frontend/` trusts the repository root too.
 
-The supervisor uses different OS mechanisms per platform. v0.2 supports
-**ptrace + seccomp on Linux x86_64 and aarch64**; other platforms ship in v2.0.
-See
-[Syscall interception](/docs/concepts/syscall-interception) for mechanism details.
+git builds that list from files the supervised tool can write, so a reported worktree earns
+trust only if it also sits inside the repository's enclosing directory, carries git's
+back-pointer, and is not a credential directory. A repository checked out straight into your
+home directory gets no linked-worktree trust at all - its enclosing directory would be the
+whole of `$HOME`. Use `additional_project_roots` for that, and for a sibling checkout of a
+different repository.
 
-## Noise reduction
+Trust is never literal: `/`, `$HOME` and any ancestor of it are refused however they are
+declared, at most 32 roots are trusted per session, and credential directories inside a
+trusted root still go to the proxy.
 
-The most useful knobs are:
+`restrict_to_workspace` turns the workspace into a boundary rather than a trusted region. It
+is subtractive only - it never allows anything the filters would block. See
+[Workspace boundary](/docs/concepts/workspace-boundary), and
+`grith exec --workspace-only` <SinceTag version="0.3.1" /> for the per-session form.
 
-- **`ignore_read_only`** — skip filter pipeline for `read` syscalls on already-open
-  fds (the `open` was already scored). Default `true`.
-- **`batch_rapid_reads`** — coalesce rapid reads from the same fd into a single
-  filter pass per `batch_window_ms`. Default 50ms window.
+<Callout type="info" title="Not settable from the CLI">
+  Neither `restrict_to_workspace` nor `additional_project_roots` is on the `grith config set`
+  whitelist. Edit the file, or use `grith exec --workspace-only` per session.
+</Callout>
 
-Both are safe to leave on. Disable only for forensic recording where you want
-every syscall captured raw (use `--trace-syscalls-jsonl` on `grith exec` for that).
+## `[supervisor.dns_inspection]`
+
+| Key                              | Default    | What it does                                                                                        |
+| -------------------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
+| `enabled`                        | `true`     | Inspect DNS queries.                                                                                |
+| `observe_responses`              | `true`     | Watch responses to build the exact IP-to-domain cache.                                              |
+| `block_tcp_dns`                  | `true`     | Deny TCP-DNS. It cannot be content-inspected, so allowing it would leave query blocking bypassable. |
+| `upstream_resolver`              | unset      | Override the resolver the proxy path forwards to.                                                   |
+| `connected_udp_proxy`            | `false`    | The connected-UDP proxy path.                                                                       |
+| `accept_proxy_network_authority` | `false`    | Explicit acceptance of the network authority proxy-owned sockets gain.                              |
+| `proxy_queue_action`             | `"refuse"` | What a queue-range DNS decision does on the wire. `forward` is a compatibility mode.                |
+
+Eight `proxy_*` bounds (response size, three timeouts, four capacities) apply only when
+`connected_udp_proxy` is on. `grith config` prints them all. Validation refuses
+`connected_udp_proxy` without both `enabled` and `accept_proxy_network_authority`.
+
+## `[supervisor.noise_reduction]`
+
+`ignore_read_only` (on) skips the pipeline for reads on an fd whose open was already scored.
+`batch_rapid_reads` (on) coalesces rapid reads from the same fd into one pass per
+`batch_window_ms` (50). Both are safe to leave on; `restrict_to_workspace` overrides
+`ignore_read_only` for reads outside the workspace.
+
+## `[supervisor.platform]`
+
+`linux_mechanism` and `macos_mechanism` are informational - nothing branches on either string.
+`seccomp_pre_filter` is a dead knob from an earlier design; setting it does nothing. grith
+runs on Linux x86_64 and Linux aarch64, using ptrace and seccomp-BPF together.
 
 ## See also
 
 - [Syscall interception](/docs/concepts/syscall-interception)
-- [Supervisor profiles](/docs/concepts/supervisor-profiles)
-- [`grith exec`](/docs/cli/exec)
+- [Workspace boundary](/docs/concepts/workspace-boundary)
+- [How profiles work](/docs/profiles/how-profiles-work)

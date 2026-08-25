@@ -1,117 +1,88 @@
 ---
-title: "License lifecycle"
-description: "How Pro licenses are issued, refreshed, and revoked."
-section: "pro"
+title: 'Licence lifecycle'
+description: 'How the signed licence is verified, refreshed and allowed to lapse, and what happens when the network is gone.'
+section: 'pro'
 order: 3
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/license-lifecycle.mdx"
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/license-lifecycle.mdx'
 ---
 
 <PlanBadge tier="pro" />
 
-Pro licenses are signed (Ed25519) by grith.ai's release key and stored locally
-under `~/.config/grith/licenses/`. Every Pro feature gates on a valid local
-license file; the grith.ai service only sees a refresh ping every few hours, not
-the actual feature usage.
+The licence is a signed JSON document at `~/.config/grith/license.key`. It carries the account,
+team, plan, seat count, issue and expiry timestamps, a feature list and an Ed25519 signature.
+The public key is compiled into the binary, so **verification is entirely local** - grith never
+asks a server whether you are entitled, it checks a signature and a date.
 
-## Lifecycle states
-
-```
-   not-enrolled  ──login──▶  active  ──expires-soon──▶  active (warn)
-                                │
-                                ├──6h refresh window──▶  refreshed
-                                │
-                                ├──refresh-fails──▶  cached (24h grace)
-                                │
-                                └──revoked-by-admin──▶ revoked  ──fallback──▶ community
-```
-
-| State | Behaviour |
-| --- | --- |
-| `not-enrolled` | No license file. Pro features locked; community features fine. |
-| `active` | License valid. Pro features work. |
-| `active (warn)` | Within 14 days of expiry. Dashboard shows a warning. |
-| `cached` | License is valid but the most recent refresh failed (network). 24h grace before downgrade. |
-| `revoked` | License invalidated by team admin. Falls back to community tier on next call. |
+Paid licences are issued for 32 days and refreshed daily. The plan string in the licence decides
+the tier; `[general] plan_tier` in your config decides nothing.
 
 ## Refresh
 
-The daemon refreshes the license in the background every 6 hours.
-What gets sent to grith.ai on refresh:
+The daemon runs a licence loop that wakes every hour. On every wake it re-applies the cached
+licence before doing any network work, so an expired licence downgrades the running daemon to
+Community within the hour even if it is offline or logged out.
 
-- Team ID
-- Device fingerprint (hash of stable hardware IDs)
-- Current license signature
-- Grith version
+A refresh is due every **24 hours**. Force one:
 
-What gets returned:
+<Terminal command="grith pro refresh" />
 
-- New signed license (with extended `valid_until`)
-- Or `revoked: true` if the team admin has revoked this device
+`grith pro refresh` reuses the daemon's exact outcome policy, so it behaves identically:
 
-The refresh does NOT send:
+| Outcome | What grith does |
+| --- | --- |
+| Fresh licence returned | Written atomically, gate re-applied at once, next refresh in 24h. |
+| Transient failure (network, DNS, TLS, 5xx) | Retry after 15 minutes, then 60, then 360. Abandoned after 48 hours and picked up on the normal cadence. |
+| Hard failure (401, 403, other 4xx, or the server answering `valid: false`) | The cached licence is kept until its own expiry date. |
 
-- Audit data
-- Reputation state
-- Any session content
+<Callout type="warning" title="Revocation is not instant">
+A revoked or unauthorised refresh is a hard failure, and grith deliberately keeps the cached
+licence rather than rolling a machine back mid-session. Pro ends when the cached licence
+reaches its expiry date, not when the revocation is issued.
+</Callout>
 
-Force refresh:
+## Grace windows
 
-```
-grith pro refresh
-```
+When `valid_until` passes, Pro does not stop dead.
 
-## Expiry
+| Licence | Soft grace | Extended grace | After that |
+| --- | --- | --- | --- |
+| Default | 1 day | up to 3 days | Community |
+| Air-gapped contract | 7 days | up to 30 days | Community |
 
-When a license approaches expiry:
+Both grace bands keep Pro features running; `grith pro status` reports which one you are in and
+how many days past expiry you are.
 
-- **14 days out** — dashboard shows a warning banner.
-- **48 hours out** — daemon emits an `info` audit event each day.
-- **at expiry** — features lock out *only after* a final refresh attempt fails.
-  If refresh succeeds at expiry minute (because billing has been renewed), no
-  interruption.
+## Air-gapped contract licences
 
-## Revocation
+Some contract licences carry an `air_gapped` flag. It is part of the signed payload, set when
+the licence is issued, and it changes two things: scheduled refresh is switched off entirely,
+and the grace windows widen to 7 and 30 days. `grith pro status` shows
+`Refresh: disabled (air-gapped contract licence)`.
 
-A team admin can revoke a device's seat from the dashboard. The next refresh
-returns `revoked: true`; grith locks out Pro features and switches the device
-to community-tier behaviour without interrupting in-flight sessions.
+The first licence still arrives over the network - `grith pro login` has to reach `api.grith.ai`
+once. After that a machine can verify and run on the cached file with no connectivity at all.
 
-## Offline / network-restricted operation
+## Trials
 
-If a device can't reach grith.ai for refresh:
+A trial runs **14 days on one seat** and grants the full Pro tier. One trial per team and one
+per email address, recorded permanently, so a second signup does not reset it.
 
-- 0–24h after the last successful refresh: full Pro features still work
-  (cached state).
-- 24h+ without refresh: Pro features lock out, community continues to work.
+<Terminal command="grith pro start-trial" />
 
-For genuinely air-gapped environments, see [Air-gapped deployment](/docs/enterprise/air-gapped-deployment)
-(Enterprise feature, planned).
+If the machine is not linked to an account yet, this runs the browser sign-in first, then
+activates the trial and installs the licence.
 
-## License file format
+## Offline behaviour, in one line
 
-The local license file is a signed CBOR blob. Schema:
-
-```json
-{
-  "version": 1,
-  "team_id": "...",
-  "device_id": "...",
-  "plan": "pro | enterprise",
-  "seats": 25,
-  "features": ["team-sync", "encrypted-keys", "analytics", ...],
-  "issued_at": "2026-05-01T00:00:00Z",
-  "valid_until": "2026-05-15T00:00:00Z",
-  "next_refresh": "2026-05-14T06:00:00Z"
-}
-```
-
-Plus an Ed25519 signature over the canonical CBOR.
+A machine with a valid cached licence keeps full Pro with no network. When the licence expires,
+grace runs out and the daemon drops to Community on its next hourly wake - no server involved in
+that decision either.
 
 ## See also
 
 - [Authentication](/docs/pro/authentication)
+- [What Pro adds](/docs/pro/whats-in-pro)
 - [`grith pro`](/docs/cli/pro)
-- [Air-gapped deployment](/docs/enterprise/air-gapped-deployment)

@@ -1,135 +1,106 @@
 ---
-title: "How profiles work"
-description: "What's in a supervisor profile and how it shapes scoring."
-section: "profiles"
+title: 'How profiles work'
+description: 'What a supervisor profile trusts, how grith picks one for a session, and why you cannot write your own.'
+section: 'profiles'
 order: 1
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/how-profiles-work.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/profiles/how-profiles-work.mdx'
 ---
 
-A supervisor profile is a small TOML document. It tells grith what an agent
-*routinely* does — paths it reads, commands it runs, hosts it talks to — so that
-those calls auto-allow quietly while everything else gets normal scoring.
+Every supervised session runs under exactly one profile. A profile lists what a kind of tool touches as a matter of routine - paths, commands, destinations, listen addresses - and grith turns that list into a session allowlist when the session starts. A call that matches the allowlist is allowed immediately and never reaches the proxy: no filters run, no score is computed, and the call is recorded as filtered noise rather than as a decision.
 
-See [Supervisor profiles concept](/docs/concepts/supervisor-profiles) for the
-"why". This page is the *what* and *how*.
+That is the whole job. A profile removes noise. It does not grant a capability, move a threshold, or change what any filter scores.
 
-## File location
+## How grith picks one
 
-Built-in profiles ship at `config/supervisor/profiles.toml` inside the grith
-install. User-defined profiles live at `~/.config/grith/profiles/<name>.toml`
-(one file per profile).
+First match wins:
 
-When you run:
+1. `--profile <name>` passed to [`grith exec`](/docs/cli/exec).
+2. Auto-detection from the basename of the command being supervised.
+3. `supervisor.default_profile`, which ships as `generic`.
 
-```
-grith exec --profile claude-code -- claude
-```
+<Terminal>
+{`$ grith config | grep default_profile
+default_profile = "generic"`}
+</Terminal>
 
-grith looks up `claude-code` in (1) user dir, (2) built-in. First match wins.
+Auto-detection is a fixed basename table and nothing else - no config inspection, no version sniffing, no fuzzy matching:
 
-## Anatomy
+| Command basename        | Profile       |
+| ----------------------- | ------------- |
+| `claude`, `claude-code` | `claude-code` |
+| `codex`                 | `codex`       |
+| `cursor-agent`          | `cursor`      |
+| `copilot`, `copilot-cli` | `copilot`    |
+| `aider`                 | `aider`       |
+| `goose`                 | `goose`       |
+| `cline`                 | `cline`       |
+| `openclaw`              | `openclaw`    |
 
-```toml
-[profiles.claude-code]
-extends = "generic"
+Anything else falls through to the default. A `--profile` value that is not one of the [11 built-in profiles](/docs/profiles/built-in-profiles) is fatal before the session starts, with `no supervisor profile '<name>' found`.
 
-routine_paths = [
-    "${PROJECT_DIR}/**",
-    "${HOME}/.cache/claude/**",
-]
+## What a profile declares
 
-routine_commands = [
-    "git status",
-    "git diff",
-    "npm install",
-]
+| Field                   | What matches                                                                                                                                 | What it covers                                                                                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `routine_paths`         | A path prefix. A trailing `/**`, `/*` or `*` is trimmed to the prefix, so `/tmp/claude-*` trusts everything beginning `/tmp/claude-`.           | All file I/O under the prefix - read, write, delete, rename, chmod.                                                                                                    |
+| `routine_commands`      | A command name, resolved through `$PATH` once at session start.                                                                                | Spawning that exact binary. Before honouring a match grith re-canonicalises the path and walks every component: each must be owned by root or by you, never world-writable, and never group-writable when root owns it. |
+| `routine_destinations`  | A domain suffix, so `datadoghq.com` also covers `foo.bar.datadoghq.com`.                                                                        | Outbound connections. These are loaded into the egress-policy filter as trusted domains for the profile too, so they also affect scoring inside the pipeline.           |
+| `routine_exec_roots`    | A directory prefix.                                                                                                                            | Executing anything underneath it.                                                                                                                                      |
+| `routine_listen_addresses` | An address, without a port. A wildcard (`0.0.0.0`, `::`) is refused at parse time.                                                          | Binding a listener.                                                                                                                                                    |
+| `readonly_paths`        | An exact path, canonicalised at session start. No prefix, no glob - and an entry for a file that does not exist on this machine is silently dropped. | Reads only. A write, append, delete, rename or chmod on the same path still runs the whole pipeline.                                                                    |
+| `readonly_path_patterns` | The same, with a single-segment `*` wildcard.                                                                                                 | Reads only.                                                                                                                                                            |
+| `scratch_roots`         | A directory prefix.                                                                                                                            | Nothing in the pipeline. Deletes and renames under it are left out of the volume signal that watches for a mass-delete spree, so routine cache churn never trips it. Every filter still runs. |
+| `launch_contract`       | -                                                                                                                                              | Arguments grith adds to the tool's own command line at launch.                                                                                                         |
+| `local_listener_policy` | A port plus an address family.                                                                                                                 | A declared bind that is allowed instead of queued, with the address rewritten to loopback when the entry sets `allow_clamp`, and the rewrite audited. The one shipped entry is Codex's kernel-assigned MCP port.                                                                                             |
 
-routine_destinations = [
-    "api.anthropic.com",
-    "registry.npmjs.org",
-]
+`${HOME}` and `${PROJECT_DIR}` expand at session start. `${PROJECT_DIR}` is the directory `grith exec` was launched in, not a curated value.
 
-routine_exec_roots = [
-    "/usr/bin",
-    "${HOME}/.cargo/bin",
-]
+Two further fields, `permit_authority_delegating` and `permit_control_sockets`, switch enforcement off for named binaries and sockets. The supervisor honours both, but no shipped profile sets either.
 
-readonly_paths = [
-    "/etc/resolv.conf",
-]
+## Merge order
 
-capabilities = [
-    "read_project", "write_project",
-    "read_home", "write_home",
-    "shell", "network", "exec",
-]
-```
+A profile resolves once, highest priority first:
 
-| Field | What |
-| --- | --- |
-| `extends` | Parent profile (defaults to `generic`). Sets and capabilities are unioned with parent. |
-| `routine_paths` | Globs of paths the agent legitimately reads/writes. Negative-score contribution. |
-| `routine_commands` | Shell commands the agent runs frequently. Negative-score contribution from filter 8. |
-| `routine_destinations` | Hostnames the agent talks to. Negative-score contribution from filter 9. |
-| `routine_exec_roots` | Directories of trusted binaries (`exec`-allowed). |
-| `readonly_paths` | Paths the agent can read but not write. |
-| `capabilities` | Hard-gated capability classes (filter 6). |
+1. the profile's own entries,
+2. its parent chain, via `extends`,
+3. the `[defaults]` block, which every profile receives.
 
-## Variable expansion
+The merge is additive with de-duplication. There is no override and no subtract - a child cannot take back something its parent or the defaults granted.
 
-Profile values expand `${HOME}`, `${USER}`, and `${PROJECT_DIR}` at session start:
+That is why `generic` is not as narrow as its own block looks. It declares one entry, `${PROJECT_DIR}/**`; after the defaults merge it carries 34 routine paths and 64 routine commands, including `git`, `ssh`, the ordinary file and text utilities, and the toolchain scratch directories under `/tmp`.
 
-- `${HOME}` — the user's home directory.
-- `${USER}` — login name.
-- `${PROJECT_DIR}` — the working directory at `grith exec` invocation (or
-  overridden by `--project`).
+Four fields are never inherited and must be declared on the profile that uses them: `launch_contract`, `namespace_users`, `permit_authority_delegating` and `permit_control_sockets`. Security capabilities do not travel down an `extends` chain by accident.
 
-Globs use `**` for recursion. Patterns are case-sensitive.
+## What a profile cannot do
 
-## Composition
+The allowlist is a fast path, not an override. Five things it never wins:
 
-Every profile (built-in or custom) implicitly extends `generic`, which sets the
-strict floor. A profile can chain via `extends`:
+- **Session containment.** While a session is contained the allowlist is not consulted at all, profile-trusted destinations included. Every call goes to the proxy. See [session containment](/docs/concepts/session-containment).
+- **Delegating spawns and control sockets.** A spawn that hands authority to another process, or a connect to a control socket, cannot be short-circuited by the allowlist. `openclaw` lists `docker` in `routine_commands`; that does not bypass enforcement.
+- **Credential stores inside a trusted project.** Project-derived trust carries a marker the allow gate re-checks, so a `.ssh/`, `.aws/` or `.gnupg/` directory, an `.npmrc` or `.git-credentials`, and in-project secrets like `.env` or a Rails `master.key` all still go to the proxy even when they sit under a trusted `${PROJECT_DIR}`.
+- **Explicit read-only scopes.** A scope you approved for a sensitive directory still runs the pipeline, so taint and audit state are recorded; the queue is converted to an allow afterwards.
+- **A dangerous launch directory.** If `grith exec` was launched at `/`, at your home directory or at an ancestor of it, every `${PROJECT_DIR}` entry is dropped for that session with a warning. Run the tool from inside the project.
 
-```toml
-[profiles.acme-claude]
-extends = "claude-code"
-# adds team-specific routine paths on top of claude-code's
-routine_paths = [
-    "${HOME}/.config/acme/**",
-]
-routine_destinations = [
-    "acme-internal-registry.example",
-]
-```
+<Callout type="info" title="Subtraction is checked first">
+  Both subtractive controls run before the session allowlist. A directory you block from a prompt with `[b]` beats the allowlist outright. [`grith exec --workspace-only`](/docs/concepts/workspace-boundary) denies file access outside the workspace at the same point, but it steps aside for the profile's own routine paths and for anything approved earlier in the session - it fences the session in without breaking the tool.
+</Callout>
 
-The union of all parent + child entries is the effective profile.
+## You cannot write your own
 
-## Capabilities
+The profile set is compiled into the binary. There is no `~/.config/grith/profiles.toml`, no config key pointing at one, and no dashboard editor. `grith profile` has a single subcommand, [`audit`](/docs/cli/profile-audit), which is a maintainer tool for reviewing a forensic trace against a profile. There is no `grith profile list`.
 
-`capabilities` is special — it's not a union, it's the resolved capability set
-that this profile grants. A profile that omits `capabilities` inherits its
-parent's. A profile that declares `capabilities = []` strictly forbids everything
-its parent allowed.
+What you have instead:
 
-Available capabilities are listed in [Filter 6](/docs/filters/06-capability-enforcement).
-
-## Signed profiles
-
-Profiles shipped with grith are signed (Ed25519) by the grith.ai release key. The
-signature is verified at start; tampered profiles refuse to load. User-defined
-profiles are unsigned by default — they live in your home dir, so the kernel
-process model protects them at the same level as everything else.
-
-For Pro teams, the [Centralised policies](/docs/pro/centralised-policies) flow
-signs and distributes profiles to all team members. See
-[Profile audit](/docs/profiles/profile-audit) for forensic review tooling.
+- **Approve once, keep it.** The always-allow answer at a prompt records a learned rule in `~/.config/grith/learned_rules.toml`, scoped to the profile it was approved under, and loads it back into the allowlist on every later session under that profile.
+- **Widen project trust.** `supervisor.trust.additional_project_roots` and `include_linked_worktrees` extend the workspace across sibling checkouts. See [supervisor configuration](/docs/config/supervisor).
+- **Pick a different built-in.** `--profile generic-cli` and `--profile generic` are both reasonable choices for a tool with no profile of its own.
+- **Share rules across a team.** Pro pulls team learned rules into the same allowlist. See [team sync](/docs/pro/team-sync).
 
 ## See also
 
-- [Supervisor profiles (concept)](/docs/concepts/supervisor-profiles)
 - [Built-in profiles](/docs/profiles/built-in-profiles)
-- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)
+- [Choose your agent](/docs/start/choose-your-agent)
+- [grith exec](/docs/cli/exec)

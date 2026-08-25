@@ -1,132 +1,96 @@
 ---
-title: "Taint tracking"
-description: "Following sensitive data from where it was read to where it tries to go."
-section: "concepts"
+title: 'Taint tracking'
+description: 'What counts as a sensitive source, which of the three levels it gets, and what the two data-flow defaults changed.'
+section: 'concepts'
 order: 9
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/taint-tracking.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/taint-tracking.mdx'
 ---
 
-A read of `~/.aws/credentials` is suspicious on its own. A read followed twenty
-seconds later by a network POST is suspicious for an obvious reason: that's what
-exfiltration looks like.
+grith does not read file contents, so it cannot follow the bytes of a credential through a
+program. What it does instead is record that a session **touched** a sensitive source, and
+score later outbound calls in the light of that.
 
-The taint filter ([14](/docs/filters/14-taint-tracking)) is grith's mechanism for
-catching that pattern. It tracks which sensitive sources a session has touched and
-adds score to any subsequent operation that could be sending that data outward.
+That is the honest description of taint in grith: provenance at the path level, not
+dataflow at the byte level.
 
-## What gets tainted
+## The three levels
 
-The taint sources are configured in `[proxy.filters.taint]`:
-
-```toml
-[proxy.filters.taint]
-enabled = true
-sensitive_paths = [
-    ".env",
-    ".env.local",
-    "credentials.json",
-    "secrets.yaml",
-    "id_rsa",
-    "id_ed25519",
-]
-high_risk_sinks = ["network", "shell"]
-medium_risk_sinks = ["file_write"]
-```
-
-When the supervised process reads any path matching the `sensitive_paths` list, the
-filter records:
-
-- The session ID.
-- The fd that was opened (so subsequent reads on the same fd inherit the same source).
-- A timestamp.
-- The "taint kind" — generic credential, ssh key, env file, custom.
-
-The next time the session does something in the **sinks** list, the taint filter
-contributes score based on:
-
-- **How recent** the sensitive read was (decays with time).
-- **How risky the sink is** (network > shell > file_write).
-- **How directly the read-and-sink are connected** (writing a file that's been read
-  vs. opening a new socket).
-
-## Worked example
-
-```
-T+0s   read .env                              → sensitive-path-heuristic: +3.5 → quarantine
-       (approved with "learn")
-T+2s   read .env                              → trust applied      → allow
-T+5s   read .env                              → trust applied      → allow
-T+10s  open socket to api.example.com         → ...
-                                                taint: +3.0  (recent sensitive read)
-                                                dlp-gate: +4 (payload contains AWS key shape)
-                                                composite: 9.5 → DENY
-```
-
-The agent could read `.env` freely (we approved it). But the moment the session tried
-to send data out, the taint filter remembered the read, the DLP gate confirmed
-credential-shaped content in the payload, and the call was denied. The agent never
-sees the deny as a clean error — its `send()` returns EPERM, but the credentials
-never left the box.
-
-## Taint kinds and weights
-
-Different sensitive sources earn different taint weights. The default mapping:
-
-| Source kind | Weight | Examples |
+| Level | Sources | Arms sticky containment |
 | --- | --- | --- |
-| ssh private key | 5.0 | `id_rsa`, `id_ed25519`, `id_ecdsa` |
-| cloud creds | 4.5 | `~/.aws/credentials`, `~/.gcloud/credentials.db` |
-| env files | 3.0 | `.env`, `.env.local`, `.env.production` |
-| password store | 4.0 | `.password-store/`, `keepass`, `1Password` exports |
-| arbitrary `secrets.*` | 2.5 | `secrets.yaml`, `config/secrets.json` |
-| custom (user-configured) | 3.0 | additions to `sensitive_paths` |
+| High | `.ssh`, `id_rsa`, `id_ed25519`, `private_key`, `shadow` | Yes |
+| Medium | `.env`, `.aws`, `credentials`, `secrets`, `.gnupg`, `.kube/config` | No |
+| Low | Anything else matching a configured source | No |
 
-Tune in `config/filters/dlp.toml` for the per-kind weights.
+Medium deliberately does not arm
+[sticky containment](/docs/concepts/session-containment). Agent tools read their own
+credential files at startup, and locking a session down for that would make containment
+mean nothing.
 
-## Decay
+The configured sources default to `.env`, `.env.local`, `credentials.json`,
+`secrets.yaml`, `id_rsa` and `id_ed25519`. Network and shell are high-risk sinks; file
+writes are medium-risk.
 
-Taint isn't permanent. After a sensitive read, the contribution to subsequent calls
-decays exponentially with a half-life of about 60 seconds. After 5 minutes, the
-contribution is effectively zero. The intuition is "a read that happened 10 minutes
-ago is not strong evidence that the network call you're about to make is exfil".
+## Scope and lifetime
 
-You can tune the decay constant if your workload has legitimate long delays between
-reads and sends — but be cautious; loose decay narrows the detection window.
+Taint is registered against a scope key: the conversation id when there is one, otherwise
+the session's own uuid. **There is no cross-session bleed** - a taint registered in one
+session cannot influence scoring in another.
 
-## What this catches and what it doesn't
+Registry entries live for **one hour** and are evicted on the next access.
 
-**Catches:**
+## What actually fires
 
-- Read-then-send patterns within a session, classic exfil.
-- Reading a credential file and writing it to another path outside the project
-  (medium sink — `file_write`).
-- Reads followed by a shell command that bundles content into an HTTP request.
+Two defaults, both on, decide when taint contributes rather than just existing.
 
-**Doesn't catch:**
+**`taint_data_flow_only = true`.** The old behaviour - any taint in the session adds 3.0
+to every subsequent spawn and connect - is off. Taint now needs to be connected to the
+call, not merely present in the session.
 
-- Long-tail exfil that spreads the read and the send across many sessions (a single
-  session is the taint window).
-- Side channels — slow exfil via DNS timing, etc.
-- Reads where the data is *summarised* by the model before being sent out. The
-  summary may or may not be a leak; the filter can't read meaning.
+**`taint_outbound_requires_data_flow = true`.** An outbound-capable binary running under
+taint - `git push`, `aws s3 ls`, `npm publish` - fires only when the spawn actually
+references the tainted data. Running `git push` in a session that read a `.env` file an
+hour ago is not, on its own, evidence of anything.
 
-For the third case in particular, the DLP gate is the complement: it pattern-matches
-credential shapes regardless of whether they came from a tainted source, so a "let
-me describe your AWS key in plaintext" still trips DLP independently of taint.
+Together these are why a v0.3.1 session is much quieter than the same workload used to be,
+and they are the two settings to look at first if you expected taint to fire and it did
+not.
 
-## Cross-session taint (advanced)
+A matched spawn scores **+3.0**. Direct taint matches score 3.0, 4.0 or 5.0 by level, and
+the data-flow spawn variants score **1.5**.
 
-The default is session-scoped taint: a read in session A doesn't taint session B's
-sends. For team-scope analysis, the Pro [analytics](/docs/pro/analytics-and-cost)
-endpoint surfaces cross-session correlations — useful for catching slower attacks
-that span sessions, but it's analytic, not enforcement.
+## Where taint reaches beyond its own filter
+
+Taint is filter 15, but two other things read it.
+
+The `env-exfiltration-risk` [meta-rule](/docs/filters/meta-rules) adds **+5.0** when a
+taint sourced from an env file is followed by an HTTP request - the concrete shape of
+"read `.env`, post it somewhere". `exfil-shape-under-session-taint` adds **+2.0** when an
+exfiltration-shaped outbound call happens while the session carries taint.
+
+The windowed [session-containment](/docs/concepts/session-containment) filter also arms on
+any call carrying taint, which is how a single sensitive read raises the price of network
+and shell for the following ten minutes.
+
+## What it catches, and what it does not
+
+**Catches:** read a credential file, then try to reach a destination that is not already
+trusted. Read a key, then spawn something that can talk to the network with it. Read a
+secret, then open a shell.
+
+**Does not catch:** a credential the model has memorised and retypes as a literal - there
+is no read to taint. A credential summarised into prose and posted as text; that is what
+`dlp-gate` and `secret-scan` are for. Data leaving through a channel grith does not trap
+at the syscall boundary.
+
+Taint is one signal in a
+[composite](/docs/concepts/composite-scoring), and it is at its strongest in combination -
+taint plus an unknown destination plus a POST body is what turns a 3.0 into a denial.
 
 ## See also
 
-- [Filter 14: Taint tracking](/docs/filters/14-taint-tracking) — config reference
-- [Filter 10: DLP gate](/docs/filters/10-dlp-gate) — content-based exfil detection
-- [Exfiltration walkthrough](/docs/guides/exfiltration-walkthrough) — end-to-end
-  attack/defence scenario
+- [Filter 15: taint tracking](/docs/filters/15-taint-tracking)
+- [Session containment](/docs/concepts/session-containment)
+- [Exfiltration walkthrough](/docs/guides/exfiltration-walkthrough)

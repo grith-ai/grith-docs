@@ -1,86 +1,81 @@
 ---
-title: "Responsible disclosure"
+title: 'Responsible disclosure'
 description: "Found a vulnerability in grith? Here's how to report it."
-section: "security"
+section: 'security'
 order: 5
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/responsible-disclosure.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/responsible-disclosure.mdx'
 ---
 
-If you've found a security vulnerability in grith, please report it privately
-rather than opening a public issue. We take security reports seriously and
-acknowledge every report.
+If you have found a security vulnerability in grith, please report it privately rather than opening
+a public issue. We take security reports seriously and acknowledge every one.
 
 ## How to report
 
-Email **security@grith.ai** with:
+The preferred route is GitHub private vulnerability reporting: go to
+[github.com/grith-ai/grith/security/advisories](https://github.com/grith-ai/grith/security/advisories),
+click **Report a vulnerability**, and fill in the details. The report stays private until a fix is
+available.
+
+Otherwise, email **security@grith.ai** with:
 
 - A description of the issue.
 - Steps to reproduce (a working exploit is helpful but not required).
+- Affected versions.
 - Your assessment of impact.
-- Whether you'd like to be credited in the advisory.
+- Whether you would like to be credited in the advisory.
 
-For sensitive details, you can encrypt to our PGP key:
-[grith.ai/security.asc](https://grith.ai/security.asc).
+There is no published PGP key. If you need to encrypt the report, ask for one at that address.
 
 ## What you can expect
 
 | When | What |
 | --- | --- |
-| Within 24h | Acknowledgement that we've received the report. |
-| Within 5 business days | Initial triage — confirmed/duplicate/needs-info. |
+| Within 48h | Acknowledgement that we have received the report. |
+| Within 5 business days | Initial triage - confirmed, duplicate, or needs more information. |
 | Per the fix complexity | Patch development, often with you in the loop. |
-| Within 90 days | Public disclosure if a fix has shipped (or sooner if you prefer). |
+| Within 90 days | Public disclosure if a fix has shipped, or sooner if you prefer. |
 
-We coordinate disclosure timing with you. A CVE is filed for confirmed
-vulnerabilities that warrant one.
+We coordinate disclosure timing with you. A CVE is filed for confirmed vulnerabilities that warrant
+one.
 
 ## Scope
 
 In scope:
 
-- The grith binary itself.
-- The dashboard (grith.ai/dashboard, self-hosted dashboard).
-- The Pro and Enterprise services (license refresh, sync, analytics).
-- The grith-docs site (only for issues that affect user safety, e.g.
-  link-redirect attacks).
+- The grith binary and every crate in it - proxy filters, supervisor, audit chain, digest queue,
+  API server, provider-key encryption, canary tokens, configuration handling.
+- The local dashboard and the team dashboard at grith.ai.
+- The Pro services - licence refresh, team sync, analytics.
+- The grith-docs site, for issues that affect user safety such as link-redirect attacks.
 
 Out of scope:
 
-- Reports on the public grith.ai marketing site that don't involve user data
-  or auth.
-- Reports on third-party integrations (Slack, Telegram, etc.) — report those
-  to the relevant vendor.
-- Self-XSS, theoretical issues without working PoC, missing best-practice
-  headers on non-auth pages.
+- The grith.ai marketing site where no user data or auth is involved.
+- Third-party dependencies. Report those to their maintainers; we track them via Dependabot.
+- Social engineering.
+- Denial of service by resource exhaustion against a loopback-bound local server.
+- Self-XSS, theoretical issues with no working proof of concept, missing best-practice headers on
+  pages without auth.
 
 ## Bug bounty
 
-We don't currently run a paid bug bounty. We do:
-
-- Credit you in the advisory (if you want — anonymous is fine too).
-- Send swag / a thank-you for confirmed reports.
-- For high-severity (CVSS ≥ 7) issues, consider a discretionary reward.
+grith does not run a bug bounty. Confirmed reports are credited in the release notes and the
+changelog unless you would rather stay anonymous, and for high-severity findings (CVSS 7 and above)
+we consider a discretionary reward.
 
 ## What not to do
 
-Please don't:
+Please do not:
 
-- Test against grith.ai infrastructure beyond the minimum needed to verify
-  a finding.
-- Test against other people's grith installs without their explicit
-  authorisation.
-- Publicly disclose the finding before we've had a chance to ship a fix.
-
-## Acknowledgements
-
-The published list of security researchers who've reported confirmed issues
-is at [grith.ai/security/acknowledgements](https://grith.ai/security/acknowledgements).
+- Test against grith.ai infrastructure beyond the minimum needed to verify a finding.
+- Test against other people's grith installs without their explicit authorisation.
+- Publicly disclose the finding before we have had a chance to ship a fix.
 
 ## See also
 
-- [Advisories](/docs/security/advisories) — past CVEs and fixes.
-- [Threat model](/docs/security/threat-model)
-- [security.txt](https://grith.ai/.well-known/security.txt) — RFC 9116 contact file.
+- [Advisories](/docs/security/advisories) - where fixes are published.
+- [Limitations](/docs/security/limitations) - known limits are not vulnerabilities.
+- [Threat model](/docs/concepts/threat-model)

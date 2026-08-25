@@ -1,56 +1,79 @@
 ---
-title: "CLI overview"
-description: "Every top-level command in grith, what it does, and where to find more."
-section: "cli"
+title: 'CLI overview'
+description: 'Every top-level grith command, the five global flags, and the two aliases that are not in --help.'
+section: 'cli'
 order: 0
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/overview.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/overview.mdx'
 ---
 
-`grith` is the single binary that fronts the whole platform. With no arguments it drops
-into an interactive REPL; otherwise the first positional is a subcommand.
+`grith` is one binary. The first positional argument is the command; with no arguments
+it drops into the [interactive REPL](/docs/cli/run).
 
 ```
 grith <command> [options...]
 ```
 
+## The 18 commands
+
+| Command | What it does |
+| --- | --- |
+| [`run`](/docs/cli/run) | Execute a single task non-interactively |
+| [`exec`](/docs/cli/exec) | Supervise an external CLI tool with OS-level syscall interception |
+| [`proxy test`](/docs/cli/proxy-test) | Dry-run a tool call through the filter pipeline |
+| [`digest`](/docs/cli/digest) | Review the quarantine queue |
+| [`audit`](/docs/cli/audit) | Browse, export, compact and rebuild from the audit log |
+| [`log`](/docs/cli/log) | Human-readable feed of decisions, live or historic |
+| [`canary`](/docs/cli/canary) | Manage canary tokens for exfiltration trap detection |
+| [`supervisor`](/docs/cli/supervisor) | List or manage active supervisor sessions |
+| [`daemon`](/docs/cli/daemon) | Start, stop and pair the daemon and its dashboard |
+| [`profile audit`](/docs/cli/profile-audit) | Audit a recorded syscall trace against a profile |
+| [`reputation`](/docs/cli/reputation) | Inspect or reset the learned trust table |
+| [`notifications`](/docs/cli/notifications) | Notification channel status |
+| [`config`](/docs/cli/config) | Print the effective configuration, or set one key |
+| [`init`](/docs/cli/init) | Write a default `config.toml` |
+| [`setup`](/docs/cli/setup) | Run the interactive first-run setup |
+| [`pro`](/docs/cli/pro) | Sign in, activate a licence, pull team policy |
+| [`analytics`](/docs/cli/analytics) | Cloud analytics sync for this machine |
+| [`completions`](/docs/cli/completions) | Print a shell completion script |
+
+`proxy` and `profile` each have exactly one subcommand, shown above. `help` also exists,
+and prints the help for any command.
+
 ## Global flags
+
+Every one of these works on every subcommand.
 
 | Flag | What it does |
 | --- | --- |
-| `--config <path>` | Override the config file location. |
-| `--log-level <level>` | One of `trace`, `debug`, `info`, `warn`, `error`. |
-| `--no-color` | Disable ANSI colour in output. Useful for piping. |
-| `--project <name>` | Override the project name (defaults to the current directory). |
-| `--skip-onboarding` | Skip the first-run onboarding flow (also via `GRITH_SKIP_ONBOARDING`). |
+| `--config <path>` | Merge this file over the usual layers as one more layer. It does not replace them, and `GRITH_*` variables are still applied after it. |
+| `--log-level <level>` | `trace`, `debug`, `info`, `warn` or `error`. This is the only CLI flag that is a configuration layer, and it is applied last. |
+| `--no-color` | Drop ANSI colour. Use it when piping. |
+| `--project <name>` | Override the project name, which otherwise comes from the current directory. |
+| `--skip-onboarding` | Skip the first-run setup. Also `GRITH_SKIP_ONBOARDING=1`. |
 
-## Commands
+## Two aliases that are not in `--help`
 
-<CliCommandTable />
+- `grith onboarding` is `grith setup`.
+- `grith dashboard <...>` is `grith daemon <...>`.
 
-## How to read this reference
+The command is `grith daemon`. Most of the daemon's own output still says
+`grith dashboard`; both spellings work, so paste whichever it hands you.
 
-- **Commands** are documented one-per-page. Click through from the sidebar.
-- **Subcommands** appear on the parent command's page (e.g. `grith canary add`,
-  `grith canary remove` are documented under [grith canary](/docs/cli/canary)).
-- **Exit codes** are 0 for success, 1 for queue, 2 for deny in proxy-style commands;
-  generic non-zero for other failures.
+## Exit codes
 
-## Where do I start?
+Commands exit `0` on success and `1` on failure. Two exceptions:
 
-Most readers want one of these three:
+- [`grith proxy test`](/docs/cli/proxy-test) exits `0` for allow, `1` for queue, `2` for deny.
+- [`grith analytics verify-archives`](/docs/cli/analytics) exits non-zero when an archived
+  day does not match, which is the whole point of running it.
 
-1. **First-time setup** — run [`grith init`](/docs/cli/init), then point it at an
-   agent with [`grith exec`](/docs/cli/exec).
-2. **Reviewing decisions** — see [`grith digest`](/docs/cli/digest) and
-   [`grith log`](/docs/cli/log).
-3. **Operating the daemon** — see [`grith daemon`](/docs/cli/daemon).
+An invalid argument is a clap usage error and exits `2`.
 
-<Callout type="info" title="Generated from clap">
-The command list above is regenerated from the clap definitions in
-`crates/grith-core/src/main.rs` whenever `npm run gen:references` runs in the docs
-repo. If you add a new top-level command in grith, it will appear here automatically
-on the next regeneration.
-</Callout>
+## Where to go next
+
+- [Quickstart](/docs/start/quickstart) - install, supervise a tool, answer a prompt.
+- [`grith exec`](/docs/cli/exec) - the command most readers spend their day in.
+- [Configuration overview](/docs/config/overview) - what the layers are and which one wins.

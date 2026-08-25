@@ -1,101 +1,69 @@
 ---
-title: "grith canary"
-description: "Create and manage canary tokens for exfiltration trap detection."
-section: "cli"
+title: 'grith canary'
+description: 'Register decoy credentials the exfiltration filter watches for - and the persistence gap you must know about.'
+section: 'cli'
 order: 7
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/canary.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/canary.mdx'
 ---
 
 ```
-grith canary [list | add | remove | rotate]
+grith canary list
+grith canary add --label <LABEL> [--value <V> | --generate]
+grith canary remove <ID>
+grith canary rotate <ID> [--value <V> | --generate]
 ```
 
-Manage [canary tokens](/docs/concepts/canary-tokens) — fake credentials placed in your
-filesystem that trigger a hard DENY if they ever appear in an outbound payload.
+[Canary tokens](/docs/concepts/canary-tokens) are fake credentials. If one ever appears
+in an outbound call, the [canary filter](/docs/filters/12-canary-detection) scores 9.5 and
+the call is denied.
 
-## Subcommands
+<Callout type="danger" title="grith canary add does not persist">
+The registry lives in process memory and has no save path. A token added by the CLI
+survives exactly as long as that CLI process - the daemon never sees it, and `list` in
+the next process shows nothing. This is real behaviour, not a bug in your setup.
+</Callout>
 
-### `grith canary list`
+<Terminal>
+{`$ grith canary add --label db-password --generate
+Added canary:
+  id:    2c622402-96ed-466b-9deb-a35b45ec8b20
+  label: db-password
+  value: 988516b8d5414669bc2c8535e779e677ef636f5fe0c46ad5
 
-List all registered canaries.
-
-```
 $ grith canary list
-Registered canary tokens (3):
-  6f1e... | aws-prod-decoy | 9c2f8a1b7d3e...
-  9c2a... | gh-org-trap    | 4b7c1e9f2a8d...
-  3e8b... | ssh-honey      | e21a7f0c94bd...
-```
+No canary tokens registered.`}
+</Terminal>
 
-Each row is the token id, its label, and the registered value. `list` takes no
-flags — there is no `--format json`.
+## How to actually seed a canary
 
-### `grith canary add`
+The daemon seeds its registry at start from `config/filters/canary.toml`, resolved
+relative to the working directory, then relative to the repository, then from the copy
+embedded in the binary. There is no `~/.config/grith` candidate for this file.
 
-Register a new canary value in the detection set.
+So the durable route is a `config/filters/canary.toml` in the directory the daemon starts
+from, and a daemon restart to pick it up. See
+[Filter config files](/docs/config/filter-config-files) for the format and the load order.
 
-```
-grith canary add --label <LABEL> (--generate | --value <VALUE>)
-```
+## Flags
 
-| Option | Required | Description |
+| Flag | Applies to | Notes |
 | --- | --- | --- |
-| `--label <LABEL>` | yes | Human-readable name for alerts. |
-| `--generate` | one of these | Register a random 48-character hex token value. |
-| `--value <VALUE>` | one of these | Register a literal token value you supply. Cannot be combined with `--generate`. |
+| `--label <LABEL>` | `add` | Required. Human-readable name shown in the decision reason. |
+| `--value <V>` | `add`, `rotate` | The exact string to watch for. |
+| `--generate` | `add`, `rotate` | Generate a random 24-byte hex value instead. |
 
-Example:
+`rotate` keeps the label and replaces the value.
 
-```
-grith canary add --label "aws-prod-decoy" --generate
-```
+## What detection covers
 
-This registers the token and prints its id, label, and value. `grith canary add`
-does **not** write any file — copy the printed value into whatever decoy file you
-want an attacker to find (see [Setting up canary tokens](/docs/guides/setting-up-canary-tokens)).
-To make a convincingly shaped decoy, pass the shaped string yourself with
-`--value "<literal>"`.
-
-### `grith canary remove <id>`
-
-Unregister a canary from the detection set. If you placed the value in a decoy
-file, delete that file yourself — the registry does not track file placements.
-
-```
-grith canary remove 6f1e...
-```
-
-### `grith canary rotate <id>`
-
-Replace a canary's value while keeping its label, then update the registration. Use
-after a suspected leak. Supply the new value the same way as `add` — `--generate`
-for a random value or `--value <VALUE>` for a literal one (one is required).
-
-```
-grith canary rotate 6f1e... --generate
-```
-
-Rotation updates the detection set only; if you placed the old value in a decoy
-file, replace that file's contents with the new value it prints.
-
-## When a canary fires
-
-The canary filter ([11](/docs/filters/11-canary-secret-detection)) returns DENY for
-any outbound payload containing a registered canary value. The audit log records:
-
-- The canary id and label
-- The session and process that tried to send it
-- The destination
-- The other filter contributions (for context)
-
-Notification channels page on canary fires by default, regardless of the channel's
-normal rate-limit budget.
+Only outbound-relevant call types: `HttpRequest`, `NetConnect`, `ShellExec`,
+`ProcessSpawn`, and the **path** of `FileWrite` and `FileAppend`. Reading a file that
+contains a canary is not a detection - grith does not inspect file contents.
 
 ## See also
 
-- [Canary tokens](/docs/concepts/canary-tokens) — concept
-- [Setting up canary tokens](/docs/guides/setting-up-canary-tokens) — placement strategy
-- [Canaries API](/docs/api/canaries) — REST routes
+- [Canary tokens](/docs/concepts/canary-tokens) - the mechanism
+- [Setting up canary tokens](/docs/guides/setting-up-canary-tokens) - the practical guide

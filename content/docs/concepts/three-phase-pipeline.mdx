@@ -1,135 +1,123 @@
 ---
-title: "The three-phase pipeline"
-description: "Why filters run in three phases — static, pattern, context — and what each phase contributes."
-section: "concepts"
+title: 'The three-phase pipeline'
+description: 'Eighteen filters in three phases, parallel within a phase, with a deny in an early phase ending the evaluation there.'
+section: 'concepts'
 order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/three-phase-pipeline.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/three-phase-pipeline.mdx'
 ---
 
-Every supervised call goes through 18 filters. They're arranged in three phases that
-run in order. Within a phase, filters run in parallel. The total budget is roughly
-**15ms** wall-clock — fast enough that a typical agent doesn't notice.
+Every intercepted call runs through 18 filters, arranged in three phases. Filters inside
+a phase run concurrently; the phases run in order. All 18 are registered and running on a
+default install - every config toggle in this area is an off switch, not an on switch.
 
-```
-        ┌────────────────── Phase 1: static ──────────────────┐
-        │  <1ms · 6 filters · cheap structural checks         │
-syscall ┤──→ run                                              │
-        │   ┌──────────── Phase 2: pattern ────────────────┐  │
-        │   │ ~3ms · 5 filters · regex + parser + signatures│  │
-        │   ├──→ run                                        │  │
-        │   │  ┌──────── Phase 3: context ────────────────┐ │  │
-        │   │  │ ~5ms · 6 filters · session + history     │ │  │
-        │   │  ├──→ run                                   │ │  │
-        │   │  │                                          │ │  │
-        │   │  └──────────────────────────────────────────┘ │  │
-        │   │                                                │  │
-        │   └────────────────────────────────────────────────┘  │
-        └──────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                       composite scoring
-                              │
-                              ▼
-                ┌─────────────┼─────────────┐
-                ▼             ▼             ▼
-            auto-allow      queue       auto-deny
-            (<3.0)         (3.0–8.0)    (>8.0)
-```
+The order below is the registration order, and it is exactly the order
+`grith proxy test` prints.
 
-## Why three phases
+| Phase | Filters |
+| --- | --- |
+| 1 - static | `operation-risk`, `path-match`, `sensitive-path-heuristic`, `allowlist`, `argument`, `capability` |
+| 2 - pattern | `secret-scan`, `command`, `destructive-action`, `egress-policy`, `dlp-gate`, `canary` |
+| 3 - context | `reputation`, `behavioural`, `taint`, `session-containment`, `rate-limit`, `egress-rate` |
 
-Each phase has a different shape of work. Mixing them would make the slow phases
-slow down the whole pipeline:
+**Phase 1** looks only at the shape of the call - operation type, path string, argument
+structure. No content scanning, no history.
 
-- **Static** filters check structural properties of the call. Fast. Cheap. Cacheable.
-- **Pattern** filters do real string work — regex, tokenisation, parsing. Slower.
-- **Context** filters look up state from the running session and historical baseline.
-  Mostly cheap, but a single context filter (like behavioural) wants to be the last
-  word, after the cheap stuff has already informed the score.
+**Phase 2** does the string work: 1618 secret patterns, a shell parser, destructive-command
+recognition, destination policy, outbound payload inspection, canary matching.
 
-If a static filter assigns enough score to land the call in DENY (e.g. a hard
-capability deny), grith still finishes the cheap phases for completeness but doesn't
-need to short-circuit — the work is so small that running them all in parallel is
-cheaper than maintaining short-circuit machinery.
+**Phase 3** reaches into session state - what this session has already read, how fast it
+is going, whether it is under containment, how this destination is regarded.
 
-The hard-gate filters (capability, canary) can override the composite at any phase
-and force DENY regardless.
+## An early deny stops everything after it
 
-## Phase 1: static (under 1ms)
+At the end of each phase grith sums what has matched so far. If that sum is already past
+the deny threshold, it returns **immediately**. Later phases never run, and the
+[meta-rules](/docs/filters/meta-rules) never run either.
 
-Six filters operate purely on the structure of the call — the operation type, the
-path string, the argument shape — without scanning content or looking up history.
+This is visible in real output. A read of an SSH private key is settled by two phase-1
+filters, so only the six static filters print under an `18 active` header:
 
-- [1. Operation risk scoring](/docs/filters/01-operation-risk-scoring)
-- [2. Static path matching](/docs/filters/02-static-path-matching)
-- [3. Sensitive path heuristic](/docs/filters/03-sensitive-path-heuristic)
-- [4. Allowlist / denylist](/docs/filters/04-allowlist-denylist)
-- [5. Argument length & structure](/docs/filters/05-argument-length-structure)
-- [6. Capability enforcement](/docs/filters/06-capability-enforcement)
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/.ssh/id_rsa"}'
+Proxy Test Result
+==================================================
+  Tool call:   FileRead(/home/u/.ssh/id_rsa)
+  Score:       9.0
+  Decision:    DENY
+  Reason:      Access to SSH private key; read access to key/certificate file
+  Eval time:   0.03ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
 
-These set the call's baseline score. A normal file read in a project directory exits
-Phase 1 around `0.4`. A read of `~/.ssh/id_rsa` exits Phase 1 around `4.5` — already
-past the auto-allow threshold.
+  Filter Breakdown:
+    . operation-risk         0.0
+    + path-match             5.0  [critical]  Access to SSH private key
+    + sensitive-path-heuristic   4.0  [error]  read access to key/certificate file
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
 
-## Phase 2: pattern (~3ms)
+  Exit code:   2 (deny)`}
+</Terminal>
 
-Five filters scan the content / arguments for signatures of trouble.
+`rm -rf /` gets one phase further: `operation-risk` scores it 1.0, which does not clear
+the line on its own, so phase 2 runs and `destructive-action` adds 9.0. The composite is
+10.0 and it is settled at the end of phase 2, still without phase 3 or the meta-rules.
 
-- [7. Secret / credential scanning](/docs/filters/07-secret-credential-scanning) — 1,620+ regex patterns
-- [8. Command structure analysis](/docs/filters/08-command-structure-analysis) — shell parser
-- [9. Destructive action coverage](/docs/filters/destructive-action) — catastrophic destruction + production-target escalation
-- [10. Egress policy](/docs/filters/09-egress-policy) — destination domains
-- [11. DLP gate](/docs/filters/10-dlp-gate) — outbound payload scan
-- [12. Canary secret detection](/docs/filters/11-canary-secret-detection) — exfil trap tokens
+A call that survives to the end prints all 18 lines:
 
-This phase is where the pattern-matching cost lives. A read of a 2MB log file that
-happens to contain an API key string triggers secret scanning here; the filter adds
-score and tags the call with the matched pattern category.
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/etc/hosts"}'
+  Score:       0.5
+  Decision:    ALLOW
+  Reason:      Score 0.5 below allow threshold
+  Eval time:   1.50ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
 
-## Phase 3: context (~5ms)
+  Filter Breakdown:
+    . operation-risk         0.0
+    . path-match             0.0
+    + sensitive-path-heuristic   0.5  [notice]  read reads a system config path
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+    . secret-scan            0.0
+    . command                0.0
+    . destructive-action     0.0
+    . egress-policy          0.0
+    . dlp-gate               0.0
+    . canary                 0.0
+    . reputation             0.0
+    . behavioural            0.0
+    . taint                  0.0
+    . session-containment    0.0
+    . rate-limit             0.0
+    . egress-rate            0.0
 
-Six filters reach into the session's running state and the historical baseline.
+  Exit code:   0 (allow)`}
+</Terminal>
 
-- [12. Destination reputation](/docs/filters/12-destination-reputation)
-- [13. Behavioural anomaly](/docs/filters/13-behavioural-anomaly)
-- [14. Taint tracking](/docs/filters/14-taint-tracking)
-- [15. Session containment](/docs/filters/15-session-containment)
-- [16. Rate limiting](/docs/filters/16-rate-limiting)
-- [17. Semantic analysis](/docs/filters/17-semantic-analysis) (stub for v0.2)
+## After phase 3
 
-Context is where "this call is fine in isolation, but suspicious *now*" gets
-detected. A request to api.example.com is fine on its own. The same request, two
-syscalls after reading `~/.aws/credentials`, is tainted — Phase 3 picks that up.
+The meta-rules run once, on the whole set of results, and adjust the total. There are
+five of them and they exist to fix specific false positives and false negatives - a
+`node_modules` listing during dependency resolution comes down 3.0; an HTTP request made
+after reading a `.env` file goes up 5.0.
 
-## Composite scoring
+Then the total is routed. See [composite scoring](/docs/concepts/composite-scoring).
 
-After all three phases, every filter has contributed a number. Composite scoring
-applies weights and ceilings, factors in reputation, and produces a single composite
-score. The threshold model routes it.
+## Why a filter never fails a call
 
-See [Composite scoring](/docs/concepts/composite-scoring) for the math.
-
-## Why this is fast enough
-
-The 18 filters look like a lot. They aren't, in practice:
-
-- Within a phase, they run concurrently — so the phase's cost is the cost of the
-  *slowest* filter, not the sum.
-- Most filters short-circuit on the cheap path. Filter 7 (secret scan) only does its
-  expensive regex pass if the call carries content; for a `file_read` with no body
-  yet, it's a no-op.
-- The implementations are written for the hot path: Aho-Corasick for static path
-  matching, compiled regex sets for secret scanning, BTreeMap lookups for routine
-  destinations.
-
-A typical call exits the pipeline in **8–12ms** on a modern x86_64 desktop. Worst
-case is roughly **15ms**, dominated by the secret scanner on large payloads.
+A filter that errors is logged and treated as no match. It cannot fail the call open or
+closed - it simply contributes nothing, and the other 17 still run. Nothing in the
+pipeline depends on any single filter being correct.
 
 ## See also
 
 - [Composite scoring](/docs/concepts/composite-scoring)
-- [Filter overview](/docs/filters/overview) — the full filter list with scores
-- [Performance & tuning](/docs/ops/performance-tuning) — measuring and squeezing the pipeline
+- [Filter overview](/docs/filters/overview)
+- [`grith proxy test`](/docs/cli/proxy-test)

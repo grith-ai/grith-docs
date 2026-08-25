@@ -1,38 +1,66 @@
 ---
-title: "[reputation]"
-description: "Adaptive trust parameters — decay, denial weight, auto-allow gates."
-section: "config"
-order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/reputation.mdx"
+title: '[reputation]'
+description: 'Tunables for the learned trust table - the thing that can flip a queued call to allow after enough clean history.'
+section: 'config'
+order: 4
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/reputation.mdx'
 ---
 
-The reputation system's tunables. See [Adaptive reputation](/docs/concepts/adaptive-reputation)
-for what these knobs do.
+This section tunes the **learned trust table**, not the reputation filter. They share a name
+and nothing else: the filter scores destinations during phase 3, and this runs after the
+whole pipeline, only on a queue decision, and only ever to allow.
 
-<ConfigKeyTable section="reputation" />
+| Key                           | Default | What it does                                                                                 |
+| ----------------------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `enabled`                     | `true`  | Turn the learned table off. Nothing is looked up or recorded.                                |
+| `decay_lambda`                | `0.98`  | Per-hour exponential decay on stored observations. Closer to 1.0 keeps history alive longer. |
+| `deny_weight`                 | `3.0`   | How much heavier a denial counts than an approval.                                           |
+| `auto_allow_trust`            | `0.92`  | Trust needed before a call can be allowed on history.                                        |
+| `auto_allow_min_observations` | `8`     | Observations needed before an entry is consulted at all.                                     |
+| `max_score_reduction`         | `4.0`   | How large a trust-based reduction can be.                                                    |
+| `ceiling_filter_threshold`    | `5.0`   | Any single filter scoring at or above this blocks auto-allow outright.                       |
+| `max_auto_allow_raw_score`    | `7.0`   | A composite above this is never auto-allowed however good the history.                       |
+| `save_interval_seconds`       | `300`   | How often the table is flushed to disk.                                                      |
 
-## Tuning intent
+None of these are settable with `grith config set` - edit the file.
 
-| Knob | Higher means | Lower means |
-| --- | --- | --- |
-| `decay_lambda` (closer to 1.0) | Trust persists longer; old signals matter more. | Trust ages out faster; reactive. |
-| `deny_weight` | Denials count much more than approvals; conservative. | Approvals and denials balanced; more permissive. |
-| `auto_allow_trust` | Requires very high trust before discounting. | Easier for shapes to earn discount. |
-| `auto_allow_min_observations` | More data needed before trust applies. | Less data needed; quicker to ease off prompts. |
-| `max_score_reduction` | Trust can knock more points off; quieter digest. | Trust has smaller effect; safer when trust is wrong. |
-| `ceiling_filter_threshold` | Single filters can push score higher; sharper teeth. | Tighter per-filter cap; smoother composite. |
+## What the table can and cannot do
+
+Only two outcomes exist. Either the call flips to allow, or the decision is untouched. There
+is no gradual score shading in the final decision.
+
+All of the following must hold for the flip:
+
+- the call was **queued** - a denial is never revisited
+- no safety ceiling: no single filter scored 5.0 or above, the secret-scan filter did not
+  match, and the call does not touch a sensitive root at all - a read of `~/.ssh` or `~/.aws`
+  raises the ceiling just as a write does
+- the matched entry has at least 8 observations
+- its trust is at least 0.92, or the trust-based reduction is large enough to take the
+  composite to zero
+- the raw composite is at most 7.0
+
+A fresh install has an empty table, so grith behaves as though this were off until a few
+hundred decisions have gone through.
+
+<ConfigExample
+  title="Require more history before trusting a shape"
+  code={`[reputation]
+auto_allow_min_observations = 25
+auto_allow_trust = 0.97`}
+/>
 
 ## Storage
 
-The trust table is held in memory by the scoring engine and flushed to disk every
-`save_interval_seconds` (default 300s). Persisted at
-`~/.cache/grith/reputation/<profile>.bin`.
+The table is held in memory by the daemon and flushed to
+`~/.config/grith/reputation.toml` every `save_interval_seconds`. `GRITH_CONFIG_DIR` moves it.
+Inspect or clear it with [`grith reputation`](/docs/cli/reputation).
 
 ## See also
 
 - [Adaptive reputation](/docs/concepts/adaptive-reputation)
 - [`grith reputation`](/docs/cli/reputation)
-- [Composite scoring](/docs/concepts/composite-scoring)
+- [Destination reputation filter](/docs/filters/13-destination-reputation)

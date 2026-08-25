@@ -1,77 +1,127 @@
 ---
-title: "Proxy"
-description: "Filter pipeline state and dry-run evaluation."
-section: "api"
-order: 4
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/proxy.mdx"
+title: 'Proxy'
+description: 'Filter pipeline state, and a dry-run endpoint that scores a tool call without executing anything.'
+section: 'api'
+order: 3
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/proxy.mdx'
 ---
 
-<ApiRouteTable group="Proxy" showHeadings={false} />
+| Method | Path                | Auth           | Bucket            |
+| ------ | ------------------- | -------------- | ----------------- |
+| GET    | `/api/proxy/status` | Open           | General           |
+| POST   | `/api/proxy/test`   | `x-grith-csrf` | ProxyTest, 20 rps |
 
-## `GET /proxy/status`
+`POST /api/proxy/evaluate` and `GET /api/proxy/status/full` are daemon-only - see
+[Daemon IPC](/docs/api/ipc).
 
-Public status: filter stats, current thresholds, queue depth.
+## GET /api/proxy/status
 
-```json
-{
-  "filters_enabled": 16,
-  "filters_total": 17,
+Both thresholds, the running decision counts, and one row per registered filter:
+
+<CodeBlock
+  language="json"
+  title="GET /api/proxy/status"
+  code={`{
   "auto_allow_threshold": 3.0,
   "auto_deny_threshold": 8.0,
-  "queue_depth": 2,
-  "decisions_last_minute": { "allow": 412, "queue": 3, "deny": 1 }
-}
-```
-
-## `POST /proxy/test`
-
-Dry-run a tool call shape. Returns the would-be decision and full filter breakdown.
-This is the REST equivalent of [`grith proxy test`](/docs/cli/proxy-test).
-
-Request:
-
-```json
-{
-  "operation": "file_read",
-  "target": "/home/you/.ssh/config"
-}
-```
-
-Response:
-
-```json
-{
-  "decision": "queue",
-  "composite_score": 4.2,
+  "total_evaluations": 4812,
+  "allow_count": 4702,
+  "queue_count": 96,
+  "deny_count": 14,
   "filters": [
+    { "name": "path-match", "phase": "static", "enabled": true,
+      "is_ready": true, "evaluation_count": 4812, "avg_latency_ms": 0.004 }
+  ]
+}`}
+/>
+
+`phase` is `static`, `pattern` or `context`. `enabled` and `is_ready` are the same value -
+a filter that failed to load its rules reports both as false and contributes nothing.
+
+## POST /api/proxy/test
+
+Scores a tool call and returns the decision it would have produced. Nothing is executed,
+nothing is audited, no digest item is created. This is the REST form of
+[`grith proxy test`](/docs/cli/proxy-test):
+
+<Terminal>
+  {`$ grith proxy test '{"type":"FileRead","path":"/home/u/.ssh/id_rsa"}'
+Proxy Test Result
+==================================================
+  Tool call:   FileRead(/home/u/.ssh/id_rsa)
+  Score:       9.0
+  Decision:    DENY
+  Reason:      Access to SSH private key; read access to key/certificate file
+  Eval time:   0.03ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
+
+  Filter Breakdown:
+    . operation-risk         0.0
+    + path-match             5.0  [critical]  Access to SSH private key
+    + sensitive-path-heuristic   4.0  [error]  read access to key/certificate file
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+
+  Exit code:   2 (deny)`}
+</Terminal>
+
+Six filters for an 18-filter pipeline is not a bug: the score crossed the deny line at the
+end of phase 1, so phases 2 and 3 and the meta-rules never ran. See
+[Composite scoring](/docs/concepts/composite-scoring).
+
+### Request
+
+One field, `tool_call`, holding a tagged tool-call object:
+
+<CodeBlock
+  language="json"
+  title="POST /api/proxy/test"
+  code={`{ "tool_call": { "type": "FileRead", "path": "/home/u/.ssh/id_rsa" } }`}
+/>
+
+The `type` values are the same variants the CLI takes - `FileRead`, `FileWrite`,
+`ShellExec`, `HttpRequest`, `NetConnect`, `ProcessSpawn`, `DnsQuery` and the rest.
+`ShellExec` and `ProcessSpawn` need `command` and `args`; `HttpRequest` needs `method` and
+`url`; `FileWrite` needs `path` and `content_hash`. An unparseable body is
+`400 INVALID_TOOL_CALL` with the reason in `error`.
+
+### Response
+
+<CodeBlock
+  language="json"
+  title="200 OK"
+  code={`{
+  "composite_score": 9.0,
+  "action": "deny(Access to SSH private key; read access to key/certificate file)",
+  "decision_reason": "Access to SSH private key; read access to key/certificate file",
+  "evaluation_time_ms": 0.03,
+  "filters_evaluated": 6,
+  "filter_results": [
     {
-      "name": "sensitive-path-heuristic",
-      "score": 3.5,
-      "annotations": ["ssh-config"]
-    },
-    {
-      "name": "path-match",
-      "score": 1.2
+      "filter_name": "path-match",
+      "matched": true,
+      "score": 5.0,
+      "severity": "critical",
+      "message": "Access to SSH private key"
     }
   ]
-}
-```
+}`}
+/>
 
-## `POST /proxy/evaluate` (IPC)
-
-Internal endpoint used by thin-client supervisors to evaluate a real syscall.
-Authenticated by loopback origin only. Should not be called by user code.
-
-## `GET /proxy/status/full` (IPC)
-
-Extended state including per-filter metrics, per-session counters, and recent
-decision histograms. Used by the dashboard.
+`action` is `allow`, `queue(<priority>)` where priority is `Low`, `Medium`, `High` or
+`Critical`, or `deny(<reason>)`. `severity` is `notice`, `warning`, `error` or `critical`.
+`decision_reason` is the deny reason on a deny, and otherwise a sentence about the
+score - "Score 0.5 below allow threshold", "Score 4.2 in escalation zone".
+`filters_evaluated` counts the filters that actually ran, which is why it is often
+below 18.
 
 ## See also
 
-- [Composite scoring](/docs/concepts/composite-scoring)
 - [`grith proxy test`](/docs/cli/proxy-test)
 - [Filter reference](/docs/filters/overview)
+- [Composite scoring](/docs/concepts/composite-scoring)

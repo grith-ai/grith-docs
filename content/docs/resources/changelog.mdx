@@ -1,134 +1,60 @@
 ---
 title: 'Changelog'
-description: 'What changed in each grith release.'
+description: 'What changed in grith v0.3.1, and where to find the releases before it.'
 section: 'resources'
 order: 4
 tier: 'community'
-version: '0.1.0'
-lastUpdated: '2026-05-14'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/changelog.mdx'
 ---
 
-The changelog is also available as an [RSS feed](/changelog.xml) — subscribe
-to be notified of new releases and security advisories.
+## v0.3.1 - 2026-08-24
 
-## Unreleased
+Team analytics were rebuilt end to end. grith now keeps a privacy-preserving analytics
+projection alongside the local audit log - hourly and daily rollups of decisions, scores,
+filter activity, sessions, model usage and cost, and never commands, file paths, prompts
+or file contents. The local dashboard gained an Analytics page built on it, and paid
+plans sync the same aggregates to the team dashboard every 30 seconds, per registered
+device. Coverage is strictly prospective: nothing recorded before you consent is ever
+uploaded. `grith analytics status | enable | disable` manages it.
 
-### Filters & scoring
+Once a UTC day closes, paid plans also upload that day as a single file to encrypted
+private storage, kept for 90 days. What the archive contains is stated in the consent
+summary before sync turns on, and
+[`grith analytics verify-archives`](/docs/cli/analytics) downloads those days back,
+checks each file byte-for-byte, rebuilds the numbers from it and exits non-zero if any
+day disagrees. [`grith audit rebuild-analytics`](/docs/cli/audit) rebuilds the local
+projection from the audit database and the cold archives.
 
-- **New filter: [destructive action coverage](/docs/filters/destructive-action)**
-  (Phase 2, the 18th filter). Hard-denies catastrophic, irreversible host/storage
-  destruction (filesystem format, raw block-device overwrite, recursive removal
-  of a system root or database data directory) and escalates destructive
-  operations directed at production (managed-DB endpoints, `prod`/`live`-tagged
-  resources) from review to deny. Also freezes `docker`/`podman run`
-  host-escalation (writable `-v /etc:…:rw` mounts, the docker socket,
-  `--privileged`, `--pid=host`).
-- **Fixed thresholds — cold-start widening removed.** Every call is now scored
-  against the same thresholds (`< 3.0` allow, `> 8.0` deny); the first call in a
-  session is filtered identically to the thousandth.
-- **Fewer false positives.** Secret scanning no longer flags provably-benign
-  shapes (git SHAs, lockfile integrity hashes, JWTs, UUIDs, `_test_` placeholder
-  keys) and down-weights its generic heuristics when reading `node_modules` /
-  minified bundles; the egress filter no longer treats `s3://` / `gs://` bucket
-  URIs as unknown network destinations; the taint filter no longer flags an
-  outbound tool (`git push`, `aws s3 ls`, `npm publish`) that merely uses its
-  own credential. Real secrets and genuine exfil still fire (each carve-out is
-  paired with a guard).
+The raw audit-record cloud sync is retired. Earlier versions uploaded every synced audit
+record to grith.ai; the rollups replace it, and the route is gone.
+[`grith pro sync`](/docs/cli/pro) still pulls team policies, configs and provider keys -
+it just no longer uploads anything from your audit log.
 
-### Security
+[`grith exec --workspace-only`](/docs/concepts/workspace-boundary) fences a session to
+its project: file reads and writes outside the workspace are denied rather than scored.
+The permission prompt gained `[b] Block dir`, which refuses a whole subtree for the rest
+of the session instead of widening access one call at a time.
 
-- **IPC-delegated authority disclosed and partially mitigated.** Enforcement is
-  scoped to the supervised process tree, so actions delegated to a
-  more-privileged peer (the docker daemon, a `tmux` pane, ssh-agent, the session
-  D-Bus bus, X11) run outside it. Container host-escalation is now scored;
-  connects to control-injection sockets and spawns of authority-delegating
-  binaries are detected (audit-only). See the
-  [threat model](/docs/security/threat-model).
+D-Bus is now decided per method call rather than per connection, so a credential helper
+reading your keyring stops prompting whilst `StartTransientUnit` still asks. A batch of
+false positives went with it: Chromium's scratch files and its three read-only D-Bus
+probes on every launch, `mktemp` scratch paths, docker commands that differed only in
+their payload, a secret-shaped token in one command line that used to re-score every
+later call from that process, and kernel-assigned ephemeral ports that looked like new
+listeners. grith also stopped queueing its own control-plane traffic to grith.ai.
 
-## v0.1.4 — 2026-06
+Copying out of the `grith exec` TUI now works the way terminals expect, including
+drag-select, and the dashboard no longer rescans the audit log on every poll - which had
+made a large database slow to open and slow to refresh.
 
-### Dashboard
+## Earlier releases
 
-- **Local authentication & CSRF hardening.** The dashboard binds loopback-only
-  and is now also gated by a per-server token, even on `127.0.0.1`. Browser-
-  facing mutations and sensitive reads require it; low-sensitivity status stays
-  open. WebSocket streams are origin-checked and token-gated. See
-  [Browser authorisation](/docs/cli/daemon#browser-authorisation) and
-  [Trust boundaries](/docs/security/trust-boundaries).
-- **Frictionless browser pairing.** `grith dashboard start` (and `grith run` /
-  `grith exec`) auto-open the dashboard pre-authorised; the token is never
-  printed. Headless/SSH sessions get a **single-use pairing link**, and
-  [`grith dashboard pair`](/docs/cli/daemon) mints a fresh one on demand. Toggle
-  with [`server.auto_open_dashboard`](/docs/config/server).
-- **Redesigned home** — a security-posture hero (calls inspected, allow/review/
-  deny split, live agents, filters), **sessions led by the project name** the
-  agent is supervising, a filter-pipeline view, and a **Share stats** button that
-  exports a branded PNG (aggregate counts only — safe to post).
-- `grith dashboard start` now runs in the **background** by default and persists
-  until `grith dashboard stop` (no more foreground log spam).
-
-### Supervisor
-
-- **`Ctrl+T` select mode** in the `grith exec` TUI — drop mouse capture and
-  freeze the screen to drag-select and copy text, then resume scrolling. See
-  [PTY forwarding](/docs/cli/exec#scrolling-and-copy-paste).
-- **Fewer false-positive prompts.** Source files whose names merely contain a
-  credential word (`AccessToken.php`, `Tokenizer.ts`, `OAuth2Client.java`) are
-  no longer treated as sensitive — reading a vendored OAuth/SDK library no longer
-  floods the digest. Real secret files (`.env`, keys, credential dirs) are
-  unaffected.
-
-## v0.1.0 — 2026-05 (launch)
-
-The initial public release.
-
-### Features
-
-- **18 filters** across 3 phases (static, pattern, context) — see
-  [Filter overview](/docs/filters/overview).
-- **Supervisor profiles** for 11 common AI agents — Claude Code, Codex, Aider,
-  Goose, Cursor, Cline, OpenClaw, Copilot, generic-cli, grith-repl, generic.
-- **Quarantine digest** with CLI review and dashboard review.
-- **Adaptive reputation** with per-shape trust accumulation.
-- **Canary tokens** in 7 formats (AWS, GitHub, Slack, SSH, JWT, hex, custom).
-- **Daemon** with REST API + WebSocket for dashboard and IPC for thin clients.
-- **10+ notification channels** — Slack, Discord, Telegram, Teams, email,
-  webhook, PagerDuty, Opsgenie, WhatsApp, desktop, WebSocket.
-- **Audit log** in SQLite with export to JSON/CSV.
-- **Pro tier** — team sync, encrypted key sync, centralised policies,
-  analytics, escalation, allow-always.
-- **Enterprise tier** — SIEM integration, compliance reporting, custom
-  filters, multi-team scope. SSO/RBAC/air-gapped on the v2.0 plan.
-
-### Platform support
-
-- Linux x86_64 and aarch64 (kernel 5.3+ on aarch64) with ptrace + seccomp-bpf.
-- macOS, Windows: planned v2.0.
-
-### Known limitations
-
-- Filter 17 (semantic analysis) is a stub. Full implementation planned v1.5.
-- Profile drift detection is in the v0.1.x plan.
-- Air-gapped Enterprise deployment is in the v2.0 plan.
-
----
-
-## Older
-
-There are no public versions prior to v0.1. Beta and internal versions used by
-the early development team are not listed.
-
----
-
-## Subscribe
-
-- RSS: [`/changelog.xml`](/changelog.xml)
-- GitHub Releases: [github.com/grith-ai/grith/releases](https://github.com/grith-ai/grith/releases)
-- Mailing list: [grith.ai/announce](https://grith.ai/announce)
+v0.3.1 is the current release; the one before it was v0.2.5. Full notes for every
+release are on [GitHub](https://github.com/grith-ai/grith/releases).
 
 ## See also
 
-- [Roadmap](/docs/resources/roadmap)
-- [Release process](/docs/ops/release-process)
-- [Advisories](/docs/security/advisories)
+- [Verifying a release](/docs/ops/verifying-releases)
+- [Security advisories](/docs/security/advisories)

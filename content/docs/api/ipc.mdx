@@ -1,0 +1,118 @@
+---
+title: 'Daemon IPC'
+description: 'The bearer-token surface the CLI uses to talk to its own daemon - sessions, audit ingestion, digest items, reputation and events.'
+section: 'api'
+order: 10
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/ipc.mdx'
+---
+
+grith has no unix socket. `grith exec`, `grith supervisor` and `grith reputation` are thin
+clients that talk to the daemon over loopback HTTP, authenticated with a bearer token:
+
+```
+Authorization: Bearer <contents of ~/.config/grith/daemon.token>
+```
+
+That file is `0600` and regenerated on every daemon start. A missing or malformed
+`Authorization` header is `401`; a wrong token is `403`. When no token is configured the
+extractor passes everything through, which is why the loopback guard matters. These routes
+have their own rate bucket at 10000 requests per second - they are on the hot path of every
+supervised syscall.
+
+<Callout type="warning" title="Four groups have no /ipc/ in the path">
+  `/api/reputation/*`, `/api/proxy/evaluate` and `/api/proxy/status/full` are bearer-gated IPC
+  routes despite looking like public ones. The CLI uses `/api/proxy/status/full` as its
+  authenticated health check - a `200` proves both that the daemon is up and that this client
+  holds the right token. The `/ipc/` segment is not the marker; the `IpcAuth`
+  extractor on the handler is.
+</Callout>
+
+## The routes
+
+| Method           | Path                                          | What                                        |
+| ---------------- | --------------------------------------------- | ------------------------------------------- |
+| POST             | `/api/proxy/evaluate`                         | Score one real tool call                    |
+| GET              | `/api/proxy/status/full`                      | Filter count, thresholds, call count        |
+| GET              | `/api/reputation/table`                       | Dump the learned trust table                |
+| POST             | `/api/reputation/observe`                     | Record one observation                      |
+| POST             | `/api/reputation/reset`                       | Wipe it, optionally for one profile         |
+| POST             | `/api/reputation/save`                        | Flush it to disk                            |
+| POST             | `/api/ipc/audit/ingest`                       | One audit record                            |
+| POST             | `/api/ipc/audit/ingest-batch`                 | Many at once                                |
+| POST             | `/api/ipc/inventory/install`                  | Install a session's pinned binary inventory |
+| POST             | `/api/ipc/digest/items`                       | Queue a call for review                     |
+| GET              | `/api/ipc/digest/items/{id}`                  | Full forensics on one item                  |
+| POST             | `/api/ipc/digest/items/{id}/status`           | Resolve an item                             |
+| POST             | `/api/ipc/digest/expire`                      | Expire items past the review window         |
+| GET, POST        | `/api/ipc/sessions`                           | List, or register                           |
+| GET, PUT, DELETE | `/api/ipc/sessions/{id}`                      | Read, heartbeat, unregister                 |
+| POST             | `/api/ipc/sessions/{id}/kill`                 | Terminate                                   |
+| POST             | `/api/ipc/sessions-prune`                     | Drop dead sessions                          |
+| POST             | `/api/ipc/session-reservations`               | Reserve capacity before spawning            |
+| POST             | `/api/ipc/session-reservations/{id}/activate` | Turn a reservation into a session           |
+| DELETE           | `/api/ipc/session-reservations/{id}`          | Release one                                 |
+| POST             | `/api/ipc/events`                             | Broadcast an event to WebSocket clients     |
+| POST             | `/api/ipc/dashboard/pair-code`                | Mint a browser pairing code                 |
+
+## Why reservations exist
+
+Admission used to happen after the supervised process was spawned, so a capacity rejection
+could arrive once the tool had already run code. A reservation moves the decision in front
+of the spawn: the CLI reserves a seat, spawns, then activates. Reservations expire after 30
+seconds, so a client that dies in between cannot hold a seat.
+
+Session routes carry their own error bodies rather than the usual `error`/`code` envelope.
+`session_limit_reached` is `429` and includes `tier`, `current_limit`, `active_sessions`,
+`remediation` and `upgrade_url`. `audit_chain_quarantined`, `audit_read_only` and
+`session_not_tracked` follow the same style.
+
+## POST /api/proxy/evaluate
+
+Takes `{"context": <ToolCallContext>}` and returns `composite_score`, `action`,
+`decision_reason`, `evaluation_time_ms` and `filter_results` with `rule_id` included. Note
+the action strings differ from the dry-run route: here they are `allow`, `queue:<priority>`
+and `deny:<reason>`, with a colon rather than brackets.
+
+This is also where the learned reputation table is consulted - **after** the pipeline has
+run, and **only** on a queue. It can turn a queue into an allow; it can never rescue a deny.
+See [Adaptive reputation](/docs/concepts/adaptive-reputation).
+
+## The reputation routes
+
+`GET /api/reputation/table` returns `{entries, table_json}` - the count, and the whole table
+serialised as a JSON string. This is what [`grith reputation show`](/docs/cli/reputation)
+renders.
+
+`POST /api/reputation/observe` takes `{keys, outcome}`, where `outcome` is a string such as
+`approved:1.0` or `denied:3.0`. The daemon does not trust the magnitude: approved weights
+are clamped to 1.5, denied to 5.0, negatives to zero, and non-finite values are rejected
+outright. Without that clamp, one request asserting `approved:1000000.0` would drive an
+entry's trust to near-certainty and let a caller whitelist its own future spawns. A request
+with more than 32 keys, or a key longer than 512 characters, is `400`.
+
+`POST /api/reputation/reset` takes an optional `profile` and answers `{"reset": <n>}` or
+`{"reset": "all"}`. `POST /api/reputation/save` flushes to disk and answers
+`{"saved": true, "entries": <n>, "path": "..."}`.
+
+## POST /api/ipc/events
+
+The only way to inject an event into the WebSocket stream, and the reason the dashboard has
+no event-injection route of its own: the SPA only ever receives. The body must be a JSON
+object with a `type` key and must be under 64 KiB. Success is `202 Accepted`. Failures are
+`400 INVALID_EVENT`, `400 MISSING_TYPE` and `413 PAYLOAD_TOO_LARGE`.
+
+## POST /api/server/shutdown
+
+Not under `/api/ipc/`, and not CSRF-gated either - it takes the same daemon bearer token.
+It broadcasts a `server_shutdown` frame to every WebSocket client, then begins graceful
+shutdown. This is what [`grith daemon stop`](/docs/cli/daemon) calls before falling back to
+`SIGTERM`.
+
+## See also
+
+- [Authentication](/docs/api/authentication)
+- [Daemon and sessions](/docs/concepts/daemon-and-sessions)
+- [`grith reputation`](/docs/cli/reputation)

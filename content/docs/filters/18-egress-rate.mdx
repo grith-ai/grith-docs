@@ -1,0 +1,65 @@
+---
+title: '18. Egress rate'
+description: 'Outbound volume, destination spread and the read-then-send shape, per session.'
+section: 'filters'
+order: 18
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/18-egress-rate.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 3, context |
+| **Score** | 1.5 - 5.0 |
+| **Source** | `crates/grith-proxy/src/filters/egress_rate.rs` |
+| **Config** | `proxy.filters.egress.enabled` - default `true` |
+
+Where [egress-policy](/docs/filters/10-egress-policy) asks *where* a call is going, this one
+asks *how much and how fast*. It tracks per session: outbound call timestamps, unique
+destination hosts, unique destination ports, file-read timestamps, and a post-burst cooldown.
+
+<Callout type="info" title="The switch is named for the other filter">
+This filter is gated by `proxy.filters.egress.enabled`, not `proxy.filters.egress_rate.*`.
+`egress-policy` is gated separately, by `enabled` inside `config/filters/egress.toml`. Two
+filters, two switches, confusingly similar names.
+</Callout>
+
+## The rules
+
+Every rule is evaluated and the highest score wins.
+
+| Rule | Fires when | Score |
+| --- | --- | --- |
+| `read-then-send-spike` | 10 or more file reads **and** 3 or more outbound calls in the same 15-second window | **5.0** |
+| `egress-burst` | 8 or more counted outbound calls in 10 seconds; also starts a 30-second cooldown | **4.0** |
+| `egress-dest-spread` | more than 10 unique hosts in a minute | **3.0** |
+| `egress-port-spread` | more than 8 unique ports in a minute | **2.5** |
+| `egress-rate-exceeded` | more than 30 counted outbound calls in a minute | **2.0** |
+| `egress-cooldown` | any outbound call while a cooldown is running | **1.5** |
+
+## Trusted destinations are excluded from the volumetric counters
+
+The filter shares `egress-policy`'s trust sets - the global `trusted_domains` and the active
+profile's declared destinations. Egress to a trusted host is the expected baseline, not an
+anomaly, so it is left out of the burst, rate and spread counters. That is what stops a
+headless browser's routine startup traffic from producing a prompt storm.
+
+**Read-then-send is the exception.** Every outbound call is recorded for that correlation
+regardless of destination trust. A read spike followed by a burst of sending is the exfil
+shape whether or not the destination happens to be on a list, and keeping it sensitive is
+defence in depth against a mis-curated trust set.
+
+## What counts as a read, and as egress
+
+Reads are `FileRead`. Egress is `HttpRequest` and `NetConnect`. Anything else returns
+immediately without touching the state. A read is recorded and scores nothing - it can only
+contribute to a later `read-then-send-spike`.
+
+State is per session and pruned to the last minute on every call.
+
+## See also
+
+- [10. Egress policy](/docs/filters/10-egress-policy) - the destination filter
+- [17. Rate limiting](/docs/filters/17-rate-limiting) - volume across all categories

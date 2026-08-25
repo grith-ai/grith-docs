@@ -1,0 +1,143 @@
+---
+title: 'Limitations'
+description: 'What grith cannot see, cannot stop, and does not enforce at shipped defaults.'
+section: 'security'
+order: 1
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/limitations.mdx'
+---
+
+grith supervises the syscalls a process tree makes on Linux. Everything on this page follows
+from that design. Read it before you rely on grith as a boundary.
+
+## Linux, and only Linux
+
+Enforcement is ptrace plus seccomp-BPF. The shipped targets are Linux x86_64 (kernel 4.8+) and
+Linux aarch64 (kernel 5.3+), and the installer refuses anything else. There is no supervised
+path on any other operating system.
+
+## grith judges what is touched, not what is transferred
+
+`read`, `write` and `writev` are deliberately not trapped. They are the hottest syscalls in any
+workload and trapping them would make supervision unaffordable - a single Node.js startup would
+cost hundreds of thousands of stops. The consequence is that grith never sees file or socket
+payload bytes. A `FileWrite` decision is made on the path, and its content hash is a hash of the
+path, not of the data.
+
+The same reasoning is why DNS over TCP is denied rather than inspected: the query and the
+response both ride `read`/`write`, so at the point of decision there is nothing to read.
+
+If the supervised tool runs in a different mount namespace - a bwrap-style sandbox, a container -
+grith's view of a path can disagree with the tracee's. Resolution goes via `/proc/<pid>/root`
+where it can, but gaps remain.
+
+## What ALLOW, QUEUE and DENY actually do
+
+**QUEUE does not stop the process tree.** The calling thread is already held at its kernel stop,
+and grith deliberately leaves its siblings running so the tool keeps rendering while you decide.
+A multi-threaded tool can act on other threads for the whole review.
+
+**DENY is one EPERM, not a kill.** The syscall is rewritten at the entry stop so the tracee gets
+a permission error, and the process carries on. A denied tool usually retries. The one exception
+is an authority-delegating spawn caught at exec: the new image has already loaded, so there is no
+in-flight syscall left to fail and the process is SIGKILLed instead.
+
+## Off at shipped defaults
+
+Two of the coverage categories ship off, and between them they cover real ground. At defaults grith
+does not evaluate the `chown` family, `mount`, `umount2`, `pivot_root`, `chroot`, the newer mount
+API, `unshare` or `setns` - those calls are allowed without reaching the proxy at all. It is
+deliberate, because sandboxes and rootless container runtimes do genuine mount and ownership work.
+It is also a real gap.
+
+Cross-process access does not have that gap: `ptrace`, `process_vm_readv` and `process_vm_writev`
+aimed at a target outside the supervised tree are evaluated at defaults. The third flag that ships
+off, `observe_self_seccomp_filter`, only suppresses an audit record - a tracee installing a plain
+seccomp filter of its own is not recorded, though one installing a `NEW_LISTENER` filter is denied
+outright.
+
+<ConfigExample
+  title="grith config"
+  code={`[supervisor.coverage]
+category1_hard_deny = true
+category2_proxy = false
+category2_crossprocess = true
+category3_namespace = false
+category4_arch_priv = true
+deny_self_seccomp_notify = true
+observe_self_seccomp_filter = false`}
+/>
+
+PTY ownership is audit-only. A write into a sibling terminal's `/dev/pts` device is detected,
+recorded as `foreign_pts_write`, and allowed, unless you set `pty_ownership_enforce = true`.
+
+The capability filter ships permissive. `config/filters/capabilities.toml` contains no grants,
+and with no grants defined the filter passes every call through. It enforces only once you
+declare grants.
+
+## Races grith mitigates rather than closes
+
+`openat2`'s `resolve` field lives in memory the tracee can write, and a sibling thread - never
+ptrace-stopped - can flip it between grith's read and the kernel's copy. A flip has been measured
+at around 5 ms inside a 30 ms evaluation window. grith's answer is to always score the worst-case
+interpretation of the path, not to claim the race is closed.
+
+Failed-exec and loopback-listener suppressions have the same shape: a symlink swap inside the
+window can change what the kernel does after grith has already decided. Both suppressions are
+audit-tagged, so an exploited miss is visible afterwards.
+
+## Prompts that never appear
+
+grith remembers recent answers so a loop does not ask you the same question forty times. Each of
+these resolves a call with no prompt:
+
+- **Deny-replay** - an identical call denied or timed out in the last 60 seconds is denied again.
+- **Approve-replay** - an identical call approved in the last 60 seconds is allowed again.
+  Disabled while [session containment](/docs/concepts/session-containment) is active.
+- **Control-socket replay** - your answer about a session D-Bus, X11, tmux or screen socket lasts
+  the session. This one is *not* disabled under containment.
+
+`grith exec --allow-queued` goes further, in a session with no terminal and no dashboard overlay:
+instead of the fail-closed auto-deny, it allows and logs everything that would have queued, except
+calls carrying a containment or taint signal. It buys throughput in CI at a real cost in coverage,
+and has no effect at all in an interactive session, where the dialog is shown either way.
+
+`grith exec --attach <pid>` installs no seccomp filter, because a filter cannot be injected into a
+running process. Every syscall becomes a ptrace stop, so the session is correct but markedly
+slower than a spawned one.
+
+## Supervision escape: what the classifier still misses
+
+grith escalates spawns of binaries that hand work to a more privileged peer - `systemd-run`,
+`docker`, `tmux`, `busctl` and the rest of the curated list - matched three ways: argv basename,
+canonical path after symlink resolution, and content SHA-256 against a set pinned at session
+start. Five residuals are known and documented in the source:
+
+1. A content mutation that leaves the binary runnable changes the hash and evades the hash arm.
+2. An execute-only disguised copy cannot be read, so it cannot be hashed.
+3. The ssh/scp/sftp-to-loopback detector matches on basename alone, so a renamed copy evades it.
+4. A from-scratch reimplementation under a novel name is on no list.
+5. The classifier lives in the supervisor. grith's own built-in agent loop (`grith run`) scores its
+   tool calls through the proxy without it.
+
+Multicall dispatchers - busybox, toybox - are deliberately not pinned. Pinning `/bin/busybox`
+would collide with every applet it dispatches and flood the session with prompts.
+
+## It is not a sandbox
+
+grith supervises syscalls. It does not isolate the filesystem, the network namespace or
+privileges. A tool that already holds `CAP_SYS_PTRACE`, or runs as root, is a different threat
+model and grith is not the control for it.
+
+Session scope is user-initiated. Sticky containment lasts until the session ends and cannot be
+waited out - but a CI wrapper that retries `grith exec` on failure starts a new session, which
+means a new scope and cleared containment. That is a legitimate operator choice; just make it
+knowingly.
+
+## See also
+
+- [Trust boundaries](/docs/security/trust-boundaries) - what sits on each side of the line.
+- [Supervisor-only assessment](/docs/security/supervisor-only-assessment) - control by control.
+- [Syscall interception](/docs/concepts/syscall-interception) - how the trapping works.

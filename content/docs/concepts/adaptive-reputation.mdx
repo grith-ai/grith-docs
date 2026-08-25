@@ -1,124 +1,105 @@
 ---
-title: "Adaptive reputation"
-description: "How grith gets quieter over time by learning which call shapes you trust."
-section: "concepts"
-order: 8
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/adaptive-reputation.mdx"
+title: 'Adaptive reputation'
+description: 'The learned trust table: what it observes, where it is applied, and why it only ever flips a queue to an allow.'
+section: 'concepts'
+order: 10
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/adaptive-reputation.mdx'
 ---
 
-A grith install on day one is loud. The filters know what looks suspicious but
-not what's typical for *your* setup. A week in, you've approved a hundred calls
-that the filters scored as ambiguous. The reputation system folds those approvals
-into a per-shape trust score that quietens the digest going forward.
+Two different things in grith are called reputation, and confusing them is the single
+most common misreading of how scoring works.
 
-## What "reputation" tracks
+- The **`reputation` filter** is filter 13 in the pipeline. It scores destinations against
+  fixed lists: known-safe **-1.0**, raw IP **+3.0**, suspicious TLD **+2.0**,
+  known-malicious higher, unknown **0.0**. It learns nothing. See
+  [filter 13](/docs/filters/13-destination-reputation).
+- The **learned reputation table** is this page. It is not a filter, it is not in the
+  pipeline, and `grith reputation` shows and resets it.
 
-The trust table keys are tuples of:
+## Where it is applied
 
-- **Operation** (`file_read`, `network`, `shell`, …)
-- **Destination shape** (path prefix, domain, command head)
-- **Profile context** (which profile was active)
+**After the pipeline has finished, in the daemon, and only when the decision is QUEUE.**
 
-For each key, the table holds:
+An ALLOW is never touched. A **DENY is never revisited** - reputation cannot rescue a
+denied call, no matter how trusted the shape.
 
-- `observations` — how many times this shape has been seen.
-- `denials` — how many times it was denied (manually or auto).
-- `trust` — a smoothed score in [0, 1], roughly "how often this shape was approved".
-- `last_seen` — for decay.
+## It is all or nothing
 
-A new call's filter score gets adjusted by the trust value: if `trust ≥
-reputation.auto_allow_trust` (default `0.92`) **and** `observations ≥
-reputation.auto_allow_min_observations` (default `8`), the composite gets a
-reduction up to `reputation.max_score_reduction` (default `4.0`).
+This is the part that surprises people. The table does not gently lower a score until a
+call drifts across the allow line. At the point where it is applied, it either flips the
+whole decision to allow or it changes nothing at all.
 
-The cap matters. A high-trust shape can still escape into the digest if a different
-filter (DLP, canary, taint) lights it up. Trust is a *discount*, not a *bypass*.
+Every one of these must hold for the flip:
 
-## How trust changes
+| Condition | Default |
+| --- | --- |
+| Observations on the matched key | at least 8 |
+| Trust score | at least 0.92 |
+| Raw composite score | 7.0 or below |
+| Safety ceiling | none triggered |
 
-- **Approve** in the digest → trust nudges up.
-- **Approve + learn** → trust jumps faster; this is the deliberate "yes, please
-  remember this" signal.
-- **Deny** → trust drops, weighted by `reputation.deny_weight` (default `3.0`,
-  meaning denials are worth 3× as much as approvals in the smoothing).
-- **Auto-allow** (the call was already auto-allowed by score) → trust nudges up
-  very slightly. The system shouldn't be calibrated by easy approvals.
-- **Auto-deny** → trust drops.
-- **Time** → trust decays toward neutral via `reputation.decay_lambda` (default
-  `0.98`, applied per save cycle, default 5 minutes). Trust earned six months ago
-  matters less than trust earned yesterday.
+A **safety ceiling** blocks auto-allow outright, and there are three ways to hit one: any
+single filter scored 5.0 or more, or `secret-scan` matched at all, or the call is a write
+to a sensitive directory. A ceiling ends the question - there is no trust level that
+overrides it.
 
-## Why decay
+On a fresh install the table is empty, nothing clears eight observations, and the whole
+system behaves exactly as if it were switched off.
 
-Without decay, a one-time bad approval would mark a destination "trusted" forever.
-Decay lets old signals fade so the trust table reflects recent behaviour, not your
-worst day from a year ago. The default `0.98` per save cycle works out to roughly
-half-life of 30 days under typical usage; tighter agents (more frequent calls) decay
-faster in elapsed time.
+<Terminal>
+{`$ grith reputation show
+No reputation data. Data is learned from approve/deny decisions during grith exec sessions.`}
+</Terminal>
 
-## What it can't do
+## What it learns from
 
-The reputation system **cannot promote a call past a hard gate**:
+Only human decisions made at a prompt during a `grith exec` session. The model cannot
+train it and the supervised tool cannot feed it - the daemon's observe endpoint clamps
+hostile input, capping weights and key counts so a client cannot self-whitelist its own
+future spawns.
 
-- A canary detection denies, full stop, regardless of trust.
-- A capability deny is enforced regardless of trust.
-- The `max_score_reduction` cap ensures even a perfectly-trusted shape can't push the
-  composite below 0 in the presence of other strong contributions.
+| Decision | Weight |
+| --- | --- |
+| Approve | 1.0 |
+| Approve and save a rule (`l`) | 1.5 |
+| Deny | 3.0 |
+| Deny and stop the tool | 5.0 |
+| Auto-deny | 1.0 |
 
-The reputation system also doesn't share state between sessions started by different
-users (in multi-user team setups) by default — see
-[Team sync](/docs/pro/team-sync) for the Pro flow that does.
+Denials carry three times the weight of approvals by default. Trust is easy to lose and
+slow to build, which is the correct asymmetry for a security control.
 
-## Adversarial robustness
+Approve replay does **not** feed the table, so hammering the same call cannot launder
+trust.
 
-A natural worry: what if the agent (or attacker controlling it) does a hundred
-benign reads to build up reputation, then sneaks one bad call through? Two
-mitigations:
+## The model
 
-1. **Only human approvals move the needle fast.** Auto-allow contributions are
-   intentionally tiny (`reputation.auto_allow_trust_increment` ≈ 0.001). An attacker
-   would need *years* of pure auto-allow to flip a shape from neutral to fully
-   trusted.
-2. **Strong filters bypass reputation.** Even a fully-trusted destination gets the
-   secret scan, DLP gate, canary detection, and taint inheritance done on every call.
-   Reputation only knocks the composite down; it doesn't make the filter blind.
+One Beta distribution per key, with trust as the ratio of successes to total observations,
+and an hourly exponential decay of 0.98 - about 61% of a signal remains after a day. Trust
+that is not renewed fades.
 
-The system is designed so that the only way to teach grith something *significantly*
-wrong is to keep explicitly approving wrong things in the digest. Which is a
-different problem.
+Keys are built at several granularities from the profile, action, process, destination and
+path class: the exact path, its parent directory, and the process alone. The grandparent
+level is deliberately missing so trust cannot cross sibling directory boundaries. **Paths
+under sensitive roots** - `.ssh`, `.aws`, `.gnupg`, `.pki`, `.config/gh`, `.kube`,
+`.docker`, `.config/gcloud`, `.azure` - only ever get exact-path entries, so approving one
+file there never generalises.
 
-## Inspecting the trust table
+The table lives in `~/.config/grith/reputation.toml`. The daemon owns it; sessions record
+observations over IPC; saves merge with what is on disk, so concurrent sessions do not
+clobber each other.
 
-```
-grith reputation show
-```
+## Profiles seed it
 
-Lists shapes with their trust, observation count, and last-seen time. Sorted by
-recency by default; `--sort trust` shows your most-trusted shapes (sometimes
-surprising).
-
-```
-grith reputation reset
-```
-
-Wipes the table. Useful when starting fresh — for example, after switching agents
-or after a security audit.
-
-## Persistence
-
-The trust table is held in memory and flushed to
-`~/.cache/grith/reputation/<profile>.bin` every `reputation.save_interval_seconds`
-(default 300s). Atomic write-rename, so a crash mid-flush doesn't corrupt. The file
-is binary CBOR; safe to delete if it gets corrupted (you'll lose accumulated trust,
-but nothing in the audit log or pending digest).
+A profile's routine paths, commands and destinations get optimistic priors at session
+start, so a fresh install is not maximally noisy on day one. Seeding only fills in where
+no richer entry already exists - it never overwrites something you taught it.
 
 ## See also
 
-- [Composite scoring](/docs/concepts/composite-scoring) — where the trust discount
-  is applied
-- [The quarantine digest](/docs/concepts/quarantine-digest) — where approvals are
-  recorded
-- [grith reputation](/docs/cli/reputation) — CLI for inspecting and resetting
+- [`grith reputation`](/docs/cli/reputation)
+- [Filter 13: destination reputation](/docs/filters/13-destination-reputation)
+- [Composite scoring](/docs/concepts/composite-scoring)

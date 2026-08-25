@@ -1,0 +1,89 @@
+---
+title: 'Authentication'
+description: 'The three secrets the daemon holds, how a browser gets its token, and which guard rejects you with which status.'
+section: 'api'
+order: 1
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/authentication.mdx'
+---
+
+The daemon holds three separate secrets. Which one you send depends on what you are.
+
+| Secret           | Where it lives                    | Sent as                                                     | Who uses it                             |
+| ---------------- | --------------------------------- | ----------------------------------------------------------- | --------------------------------------- |
+| Daemon IPC token | `~/.config/grith/daemon.token`    | `Authorization: Bearer <token>`                             | The CLI, talking to its own daemon      |
+| Dashboard token  | `~/.config/grith/dashboard.token` | `x-grith-csrf: <token>` header, or `?token=` on a WebSocket | The dashboard SPA, and your own scripts |
+| API key          | `[server] api_key` in config      | `x-grith-api-key`                                           | Off by default                          |
+
+Both token files are `0600`. The daemon token is regenerated on every start; the dashboard
+token is stable across restarts, so an open browser tab stays authorised through a
+`grith daemon restart`.
+
+## How a browser gets the token
+
+The token is never printed to a terminal. It is handed over through a single-use pairing
+code:
+
+1. The CLI - which already holds the daemon token - asks for a code over IPC:
+   `POST /api/ipc/dashboard/pair-code` returns a `code` - 32 hex characters.
+2. The CLI opens or prints `http://127.0.0.1:3141/#pair=<code>`. The fragment stays in the
+   browser and never reaches the server.
+3. The page posts the code to `POST /api/dashboard/pair` and gets back a `token`, stores
+   it, and strips the URL.
+
+The code is consumed on first success, so a screenshot of that URL is worthless
+afterwards. A bad or already-used code returns `401 PAIR_CODE_INVALID`. There is one
+outstanding code at a time and it has **no expiry** - minting a new one replaces it.
+
+`grith daemon pair` mints a fresh code on demand. To rotate the dashboard token itself,
+delete `~/.config/grith/dashboard.token` and restart the daemon.
+
+## The two guards, and their two statuses
+
+Writes and sensitive reads are protected by different middleware, and they fail
+differently:
+
+| Guard           | Applies to                                                     | Methods it checks                                   | Failure                         |
+| --------------- | -------------------------------------------------------------- | --------------------------------------------------- | ------------------------------- |
+| CSRF            | Dashboard writes, `POST /api/proxy/test`, supervisor mutations | Everything except `GET`, `HEAD`, `OPTIONS`, `TRACE` | `403` `CSRF_REQUIRED`           |
+| Dashboard token | Sensitive reads, supervisor reads                              | Everything except `OPTIONS`                         | `401` `DASHBOARD_AUTH_REQUIRED` |
+
+Both compare the `x-grith-csrf` header against the dashboard token in constant time.
+
+<Callout type="info" title="No token means no gate">
+  When no dashboard token is configured, the token guard is inert and sensitive reads stay open,
+  while the CSRF guard accepts the fixed public value `grith-dashboard`. That sentinel carries no
+  authority - its only job is to force a CORS preflight that the locked-origin layer rejects for any
+  page that is not the dashboard.
+</Callout>
+
+## Calling it yourself
+
+<Terminal
+  command={`curl -s -H "x-grith-csrf: $(cat ~/.config/grith/dashboard.token)" http://127.0.0.1:3141/api/digest`}
+/>
+
+CORS allows exactly one origin, `http://{host}:{port}`, and four request headers:
+`content-type`, `authorization`, `x-grith-api-key` and `x-grith-csrf`.
+
+## WebSockets
+
+Browsers cannot set headers on a WebSocket handshake, so `/ws/live` and
+`/ws/supervisor/{id}` take the dashboard token as a query parameter instead:
+`ws://127.0.0.1:3141/ws/live?token=<token>`. The handshake is also checked for
+Origin-against-Host. See [WebSocket](/docs/api/websocket).
+
+## Network exposure
+
+`server.localhost_only` defaults to true; a non-loopback peer gets `403 LOCALHOST_ONLY`
+before any handler runs. Setting it to false without `require_api_key` is a startup error,
+not a warning - the daemon refuses to come up rather than expose `PUT /api/config` and
+`POST /api/server/shutdown` to the network.
+
+## See also
+
+- [API overview](/docs/api/overview)
+- [Daemon IPC](/docs/api/ipc)
+- [`grith daemon`](/docs/cli/daemon)

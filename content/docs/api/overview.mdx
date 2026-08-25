@@ -1,55 +1,98 @@
 ---
-title: "API overview"
-description: "REST endpoints exposed by the grith daemon, organised by surface area."
-section: "api"
+title: 'API overview'
+description: 'Where the daemon binds, how each route is authorised, the rate-limit buckets, and what an error body looks like.'
+section: 'api'
 order: 0
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/overview.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/overview.mdx'
 ---
 
-The grith daemon (started by [`grith daemon start`](/docs/cli/daemon)) binds on
-`127.0.0.1:3141` by default and exposes a REST API plus a WebSocket event stream.
+The daemon serves its HTTP API on `http://127.0.0.1:3141`, loopback only. Start it with
+[`grith daemon start`](/docs/cli/daemon).
 
-## Base URL & TLS
+## Shape of the surface
 
-```
-http://127.0.0.1:3141
-```
+Every REST route is nested once under `/api`. The WebSockets are not - they sit at the
+root, at `/ws/live` and `/ws/supervisor/{id}`. Paths are written `{id}` here; the router
+uses axum's `:id` internally.
 
-By default grith binds to loopback only — there is no remote attack surface. To expose
-the API beyond loopback, either:
+## Three authorisation tiers
 
-- Configure [`[server.tls]`](/docs/config/server) with cert + key files, or
-- Front grith with a reverse proxy that terminates TLS — see
-  [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
+| Tier           | Routes                                                                                                                                                                                    | What you send                                           |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Open read      | `/api/health`, `/api/tier`, `/api/license/status`, `/api/proxy/status`, `/api/onboarding/status`, `/api/sync/status`, `/api/notifications/channels`, `/api/notifications/status`                                              | Nothing. Never token-gated.                             |
+| Sensitive read | `/api/digest`, `/api/canaries`, `/api/audit*`, `/api/config`, `/api/analytics/v2/*`, `/api/policies*`, `/api/sync/configs`, `/api/inventory/{id}`, `/api/sessions/{id}/listener-rewrites` | `x-grith-csrf: <dashboard token>`, once a token exists. |
+| Write          | Every dashboard `POST`, `PUT` and `DELETE`                                                                                                                                                | `x-grith-csrf: <dashboard token>`.                      |
 
-## Authentication
+The five `/api/supervisor/*` routes take both layers: the token on every method, the CSRF
+header on the three mutations. The daemon IPC routes are a separate surface entirely, on a
+bearer token - see [Daemon IPC](/docs/api/ipc).
 
-For v0.2, the public endpoints accept any local caller. The IPC-only endpoints
-(`/ipc/*`) reject non-loopback connections at the listener.
+Three writes carry their own proof instead and skip the CSRF layer:
+`POST /api/digest/{id}/webhook-review` (single-use nonce),
+`POST /api/server/shutdown` (daemon bearer token) and
+`POST /api/dashboard/pair` (the pairing code itself).
 
-When a Pro license is active, certain endpoints additionally require a valid
-plan-gate check; the call returns `403 PLAN_REQUIRED` if the tier doesn't match.
+Open does not mean free. `GET /api/sync/status` and the two `/api/notifications` reads take
+no token but still return `403 FEATURE_GATED` on Community - the gate is inside the
+handler. See [Notifications](/docs/pro/notifications).
+
+Full details on the secrets and the pairing flow are on
+[Authentication](/docs/api/authentication).
 
 ## Rate limits
 
-`[server.rate_limit]` controls per-endpoint pacing:
+Each bucket is a sliding one-second window, counted after the auth layers, so an
+unauthenticated request never spends your quota.
 
-- General endpoints: 100 req/s
-- Write endpoints: 10 req/s
-- Proxy test: 20 req/s
-- IPC endpoints: uncapped (loopback only)
+| Bucket    | Requests per second | Applies to                                     |
+| --------- | ------------------- | ---------------------------------------------- |
+| General   | 100                 | Open reads, sensitive reads, supervisor `GET`s |
+| Write     | 10                  | Every dashboard write                          |
+| ProxyTest | 20                  | `POST /api/proxy/test`                         |
+| Ipc       | 10000               | The daemon IPC routes                          |
 
-Exceeding the rate returns `429 RATE_LIMITED` with a `Retry-After` header.
+The first three are configurable under `[server.rate_limit]`; `ipc_rps` is not exposed in
+config. Over the limit is `429` with a `Retry-After` header and a body whose `code` is
+`RATE_LIMITED`.
 
-## Endpoint groups
+## Error bodies
 
-<ApiRouteTable />
+Most failures are a two-field envelope of `error` and `code`. A tier refusal is `403` and
+carries enough to render an upgrade prompt:
 
-## See also
+<CodeBlock
+  language="json"
+  title="403 FEATURE_GATED"
+  code={`{
+  "error": "usage_analytics requires a Pro subscription",
+  "code": "FEATURE_GATED",
+  "feature": "usage_analytics",
+  "current_tier": "community",
+  "required_tier": "Pro",
+  "upgrade_url": "https://grith.ai/pricing"
+}`}
+/>
 
-- [WebSocket /events](/docs/api/websocket) — real-time event stream
-- [Notifications](/docs/api/notifications) — channel configuration
-- [`grith daemon`](/docs/cli/daemon) — running the API server
+`upgrade_url` is the licence's billing portal when one is known, otherwise
+`https://grith.ai/pricing`. The analytics routes add one status of their own:
+`503 ANALYTICS_UNAVAILABLE`, returned when the process holding the audit database is an
+older grith and cannot serve the projection.
+
+## Binding beyond loopback
+
+`server.localhost_only` defaults to true and a non-loopback peer gets
+`403 LOCALHOST_ONLY`. The daemon refuses to start if you turn it off without also setting
+an API key. Native TLS is available under `[server.tls]`; see
+[Server config](/docs/config/server) and
+[Reverse proxy and TLS](/docs/guides/reverse-proxy-tls).
+
+## Where to go next
+
+- [Authentication](/docs/api/authentication) - the three secrets and the pairing flow
+- [Health and tier](/docs/api/health-and-tier) - liveness, plan, config
+- [Digest](/docs/api/digest) - read the queue and decide items
+- [WebSocket](/docs/api/websocket) - the live event stream
+- [Daemon IPC](/docs/api/ipc) - the bearer-token surface the CLI uses

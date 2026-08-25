@@ -1,68 +1,125 @@
 ---
-title: "WebSocket /events"
-description: "Real-time stream of digest, session, audit, and notification events."
-section: "api"
+title: 'WebSocket'
+description: 'The two live streams, how the handshake is authorised, and the exact frames the daemon actually emits.'
+section: 'api'
 order: 11
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/websocket.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/websocket.mdx'
 ---
 
+Two endpoints, and neither is under `/api`:
+
+| Path                      | Carries                                            |
+| ------------------------- | -------------------------------------------------- |
+| `GET /ws/live`            | Every event the daemon broadcasts                  |
+| `GET /ws/supervisor/{id}` | Only frames whose `session_id` matches the path id |
+
 ```
-GET ws://127.0.0.1:3141/events
-```
-
-Upgrade to a WebSocket to receive real-time events. The dashboard and the CLI
-`grith log --tail` both use this stream.
-
-## Authentication
-
-For v0.2, accept any loopback caller. When the daemon is behind a reverse proxy
-with auth, a bearer token in the `Authorization` header is required.
-
-## Subscription
-
-After upgrade, send a subscription message:
-
-```json
-{ "subscribe": ["digest", "session", "audit", "notifications"] }
+ws://127.0.0.1:3141/ws/live?token=<dashboard token>
 ```
 
-Or subscribe to everything:
+## Authorisation
 
-```json
-{ "subscribe": ["*"] }
-```
+Checked before the upgrade, so a rejected handshake never reaches a handler and never
+becomes a socket.
 
-## Event shapes
+1. If the request carries an `Origin`, its authority must equal the `Host`. Otherwise
+   `403 WS_ORIGIN_FORBIDDEN`. A non-browser client sends no `Origin` and passes this check.
+2. If a dashboard token is configured, `?token=` must match it in constant time. Otherwise
+   `401 WS_TOKEN_REQUIRED`.
 
-Each event is a single JSON message with a `type` and a payload:
+The token goes in the query string because browsers cannot set headers on a WebSocket
+handshake. `/ws/supervisor/{id}` adds `400 INVALID_ID` for a non-UUID and
+`404 SESSION_NOT_FOUND` for a session it does not know.
 
-```json
-{ "type": "digest.created", "item": { ... } }
-{ "type": "digest.resolved", "id": "...", "decision": "approve" }
-{ "type": "session.started", "session": { ... } }
-{ "type": "session.ended", "id": "...", "reason": "exit-0" }
-{ "type": "audit.recorded", "event": { ... } }
-{ "type": "notification.delivered", "channel": "slack", "item_id": "..." }
-{ "type": "notification.failed", "channel": "email", "error": "..." }
-```
+## There is no protocol on top of the socket
 
-## Heartbeats
+<Callout type="info" title="Nothing you send is read">
+  There is no subscribe message, no filter, and no application-level heartbeat. The server answers a
+  WebSocket `Ping` frame with a `Pong` and ignores client text and binary completely. Connect and
+  read.
+</Callout>
 
-The server sends `{ "type": "ping" }` every 30s. Clients should respond with
-`{ "type": "pong" }` to keep the connection. Failure to respond within 90s
-results in the server closing the connection.
+One broadcast channel fans out to every client. A client that cannot keep up skips messages
+rather than being disconnected, so the stream is best-effort with no replay - fetch history
+over REST, then connect for live updates. On daemon shutdown the server sends a `Close`
+frame first, which is what tells the dashboard to start looking for the successor.
 
-## Reconnection
+## The frames
 
-On disconnect, reconnect with backoff. The stream is "best effort" — there's no
-event replay from the past. Use the REST API to fetch historical state, then
-subscribe for live updates.
+Frames are loose JSON objects. Most carry a `type`; three do not.
+
+### proxy_evaluation, from the supervisor
+
+The dominant frame, one per scored call in a supervised session:
+
+<CodeBlock
+  language="json"
+  title="proxy_evaluation (supervisor)"
+  code={`{
+  "type": "proxy_evaluation",
+  "session_id": "9c4f...",
+  "tool_name": "claude-code",
+  "project_name": "api",
+  "call_type": "FileRead(/home/u/.ssh/config)",
+  "call_id": "9c4f...:supervisor:claude-code",
+  "plugin_id": "supervisor:claude-code",
+  "composite_score": 4.2,
+  "score": 4.2,
+  "action": "queue",
+  "evaluation_time_ms": 0.08,
+  "filter_results": [ { "filter_name": "sensitive-path-heuristic", "score": 4.0 } ],
+  "reason": "Score 4.2 in escalation zone",
+  "timestamp": "2026-08-24T09:14:23.481920123+00:00"
+}`}
+/>
+
+`score` is a duplicate of `composite_score`; prefer `composite_score`. `filter_results`
+here carries only `filter_name` and `score` - no severity, no message. When the session is
+running with `interactive_queue_action = "log"`, `action` is the literal string
+`allow (logged)`.
+
+A DNS infrastructure failure emits the same type with `action` set to `deny`, a score of 0,
+a `call_id` ending `:dns-infrastructure`, and an empty `filter_results`. It is rate-limited
+to one every 30 seconds, because an outage denies every lookup the tool makes.
+
+### proxy_evaluation, from the agent loop
+
+The same type name, a different shape. `grith run` and the REPL emit `type`, `call_id`,
+`timestamp`, `composite_score`, `action`, `evaluation_time_ms` and `filter_results` - with
+`rule_id`, `matched`, `severity` and `message` on each result, but **only for filters that
+matched**. There is no `session_id`, so these frames never appear on
+`/ws/supervisor/{id}`. Match on the fields you need, not on the type name alone.
+
+### digest_queued, digest_reviewed, digest_escalated
+
+Each carries the whole item:
+
+<CodeBlock
+  language="json"
+  title="digest_queued"
+  code={`{ "type": "digest_queued", "item": { "id": "7d1f...", "composite_score": 4.2, "status": "pending" } }`}
+/>
+
+`item` is the full digest item, the same shape [`GET /api/digest`](/docs/api/digest)
+returns.
+
+### server_shutdown
+
+`{"type": "server_shutdown", "message": "Dashboard server is shutting down"}`, sent just
+before the daemon stops.
+
+### Three frames with no type field
+
+The supervisor emits `scoped-allow`, `learned` and `scoped-deny` as the `action` of a frame
+that has **no `type` key at all**. They carry `session_id`, `tool_name`, `call_type`
+(prefixed `Scoped:`, `Learned:` or `Blocked:`), `plugin_id`, `score`, `action`, `reason`
+and `timestamp`. They render fine in the exec TUI, and a strict `type`-based parser will
+drop them.
 
 ## See also
 
-- [`grith log --tail`](/docs/cli/log)
 - [API overview](/docs/api/overview)
-- [Notification security model](/docs/security/notification-security)
+- [Daemon IPC](/docs/api/ipc) - `POST /api/ipc/events`, the only way in

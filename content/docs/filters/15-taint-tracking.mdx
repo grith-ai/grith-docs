@@ -1,0 +1,95 @@
+---
+title: '15. Taint tracking'
+description: 'Sensitive data read earlier in the session, correlated with the call that could send it out.'
+section: 'filters'
+order: 15
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/15-taint-tracking.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 3, context |
+| **Score** | 1.5 - 5.0 |
+| **Source** | `crates/grith-proxy/src/filters/taint.rs` |
+| **Config** | `proxy.filters.taint.enabled` (default `true`), plus two spawn flags |
+
+A read of `~/.aws/credentials` is one thing. A POST twenty seconds later is another. Taint is
+what connects them.
+
+Reading a sensitive path registers taint on the session. A later call to a sink - HTTP,
+socket, shell, spawn - is scored by the level of taint the session carries.
+
+## Levels
+
+| Level | A path containing |
+| --- | --- |
+| **High** | `.ssh`, `id_rsa`, `id_ed25519`, `private_key`, `shadow` |
+| **Medium** | `.env`, `.aws`, `.gnupg`, `credentials`, `secrets`, `.kube/config` |
+| **Low** | any other sensitive source: `token`, `passwd`, `.netrc`, `.npmrc`, `.pypirc`, `.docker/config.json`, `.bash_history`, `.zsh_history` |
+
+Classification is a substring test on the lowercased path, checked high tier first. So
+`.git-credentials` lands on Medium via `credentials`, and a read anywhere under `~/.ssh/` is
+High whatever the filename.
+
+## Sink scores
+
+| Sink | High | Medium | Low |
+| --- | --- | --- | --- |
+| `HttpRequest` POST, PUT, PATCH | 5.0 | 4.0 | 3.0 |
+| `HttpRequest` GET, HEAD, and friends | 5.0 | 3.0 | - |
+| `NetConnect` | 5.0 | 3.0 | 3.0 |
+| `ShellExec`, `ProcessSpawn` | 3.0, on data-flow evidence - see below | | |
+| A control-class unix socket | 3.0, and only when the connecting process itself read tainted data | | |
+
+A control-class socket is the session D-Bus, X11, tmux or screen. Capping it at 3.0 keeps it
+a human decision rather than an automatic deny: at the full session-level tiers, `gh auth
+token` reading the keyring turned into a silent deny the moment anything else in the session
+was tainted.
+
+## The proximity bonus
+
+If no taint chain fires but a sensitive file was read within the last 30 seconds, an HTTP
+request or socket connect picks up **1.5** as `proximity-sensitive-read`. It is a weaker
+temporal signal: not enough to queue on its own, enough to matter alongside anything else.
+
+## What fires on a spawn
+
+Two defaults changed what a spawn under taint costs, and both are on:
+
+- `proxy.spawn.taint_data_flow_only` (default `true`) - a spawn only scores when there is
+  actual evidence of data flow toward an exfil-capable sink: argv references a tainted path,
+  argv references a shell variable derived from a tainted read, the binary is on the curated
+  outbound-capable list, or the command text matches an exfil pattern naming a tainted path.
+  A build spawning `rustc` a thousand times under taint no longer scores.
+- `proxy.spawn.taint_outbound_requires_data_flow` (default `true`) - the outbound-binary
+  condition needs a destination argument too, so `curl --version` is not a sink.
+
+A spawn that does satisfy one of those conditions scores 3.0.
+
+## Scope and lifetime
+
+Taint entries expire an hour after registration. Scope is per conversation when the call
+carries a conversation id, and per supervised session otherwise - the two namespaces never
+collide, so nothing bleeds across sessions.
+
+Taint follows a logical information flow, which is why it honours a conversation across
+daemon sessions where [rate-limit](/docs/filters/17-rate-limiting) and
+[behavioural](/docs/filters/14-behavioural-anomaly) deliberately do not.
+
+Registering **high** taint also arms sticky session containment for the rest of the session.
+Medium does not.
+
+## What it cannot see
+
+grith does not trap `read` or `write`, so taint tracks *which paths were touched*, never what
+came out of them. A read of `~/.aws/credentials` marks the session regardless of whether the
+file was empty. This is a coarse over-approximation, and it is the honest one: the alternative
+is inspecting content grith deliberately never reads.
+
+## See also
+
+- [16. Session containment](/docs/filters/16-session-containment) - what a high taint arms
+- [Taint tracking](/docs/concepts/taint-tracking) - the mechanism in full

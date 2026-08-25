@@ -1,193 +1,180 @@
 ---
-title: "Logging & audit retention"
-description: "Where logs live, how big they grow, and how to manage retention."
-section: "ops"
+title: 'Logging and audit retention'
+description: 'Where grith writes its logs, what the audit database records, and how long any of it is kept.'
+section: 'ops'
 order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-08-24"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/logging-and-audit-retention.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/logging-and-audit-retention.mdx'
 ---
 
-grith produces two kinds of log: the **operational log** (daemon health,
-errors, configuration changes) and the **audit log** (every supervised call
-decision). They live in different places and have different retention
-characteristics.
+grith writes two different things. The operational log is for debugging grith
+itself. The audit log is the tamper-evident record of every decision it made,
+and it is the one with retention rules.
 
 ## Operational log
 
-| Location | Purpose | Format |
-| --- | --- | --- |
-| stderr (foreground daemon) | Live | Text |
-| `~/.local/share/grith/daemon.log` (detached) | Rotating | Text |
-| journald (systemd) | Live & retained | Structured |
+| Where                                 | What                                                |
+| ------------------------------------- | --------------------------------------------------- |
+| stderr                                | Live output at `general.log_level`, default `info`  |
+| `~/.local/share/grith/supervisor.log` | WARN and above, always                              |
+| `~/.config/grith/tui.log`             | stderr while the `grith exec` TUI owns the terminal |
 
-Tune verbosity:
+`general.log_level` takes `trace`, `debug`, `info`, `warn` or `error`. Override
+it for one run with `--log-level`, or for a shell with `GRITH_LOG_LEVEL`.
 
-```toml
-[general]
-log_level = "info"     # "trace" | "debug" | "info" | "warn" | "error"
-```
-
-`trace` is verbose enough to noticeably slow the supervisor. Use `debug` for
-filter tuning; leave at `info` otherwise.
-
-Operational log rotation defaults: 10MB cap, 5 generations.
+`supervisor.log` holds its own file descriptor and captures WARN and above
+whatever the log level says and whatever `grith exec` does to stderr. That is
+deliberate: when the TUI is up, it is the only place warnings land. It is opened
+in append mode and **never rotated** - if it grows, truncate it yourself.
 
 ## Audit log
 
-The big one. Lives at `~/.local/share/grith/audit/audit.db`. Each record is
-~200–500 bytes. A busy agent (~50 calls/minute) produces:
+`~/.local/share/grith/audit/audit.db`, a SQLite database in WAL mode. The same
+directory holds `digest.db`, `writer.lock`, and the `cold/` archive directory.
+`general.audit_dir` moves all of it.
 
-| Window | Approx size |
-| --- | --- |
-| 1 hour | ~1.5MB |
-| 1 day | ~40MB |
-| 1 week | ~250MB |
-| 1 month | ~1GB |
-| 1 year | ~12GB |
+**One writer, enforced by the kernel.** The daemon takes an exclusive `flock` on
+`writer.lock` and holds it for its lifetime, so exactly one process can write,
+verify-with-writes or run retention. Every other command opens the database
+read-only and says so. That is why `grith audit`, `grith log` and `grith digest`
+give you a read-only view while the daemon is up.
+
+**Every row is hash-chained.** Each record carries its own hash, its
+predecessor's hash and a chain sequence number, so a removed or edited row shows
+up as a fork or a gap. Three frozen canonical hash forms are dispatched on each
+row's recorded version, which means a database written across several grith
+versions still verifies end to end.
+
+<Callout type="warning" title="A broken chain stops sessions">
+  If the chain cannot be verified at startup, the daemon quarantines it: audit writes are refused
+  and no new supervised session is admitted. `grith audit diagnose` is the one audit command that
+  still works in that state. Startup never rewrites the chain to make a problem go away.
+</Callout>
+
+<Terminal>
+{`$ grith audit diagnose
+Chain status: writable
+
+Full verification: chain is empty.
+
+Segments: 1 (continuous history)
+
+Duplicate sequences: none.
+Sequence gaps: none.
+
+Assessment: no integrity problems detected.`}
+</Terminal>
+
+## What gets recorded
+
+`audit.completeness` sets how much routine activity is written:
+
+| Value       | Records                                                                |
+| ----------- | ---------------------------------------------------------------------- |
+| `decisions` | Only proxy-evaluated events                                            |
+| `spawns`    | Plus a compact row per routine process spawn. **Default**              |
+| `io`        | Plus compact rows for routine file reads and writes, about +100 MB/day |
+| `all`       | Plus noise-path events, about +500 MB/day                              |
+
+Compact rows carry the call type, the supervised pid and tool, and a short
+argument summary; they omit the filter results, filter scores and composite
+score. The dashboard hides them until you turn on "Show routine activity".
+
+A full row records the timestamp, session, tool call type, an argument summary
+and argument hash, the composite score, the proxy action and enforcement
+outcome, the per-filter results and scores, the decision reason, the supervised
+tool and pid, the project name, LLM provider, model, token counts and estimated
+cost, and the chain fields.
+
+It does not record content. grith never traps `read` or `write`, so there is
+nothing to record: a file write's content hash is a hash of the **path**, not of
+the data. Prompts, model output and typed messages are not captured either.
 
 ## Retention
 
-Those figures are the raw rate at which records accumulate; the active database
-does not grow without bound, because grith prunes it on a schedule. The active
-audit database keeps a bounded window of recent records — older records are
-archived (when cold storage is enabled) and then deleted from the active
-database in a contiguous prune that preserves the audit chain's integrity.
-Retention lives under the `[audit]` section:
+Retention runs on its own thread inside the daemon, once at startup and then
+every `prune_interval_hours`. None of these keys appear in the shipped
+`config/default.toml`; they are code defaults you can set yourself.
 
-```toml
-[audit]
-retain_full_days     = 30     # days of records kept in the active database
-                              # (0 disables retention — keep everything)
-retain_compact_days  = 7      # reserved; the single hash chain currently
-                              # prunes on one cutoff, so this tracks
-                              # retain_full_days today
-cold_storage_enabled = true   # archive pruned records before deleting them
-prune_interval_hours = 24     # how often the prune runs (0 = once on startup)
-```
+<ConfigExample
+  code={`[audit]
+retain_full_days     = 30    # 0 disables retention entirely
+cold_storage_enabled = true  # archive before deleting
+prune_interval_hours = 24    # 0 = prune once on startup only`}
+/>
 
-The daemon prunes once on startup and then every `prune_interval_hours`. With
-`retain_full_days = 0`, nothing is ever pruned and the active database keeps
-every record.
+A prune takes a contiguous prefix of rows older than the cutoff, writes them to
+`cold/YYYY-MM-DD.jsonl.zst` as date-partitioned zstd-compressed NDJSON, deletes
+them, and moves the chain checkpoint to the boundary hash so what remains still
+verifies. Contiguous is the point: the single chain only supports prefix prunes.
+The archive is written before the delete, so an interrupted prune leaves records
+in both places rather than losing them.
 
-## Cold archives
+`retain_compact_days` is parsed but not independently enforced, for the same
+reason - the effective cutoff for every row is `retain_full_days`.
 
-When `cold_storage_enabled = true`, each prune first writes the records it is
-about to delete to
-`~/.local/share/grith/audit/cold/YYYY-MM-DD.jsonl.zst` — date-partitioned,
-zstd-compressed NDJSON — and only then removes them from the active database.
-The archive is written before the delete, so an interrupted prune leaves the
-records in both places rather than losing them.
+The same thread prunes the local analytics projection at 90 days, and it always
+lets the projection catch up before deleting any row, so nothing is pruned
+before it has been counted.
 
-## Cloud analytics
+<Callout type="info" title="Retention prunes on age alone">
+  Earlier versions refused to prune records the cloud had not acknowledged. The raw audit-record
+  sync is gone, so that guard is gone with it - v0.3.1 prunes purely on age. On older versions the
+  guard silently disabled retention on any install with no cloud component, which is how a 1.4 GiB
+  database happened.
+</Callout>
 
-On a paid plan the daemon also publishes analytics to the team dashboard. What
-goes up is **aggregated** — decision counts, score histograms, per-filter
-activity, labels and security events. Audit records themselves are never
-uploaded; there is no raw-record sync, and the local audit log stays the only
-place the records exist. See
-[Analytics & cost](/docs/pro/analytics-and-cost) for the full payload and
-[`grith analytics`](/docs/cli/analytics) to turn it off.
-
-Retention differs on each side:
-
-| Data | Retention |
-| --- | --- |
-| Local active audit database | 30 days (`retain_full_days`) |
-| Local cold archives | No automatic expiry; user-managed |
-| Local Pro analytics projection | 90 days |
-| Cloud rollups and security events | 90 days |
-| Cloud analytics archive, active | 90 days |
-| Cloud analytics archive, superseded revisions | 7 days |
-
-## Integrity
-
-Two different guarantees, worth keeping apart:
-
-- **The local audit log is hash-chained.** Each record links to the hash of its
-  predecessor, so a removed or edited record shows up as a fork or a gap. That
-  makes the local log tamper-evident: `grith audit diagnose` verifies the chain
-  read-only, and `grith audit compact` re-verifies it after rewriting the file.
-  Retention prunes on a contiguous cutoff precisely so the chain survives.
-- **The cloud analytics archive is checksum-verified, not signed.** Before
-  activating an uploaded object the server verifies its size, SHA-256 checksum,
-  encryption and key identity. Device signing keys exist in the protocol but are
-  not yet verified, so archived objects are not signed, immutable or
-  tamper-proof.
+With `cold_storage_enabled = false`, pruned rows are deleted with no archive and
+a log line says so. Cold archives themselves have no automatic expiry: they are
+yours to manage.
 
 ## Reclaiming disk space
 
-Deleting rows from SQLite does not shrink the database file: the freed pages go
-on an internal freelist and are reused by later writes, so the file can stay
-large after a prune. To rewrite the database and reclaim that space, run:
+Deleting rows from SQLite does not shrink the file - freed pages go on an
+internal freelist and are reused by later writes. To rewrite the database and
+give the space back:
 
-```
-grith audit compact
-```
+<Terminal command="grith audit compact" />
 
-`compact` rewrites the database into a fresh copy, verifies the copy's audit
-chain, and atomically swaps it in — on any failure the original is left
-untouched. It is a manual maintenance operation and never runs on a timer.
-Because it rewrites the file, it needs exclusive write access: stop the daemon
-first (`grith daemon stop`), and it refuses to run on a quarantined chain.
+`compact` rewrites into a temporary copy, verifies that copy's chain, and
+atomically swaps it in; on any failure the original is untouched. It prints
+before and after sizes. It is manual maintenance and never runs on a timer, and
+it has two hard gates: no daemon may be running (it needs the writer lock), and
+it refuses on a quarantined chain so evidence is preserved.
 
-To inspect the audit chain's integrity — the verification result and any forks
-or gaps — without modifying anything, use the read-only `grith audit diagnose`.
+## Export
 
-## Export and offload
+<Terminal command="grith audit export --format json --limit 5000 > audit.json" />
 
-Export records for offline retention or ad-hoc analysis:
+`--format` takes `json` or `csv`, with `--offset` and `--limit` (default 0 and
+1000, newest first). The CLI's CSV is a reduced five-column form - timestamp,
+plugin, call type, decision, score. The dashboard's export endpoint gives the
+full column set and can stitch cold archives back in.
 
-```
-grith audit export --format json > audit.jsonl
-grith audit export --format csv --offset 0 --limit 5000 > audit.csv
-```
+For a live view of a session as it runs, use [`grith log --tail`](/docs/cli/log).
 
-`export` takes `--format` (`json` or `csv`), `--offset`, and `--limit`. Records
-removed by retention are already kept automatically in the cold archive
-described above, so there is no separate "prune to offload" step.
+## What leaves the machine
 
-Or stream to a SIEM continuously (Enterprise):
-[SIEM integration](/docs/enterprise/siem-integration).
+Audit records do not. There is no raw-record upload, and the local audit log is
+the only place they exist. On a paid plan the daemon publishes an aggregated
+analytics projection - decision counts, score distributions, per-filter activity,
+sessions, model usage and cost - and never commands, paths, prompts or file
+contents. Once a UTC day closes, that same day's aggregated rows are also
+uploaded as a single daily archive file to encrypted private storage; what the
+archive contains is stated in the consent summary before sync turns on.
+`general.audit_sync = false` turns all of it off.
 
-## What's in an audit record
-
-```json
-{
-  "id": "uuid-...",
-  "ts": "...",
-  "session": "...",
-  "operation": "file_read",
-  "target": "...",
-  "decision": "allow|queue|deny",
-  "resolved": "allow|deny|null",
-  "composite_score": 4.2,
-  "filters": [{ "name": "...", "score": ... }, ...],
-  "profile": "...",
-  "pid": 17421,
-  "command": "claude",
-  "user": "alice",        // for multi-user setups
-  "annotations": {...}    // free-form, e.g. from filter contributions
-}
-```
-
-Sensitive content (file bytes, payload contents) is **not** stored — grith
-records the *fact* of each operation, never the data it moved. How much routine
-activity is recorded is controlled by `audit.completeness` (`decisions`,
-`spawns`, `io`, `all`); higher tiers record more events for forensics at the
-cost of database growth, but none of them capture file or payload bytes.
-
-## Privacy
-
-The audit log captures *what the agent did*. By design it doesn't include
-prompts, model outputs, or human-typed messages. For full session capture
-(e.g. for compliance), see Pro's session-recording feature (planned v0.2).
+| Data                             | Kept for                             |
+| -------------------------------- | ------------------------------------ |
+| Local audit database             | `retain_full_days`, default 30 days  |
+| Local cold archives              | No automatic expiry; yours to manage |
+| Local analytics projection       | 90 days                              |
+| Cloud rollups and daily archives | 90 days                              |
 
 ## See also
 
-- [`grith audit`](/docs/cli/audit) — CLI for browsing/exporting
-- [Audit API](/docs/api/audit)
-- [`[general]` config](/docs/config/general)
-- [Analytics & cost (Pro)](/docs/pro/analytics-and-cost)
-- [SIEM integration](/docs/enterprise/siem-integration)
+- [`grith audit`](/docs/cli/audit)
+- [`[audit]` config](/docs/config/audit)
+- [Analytics](/docs/pro/analytics)

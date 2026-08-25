@@ -1,62 +1,61 @@
 ---
-title: "grith completions"
-description: "Print a shell tab-completion script for grith to stdout."
-section: "cli"
+title: 'grith completions'
+description: 'Print a shell completion script to stdout. Works even when your config is broken.'
+section: 'cli'
 order: 18
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-08-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/completions.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/completions.mdx'
 ---
 
 ```
 grith completions <SHELL>
 ```
 
-Print a shell tab-completion script for `grith` to stdout. Supported shells are
-`bash`, `zsh`, `fish`, `elvish`, and `powershell`. The script is written to stdout
-only — nothing is installed — so you pipe or redirect it wherever your shell loads
-completions from.
+Writes a completion script for `bash`, `zsh`, `fish`, `elvish` or `powershell` to stdout.
+Nothing is installed for you - redirect it where your shell expects it.
 
-## Arguments
+<Terminal>
+{`$ grith completions bash | head -4
+_grith() {
+    local i cur prev opts cmd
+    COMPREPLY=()
+    if [[ "\${BASH_VERSINFO[0]}" -ge 4 ]]; then`}
+</Terminal>
 
-| Argument | Required | What it is |
-| --- | --- | --- |
-| `<SHELL>` | yes | Target shell: `bash`, `zsh`, `fish`, `elvish`, or `powershell`. |
+## Installing it
 
-## Examples
-
-Load bash completions for the current session:
-
-```
-source <(grith completions bash)
-```
-
-Install them permanently (bash):
-
-```
+```bash
+# bash
 grith completions bash > ~/.local/share/bash-completion/completions/grith
-```
 
-zsh — write to a directory on your `$fpath`:
+# zsh - anywhere on your fpath
+grith completions zsh > "${fpath[1]}/_grith"
 
-```
-grith completions zsh > ~/.zfunc/_grith
-```
-
-fish:
-
-```
+# fish
 grith completions fish > ~/.config/fish/completions/grith.fish
 ```
 
-## Notes
+Regenerate after upgrading grith - the script is a snapshot of the command tree at the
+moment you ran it.
 
-- The command emits the script and exits; it doesn't touch your config or start the
-  daemon, so it works regardless of config state.
-- Regenerate the script after upgrading grith to pick up new commands and flags.
+<Callout type="info" title="It runs before anything else">
+`completions` is handled before the config is loaded and before logging is initialised, so
+it still works when `config.toml` is broken. That makes it a useful way to confirm the
+binary itself is fine.
+</Callout>
+
+An unsupported shell is a usage error, exit `2`:
+
+<Terminal>
+{`$ grith completions foo
+error: invalid value 'foo' for '<SHELL>'
+  [possible values: bash, elvish, fish, powershell, zsh]
+
+For more information, try '--help'.`}
+</Terminal>
 
 ## See also
 
-- [CLI overview](/docs/cli/overview) — every command and global flag
-- [Installation](/docs/start/installation)
+- [`grith config`](/docs/cli/config) - what a broken config looks like

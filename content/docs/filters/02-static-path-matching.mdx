@@ -1,88 +1,72 @@
 ---
-title: "2. Static path matching"
-description: "Fast Aho-Corasick scan of paths against curated denylists and allowlists."
-section: "filters"
-order: 11
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/02-static-path-matching.mdx"
+title: '2. Static path matching'
+description: 'Fifteen anchored path rules from paths.toml - the curated list of files that are always worth a decision.'
+section: 'filters'
+order: 2
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/02-static-path-matching.mdx'
 ---
 
 | | |
 | --- | --- |
-| **Phase** | Static |
-| **Score range** | +2 to +5 |
-| **Module** | `crates/grith-proxy/src/filters/path_match.rs` |
-| **Config file** | `config/filters/paths.toml` |
+| **Phase** | 1, static |
+| **Score** | 3.0, 4.0 or 5.0 |
+| **Source** | `crates/grith-proxy/src/filters/path_match.rs` |
+| **Config** | `config/filters/paths.toml` - 15 rules |
 
-Path matching is the hot path: every file operation passes through it. The
-implementation is an Aho-Corasick automaton compiled once at start, so matching
-against thousands of patterns is a single linear pass over the path bytes.
+The curated list. Fifteen rules, each naming a path shape, the operations it applies to, and
+a score. Every rule is tested and the highest-scoring match wins - overlapping rules like
+`~/.ssh/*` and `~/.ssh/id_*` are both considered, not short-circuited.
 
-## What it catches
+## The shipped rules
 
-Curated lists of "obviously sensitive" and "obviously routine" paths:
+| Rule | Pattern | Operations | Score |
+| --- | --- | --- | --- |
+| `ssh-private-key` | `~/.ssh/id_*` | read, write, delete | 5.0 |
+| `etc-shadow` | `/etc/shadow*` | read, write | 5.0 |
+| `gnupg` | `~/.gnupg/*` | read, write, delete | 4.0 |
+| `aws-credentials` | `~/.aws/*` | read, write, delete | 4.0 |
+| `gcloud-config` | `~/.config/gcloud/*` | read, write, delete | 4.0 |
+| `pem-files` | `*.pem` | read, write, delete | 4.0 |
+| `key-files` | `*.key` | read, write, delete | 4.0 |
+| `terraform-state` | `*.tfstate` | read, write, delete | 4.0 |
+| `cargo-credentials-store` | `~/.cargo/credentials*` | read, write, delete | 4.0 |
+| `git-credentials-store` | `.git-credentials` | read, write, delete | 4.0 |
+| `git-credentials-store-xdg` | `~/.config/git/credentials` | read, write, delete | 4.0 |
+| `ssh-dir` | `~/.ssh/*` | write, delete, list | 3.0 |
+| `env-file` | `.env` | read, write, delete | 3.0 |
+| `env-file-variants` | `.env.*` | read, write, delete | 3.0 |
+| `etc-system-write` | `/etc/*` | write, delete | 3.0 |
 
-```toml
-# config/filters/paths.toml
-[[deny]]
-path = "/etc/shadow"
-score = 5.0
-reason = "system password database"
+## Patterns are anchored
 
-[[deny]]
-path = "/.ssh/"          # any nested
-score = 3.0
+A pattern is compiled once, with its anchor preserved. `/etc/*` means the real `/etc`, not
+any directory called `etc` further down a path - so a vendored `node_modules/aria-query/lib/etc/`
+does not match. `*.pem` globs the basename, so `/p/.pem-notes/a.js` does not match. `~/`
+resolves against the user's home directory.
 
-[[deny]]
-path = ".aws/credentials"
-score = 4.0
+Two rules carry an `exclude` list. `.env` and `.env.*` skip `.env.example`, `.env.sample`,
+`.env.template`, `.env.dist` and `.env.defaults` - committed scaffolding holds placeholders.
+`.env.local` and `.env.production` are deliberately not excluded; they routinely hold real
+secrets.
 
-[[allow]]
-path = "${PROJECT_DIR}/"
-score = -1.0
-```
+## Every path a call touches is judged
 
-The shipping defaults cover the common sensitive paths on Linux: system password
-files, SSH directories, cloud credential locations, browser saved-passwords,
-keyrings, GPG home, kubectl config, dotenv files in non-project locations.
+A rename carries two paths, a link carries the target and the link name. Each is scored with
+its own operation and the worst result wins, so a link planted at a protected location is
+priced like the write it substitutes for.
 
-## Allowlist contributions
+## Adding your own rules
 
-Routine paths can score *negative*, pulling the composite down. The profile system
-populates this layer with `routine_paths` from the active profile — see
-[Supervisor profiles](/docs/concepts/supervisor-profiles).
-
-## Override patterns
-
-Users add patterns in `~/.config/grith/filters/paths.toml`. The user file is layered
-on top of the shipping defaults; entries with the same `path` replace defaults.
-
-```toml
-# ~/.config/grith/filters/paths.toml
-[[allow]]
-path = "/etc/internal-cert/"
-score = -2.0
-reason = "company-internal cert store, OK to read"
-```
-
-## Performance
-
-Aho-Corasick is sub-microsecond per path against thousands of patterns. The filter
-is essentially free at the rates real agents hit it.
-
-## Tuning
-
-- **Too noisy** — usually the cause is patterns that match more than intended (e.g.
-  `.env` matching `something.env.example`). Tighten patterns.
-- **Too quiet** — add patterns. The DLP gate ([10](/docs/filters/10-dlp-gate)) and
-  secret scanner ([7](/docs/filters/07-secret-credential-scanning)) compensate for
-  content-based detection, but path matching is the cheap first line.
+Copy `config/filters/paths.toml`, add `[[rules]]` entries, and put the file at
+`./config/filters/paths.toml` relative to the working directory the daemon starts in. That
+file replaces the shipped one outright - it is not merged - so start from a copy. There is no
+`~/.config/grith/filters/paths.toml` layer. See
+[Filter config files](/docs/config/filter-config-files).
 
 ## See also
 
-- [`config/filters/paths.toml`](/docs/config/filter-config-files)
-- [Filter 3: Sensitive path heuristic](/docs/filters/03-sensitive-path-heuristic) —
-  a fuzzier complement
-- [Supervisor profiles](/docs/concepts/supervisor-profiles)
+- [3. Sensitive path heuristic](/docs/filters/03-sensitive-path-heuristic) - the built-in complement
+- [4. Allowlist / denylist](/docs/filters/04-allowlist-denylist) - your own exceptions

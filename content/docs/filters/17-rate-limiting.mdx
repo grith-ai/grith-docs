@@ -1,0 +1,77 @@
+---
+title: '17. Rate limiting'
+description: 'Per-category call volume, gated so that only risk-bearing operations can escalate.'
+section: 'filters'
+order: 17
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/17-rate-limiting.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 3, context |
+| **Score** | 1.0, 2.0 or 3.0 |
+| **Source** | `crates/grith-proxy/src/filters/rate_limit.rs` |
+| **Config** | `proxy.filters.rate_limit.enabled` and `proxy.rate_limit.risk_gated_burst` - both default `true` |
+
+Per-session, per-category counters over a rolling minute and a 5-second burst window.
+
+| Rule | Fires when | Score |
+| --- | --- | --- |
+| `burst-detected` | the burst threshold is hit inside 5 seconds | **3.0** |
+| `rate-exceeded` | the per-minute limit is passed | **2.0** |
+| `rate-approaching` | over 80% of the per-minute limit | **1.0** |
+
+The burst check runs first and wins.
+
+## The limits
+
+Only seven categories have limits. A call in any other category is not counted and never
+scores here.
+
+| Category | Per minute | Burst in 5s |
+| --- | --- | --- |
+| `file_read` | 60 | 15 |
+| `dir_list` | 60 | 15 |
+| `http_request` | 60 | 15 |
+| `file_write` | 30 | 10 |
+| `file_append` | 30 | 10 |
+| `file_delete` | 20 | 5 |
+| `shell_exec` | 20 | 5 |
+
+## Risk-gated bursting
+
+`proxy.rate_limit.risk_gated_burst` defaults to **`true`**. With it on, a call is only counted -
+and only scored - when the operation itself bears risk:
+
+- the call arrives with taint attached, or
+- it is an `HttpRequest` or `NetConnect`, or
+- it is a `ProcessSpawn` the supervisor marked outbound-capable.
+
+Everything else is skipped before it is even recorded, so a burst of routine churn - a build
+writing object files, `.git` metadata, `~/.cache` - never inflates the window that a later
+risky call of the same category is measured against.
+
+<Callout type="warning" title="What that gives up">
+With the gate on, a fast untainted delete spree does not score here. That case is covered by
+the supervisor's target-aware mass-destruction signal instead. Setting
+`proxy.rate_limit.risk_gated_burst = false` restores the legacy behaviour, where every
+category's volume counts - and with it the routine-churn false positives the gate exists to
+remove.
+</Callout>
+
+## Scope
+
+Counters are keyed by supervised session and category, so a burst in one session does not
+raise the counter for the next. Unlike [taint](/docs/filters/15-taint-tracking), rate limiting
+does not follow a conversation across sessions - a rate window is per-process-lifetime, and a
+new session correctly starts with a fresh budget.
+
+Timestamps older than a minute are pruned on every call, so the window is genuinely rolling.
+
+## See also
+
+- [18. Egress rate](/docs/filters/18-egress-rate) - the outbound-specific volume filter
+- [14. Behavioural anomaly](/docs/filters/14-behavioural-anomaly)

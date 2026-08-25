@@ -1,56 +1,76 @@
 ---
-title: "Canaries"
-description: "REST endpoints for managing canary tokens."
-section: "api"
-order: 6
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/canaries.mdx"
+title: 'Canaries'
+description: 'List, add, rotate and remove canary tokens - and what happens to them when the daemon restarts.'
+section: 'api'
+order: 7
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/canaries.mdx'
 ---
 
-REST surface for the canary registry. CLI equivalent: [`grith canary`](/docs/cli/canary).
+| Method | Path                        | Auth            |
+| ------ | --------------------------- | --------------- |
+| GET    | `/api/canaries`             | Dashboard token |
+| POST   | `/api/canaries`             | `x-grith-csrf`  |
+| POST   | `/api/canaries/{id}/rotate` | `x-grith-csrf`  |
+| DELETE | `/api/canaries/{id}`        | `x-grith-csrf`  |
 
-<ApiRouteTable group="Canaries" showHeadings={false} />
+<Callout type="warning" title="This registry is in memory">
+  Anything added through these routes lives in the running daemon and is gone when it stops. The
+  only durable registration is `[[canary.tokens]]` in `config/filters/canary.toml`, picked up at
+  daemon start. See [Canary tokens](/docs/concepts/canary-tokens).
+</Callout>
 
-## Canary shape
+## The canary shape
 
-```json
-{
-  "id": "ca-7f1...",
-  "label": "aws-prod-decoy",
-  "format": "aws_secret",
-  "placed_at": "/home/you/.aws/credentials_backup",
-  "registered_at": "2026-05-10T11:00:00Z",
-  "fires": 0
-}
-```
+Three fields, and the token value is not one of them:
 
-The actual token value is never returned by the API — it would defeat the trap.
+<CodeBlock
+  language="json"
+  title="A canary, as the API returns it"
+  code={`{ "id": "5f2c9e1a-...", "label": "aws-prod-decoy", "value_prefix": "9a3f..." }`}
+/>
 
-## `POST /canaries`
+`value_prefix` is the first four characters of the value with an ellipsis after them, and
+nothing more. Returning the value would defeat the trap - a compromised dashboard read would
+hand an agent the exact string it must not exfiltrate.
 
-Create + register a new canary. Request:
+`GET /api/canaries` wraps them as `{items, total}`.
 
-```json
-{
-  "format": "aws_secret",
-  "place": "/home/you/.aws/credentials_backup",
-  "label": "aws-prod-decoy"
-}
-```
+## POST /api/canaries
 
-For `format: "custom"`, also include `"value": "<literal token>"`.
+`label` is required and must not be empty. Then either supply `value` or set
+`generate: true`, but not both:
 
-Response: the canary shape (without the value).
+<CodeBlock
+  language="json"
+  title="POST /api/canaries"
+  code={`{ "label": "aws-prod-decoy", "generate": true }`}
+/>
 
-## `POST /canaries/{id}/rotate`
+A generated value is 48 hex characters. Success is `201 Created` with the canary shape. An
+empty label is `400 INVALID_LABEL`; supplying neither `value` nor `generate`, both at once,
+or an empty `value`, is `400 INVALID_VALUE`.
 
-Generate a new token of the same format/label, replace the file in place, update
-the registration.
+## `POST /api/canaries/{id}/rotate`
+
+Same body minus the label: `value` or `generate: true`. The id keeps its label and gets a
+new value, so anything that already leaked stops matching. Returns the canary shape, or
+`404 NOT_FOUND`.
+
+## `DELETE /api/canaries/{id}`
+
+`{"status": "removed", "id": "..."}`, or `404 NOT_FOUND`.
+
+## What grith does not do
+
+It never plants the token anywhere. Writing the decoy into a plausible file - a stale
+credentials backup, an unused `.env` - is entirely on you. grith only recognises the string
+when a call tries to carry it out, and scores that at 9.5, well above the deny line.
 
 ## See also
 
 - [Canary tokens](/docs/concepts/canary-tokens)
-- [Filter 11: Canary detection](/docs/filters/11-canary-secret-detection)
-- [Setting up canary tokens](/docs/guides/setting-up-canary-tokens)
+- [Filter 12: canary detection](/docs/filters/12-canary-detection)
+- [`grith canary`](/docs/cli/canary)

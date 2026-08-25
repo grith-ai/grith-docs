@@ -1,131 +1,157 @@
 ---
 title: 'Running as a daemon'
-description: 'Operations guide for long-running grith deployments — systemd, logging, restarts.'
+description: 'What the grith daemon owns, when it starts and stops itself, and the files it keeps on disk.'
 section: 'ops'
 order: 1
 tier: 'community'
-version: '0.1.0'
-lastUpdated: '2026-05-14'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/running-as-a-daemon.mdx'
 ---
 
-For multi-session, dashboard, or team deployments, run grith as a long-lived
-daemon. This guide covers process supervision, logging, and lifecycle.
+You do not normally start the daemon. `grith exec`, `grith run` and the bare
+`grith` REPL start it on demand and it shuts itself down when the last session
+ends. This page is for the times you drive it yourself.
 
-## Quick start
+One process owns everything shared: the audit database (as its exclusive
+writer), the digest queue, the security proxy and its 18 filters, the session
+registry, the canary registry, the reputation table, and the HTTP server behind
+`http://127.0.0.1:3141`. `grith exec` is a thin client over loopback HTTP - if
+it cannot reach a version-matched, authenticated daemon, the tool is never
+spawned.
 
-```
-grith dashboard start
-grith dashboard status
-```
+## Commands
 
-`grith dashboard start` runs the daemon in the background and returns immediately.
-That's it for personal use. For production, use a process supervisor.
+<Terminal>
+{`$ grith daemon --help
+Manage the grith daemon (dashboard server + shared subsystems)
 
-## systemd
+Usage: grith daemon [OPTIONS] <COMMAND>
 
-A shipping unit file lives at `contrib/systemd/grith.service` in the grith repo:
+Commands:
+  start    Start the daemon (dashboard server + shared subsystems) as a background process
+  stop     Stop the running daemon
+  restart  Restart the daemon (stop the running one, then start this build)
+  status   Check if the daemon is running
+  pair     Authorise a browser for the dashboard (mints a single-use pairing link)
+  help     Print this message or the help of the given subcommand(s)`}
+</Terminal>
 
-```ini
-[Unit]
-Description=grith — Zero Trust for AI Agents
-After=network.target
+`dashboard` is a retained alias for `daemon`, and some messages still print that
+spelling. Both work.
 
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/grith daemon start
-ExecStop=/usr/local/bin/grith daemon stop
-User=%i
-Group=%i
-Restart=on-failure
-RestartSec=10
+<Terminal>
+{`$ grith daemon status
+Dashboard is not running.
+  Start: grith dashboard start`}
+</Terminal>
 
-[Install]
-WantedBy=default.target
-```
+`status` reads `~/.config/grith/dashboard.pid`; if that file is missing it probes
+the port anyway and reports what answers - a grith daemon (naming its version), a
+foreign process, or nothing.
 
-User-level:
+## Starting and idle shutdown
 
-```
-mkdir -p ~/.config/systemd/user
-cp contrib/systemd/grith.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now grith
-```
+`grith daemon start` re-execs a detached child, then polls until a daemon of
+exactly this version answers, giving up after 12 seconds. Startup failures in the
+detached child are recorded and re-printed by the command you ran, so they are
+never silent.
 
-System-level (for shared deployments — uncommon for a per-user product):
+A daemon grith auto-started exits 30 seconds after its last session ends. An
+explicit `grith daemon start` disables idle shutdown, so that one stays up until
+you stop it; `server.idle_shutdown_seconds = 0` disables it too. Either way a
+reaper runs every 5 seconds, evicting sessions whose root process is dead and
+whose heartbeat has gone stale.
 
-```
-sudo cp contrib/systemd/grith.service /etc/systemd/system/grith@.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now grith@alice
-```
+## Stopping
 
-Use `grith@<user>` to template per-user instances.
+`grith daemon stop` posts a shutdown over the authenticated IPC channel and falls
+back to SIGTERM, waiting up to 5 seconds for the process to actually go before
+dropping the PID file. Shutdown is bounded: 8 seconds to drain in-flight work,
+then a 2-second timeout. Process exit releases the audit writer lock at the
+kernel, so even a hard kill never leaves it stuck. An orphaned daemon - listening
+with no PID file - is still stopped, by token-authenticated request.
 
-## Bind & TLS
+`daemon.token` and `daemon.json` are removed on exit. `dashboard.token` is
+deliberately kept, so browser tabs you have already authorised survive a restart.
 
-The daemon binds to `127.0.0.1:3141` by default. For LAN exposure, front it
-with a reverse proxy — see [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls).
+## Files on disk
 
-To bind to all interfaces with native TLS:
+Runtime state lives under `~/.config/grith/`:
 
-```toml
-[server]
+| File               | What it holds                                                          |
+| ------------------ | ---------------------------------------------------------------------- |
+| `dashboard.pid`    | Two lines: the pid, then the port                                      |
+| `dashboard.opened` | The daemon pid a browser tab was already opened for                    |
+| `daemon.token`     | IPC bearer token, mode `0600`, rotated on every start                  |
+| `dashboard.token`  | Browser token, mode `0600`, stable across restarts                     |
+| `daemon.json`      | Instance UUID, pid, port, version, IPC protocol version, audit DB path |
+| `reputation.toml`  | The learned reputation table                                           |
+
+There is no unix-domain socket: all IPC is loopback HTTP with the `daemon.token`
+bearer. The audit directory (`general.audit_dir`, default
+`~/.local/share/grith/audit/`) holds `audit.db`, `digest.db`, `writer.lock` and
+`cold/` - see [Logging and audit
+retention](/docs/ops/logging-and-audit-retention).
+
+## Bind and TLS
+
+The daemon binds `127.0.0.1:3141` over plain HTTP; loopback does not need TLS.
+To expose the dashboard beyond the machine, turn on native TLS:
+
+<ConfigExample
+  code={`[server]
 host = "0.0.0.0"
 
 [server.tls]
 cert_path = "/etc/grith/cert.pem"
-key_path  = "/etc/grith/key.pem"
-```
+key_path = "/etc/grith/key.pem"`}
+/>
 
-## Logging
+Both TLS keys must be set together - one alone fails to parse. A reverse proxy is
+the alternative; see [Reverse proxy and TLS](/docs/guides/reverse-proxy-tls).
 
-| Location                                     | What                               |
-| -------------------------------------------- | ---------------------------------- |
-| stderr (when foreground)                     | Live logs at `general.log_level`.  |
-| `~/.local/share/grith/daemon.log` (detached) | Rotating, 10MB cap, 5 generations. |
-| `~/.local/share/grith/audit/*.sqlite`        | Audit records (structured).        |
+## Authorising a browser
 
-For systemd-managed daemons, logs go to journald:
+grith opens a browser tab at most once per daemon instance, and skips it on
+headless or SSH sessions. To authorise another browser, a second machine, or one
+whose site data you cleared:
 
-```
-journalctl --user -u grith -f
-```
+<Terminal command="grith daemon pair" />
 
-## Restart safety
+That mints a single-use code and puts it in the URL fragment, so it never reaches
+the server. Redeeming it hands the browser the real dashboard token and consumes
+the code, which makes a screenshot of the link inert.
 
-The daemon flushes reputation and audit state before exit. A clean stop (SIGTERM)
-takes 1–5s typically. SIGKILL can drop the most recent reputation updates (the
-audit log is fsync'd per-event by default).
+## Health check
 
-In-flight digest items survive across restarts on Pro (state checkpointed to
-SQLite). On community, in-flight digest items expire via the thin-client's
-`review_timeout_seconds` (default 300s).
+`GET http://127.0.0.1:3141/api/health` needs no token, so it works as a liveness
+probe.
 
-## Resource usage
+| Field               | Meaning                                                             |
+| ------------------- | ------------------------------------------------------------------- |
+| `status`            | `healthy`, `degraded` or `unhealthy`                                |
+| `version`           | Daemon version - compare it with your CLI                           |
+| `uptime_seconds`    | Seconds since this daemon started                                   |
+| `subsystems`        | Per-subsystem status for audit, digest, proxy and supervisor        |
+| `instance_id`       | UUID regenerated on every start, so a replaced daemon is detectable |
+| `protocol_version`  | IPC contract version                                                |
+| `audit_quarantined` | Present only when the audit chain is quarantined                    |
+| `audit_read_only`   | Present only when another process owns the writer lock              |
 
-Typical idle daemon (no active sessions): ~30MB RSS, ~0.5% CPU.
+The last two are unauthenticated on purpose: `grith exec` reads them before
+starting a session, so a daemon that cannot durably record decisions is caught
+before a tool is spawned.
 
-Under a single busy session: ~80–120MB RSS depending on filter activity, ~5%
-CPU.
+## Under a service manager
 
-The biggest consumer is the SQLite audit log; for storage-bounded deployments,
-see [Logging & audit retention](/docs/ops/logging-and-audit-retention).
-
-## Health checks
-
-For load balancers / monitoring:
-
-```
-curl http://127.0.0.1:3141/health
-```
-
-Returns `200 OK` with daemon version and uptime. Use as a liveness probe.
+grith ships no service unit and does not need one - the daemon starts on demand.
+If you want it permanently up, `grith daemon start` and `grith daemon stop` are
+both synchronous, which suits a `Type=oneshot` unit with `RemainAfterExit=yes`.
+Do not point `PIDFile=` at `dashboard.pid`: it holds two lines, not one.
 
 ## See also
 
 - [`grith daemon`](/docs/cli/daemon)
 - [`[server]` config](/docs/config/server)
-- [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls)
-- [Performance & tuning](/docs/ops/performance-tuning)
+- [Daemon and sessions](/docs/concepts/daemon-and-sessions)

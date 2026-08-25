@@ -1,0 +1,115 @@
+---
+title: 'Verifying releases'
+description: 'The six files published per target, and the exact commands that prove a grith download is the one CI built.'
+section: 'ops'
+order: 5
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/verifying-releases.mdx'
+---
+
+Every grith release publishes six files per target. v0.3.1 has twelve assets:
+six for `x86_64-unknown-linux-musl` and six for `aarch64-unknown-linux-musl`.
+
+Taking `ARCHIVE` to mean `grith-0.3.1-x86_64-unknown-linux-musl.tar.gz`:
+
+| Asset                            | What it is                                                   |
+| -------------------------------- | ------------------------------------------------------------ |
+| `ARCHIVE`                        | Static musl tarball containing exactly one file, `grith`     |
+| `ARCHIVE.sha256`                 | A `sha256sum` line, ready for `sha256sum --check`            |
+| `ARCHIVE.cosign.bundle`          | Sigstore signature over the tarball                          |
+| `ARCHIVE.cdx.json`               | CycloneDX SBOM, the full transitive Rust dependency tree     |
+| `ARCHIVE.cdx.json.cosign.bundle` | Signature over the SBOM                                      |
+| `ARCHIVE.intoto.bundle`          | SLSA v1 build provenance, cosign-signed                      |
+
+Asset filenames use the bare version, with no leading `v`. Signatures are cosign
+bundles - there is no `.sig` file and no public key to fetch, because signing is
+keyless: the certificate is issued to the GitHub Actions workflow that ran the
+build, and anchored in the public Rekor transparency log.
+
+## If you used the installer
+
+It already verified the SHA-256, and a mismatch would have aborted the install.
+If `cosign` was on your PATH it also verified the tarball's sigstore bundle, and
+treated a present-but-invalid signature as fatal. Installing cosign before you
+run the installer is the cheapest way to get signature verification.
+
+## Verifying by hand
+
+<CodeBlock
+  language="bash"
+  code={`VERSION=0.3.1
+ARCHIVE=grith-\${VERSION}-x86_64-unknown-linux-musl.tar.gz
+BASE=https://github.com/grith-ai/grith/releases/download/v\${VERSION}
+
+for asset in "\${ARCHIVE}" "\${ARCHIVE}.sha256" "\${ARCHIVE}.cdx.json" \\
+"\${ARCHIVE}.cosign.bundle" "\${ARCHIVE}.cdx.json.cosign.bundle" \\
+"\${ARCHIVE}.intoto.bundle"; do
+curl -fsSL -o "\${asset}" "\${BASE}/\${asset}"
+done
+
+sha256sum --check "\${ARCHIVE}.sha256"
+
+cosign verify-blob \\
+--bundle "\${ARCHIVE}.cosign.bundle" \\
+--certificate-identity "https://github.com/grith-ai/grith/.github/workflows/release.yml@refs/tags/v\${VERSION}" \\
+--certificate-oidc-issuer "https://token.actions.githubusercontent.com" \\
+"\${ARCHIVE}"
+
+cosign verify-blob \\
+--bundle "\${ARCHIVE}.cdx.json.cosign.bundle" \\
+--certificate-identity "https://github.com/grith-ai/grith/.github/workflows/release.yml@refs/tags/v\${VERSION}" \\
+--certificate-oidc-issuer "https://token.actions.githubusercontent.com" \\
+"\${ARCHIVE}.cdx.json"
+
+cosign verify-blob-attestation \\
+--bundle "\${ARCHIVE}.intoto.bundle" \\
+--type slsaprovenance1 \\
+--certificate-identity "https://github.com/grith-ai/grith/.github/workflows/release.yml@refs/tags/v\${VERSION}" \\
+--certificate-oidc-issuer "https://token.actions.githubusercontent.com" \\
+"\${ARCHIVE}"`}
+/>
+
+Set `VERSION` to the release you actually downloaded, and swap the target for
+`aarch64-unknown-linux-musl` on arm64.
+
+The identity is the whole point of the check: it pins the exact workflow file and
+the exact tag that produced the artefact, so a signature made by any other
+workflow, repository or tag fails. GitHub's attestations API is deliberately not
+used, so verification needs nothing but `cosign` and works on any GitHub plan.
+
+<Callout type="warning" title="A failed check is a stop">
+  If `sha256sum --check` or any `cosign` command fails, do not run the binary. Report it through
+  [responsible disclosure](/docs/security/responsible-disclosure).
+</Callout>
+
+## Using the SBOM
+
+`ARCHIVE.cdx.json` is a standard CycloneDX JSON document (`specVersion` 1.3 on
+v0.3.1) covering the full transitive dependency tree, so any CycloneDX-capable
+scanner will read it:
+
+<Terminal command="grype sbom:./grith-0.3.1-x86_64-unknown-linux-musl.tar.gz.cdx.json" />
+
+Dependency-Track and other SCA tools take the same file.
+
+## Looking a release up in Rekor
+
+Every signature is recorded in the public sigstore transparency log. Search for
+the archive's SHA-256 at `search.sigstore.dev` to see the entry independently of
+the files you downloaded.
+
+## What the pipeline guarantees
+
+Both targets are cross-compiled to static musl binaries, so there is no glibc
+version to match and no shared-library dependency to satisfy. Before a release
+is created at all, the aarch64 tarball is unpacked on an arm64 runner, checked
+with `file(1)` for an ARM aarch64 binary, and run - `--version` and `--help` both
+have to succeed. The GitHub release is only published once that gate passes.
+
+## See also
+
+- [Installation](/docs/start/installation)
+- [Updating grith](/docs/ops/updating-grith)
+- [Advisories](/docs/security/advisories)

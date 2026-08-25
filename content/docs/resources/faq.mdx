@@ -1,10 +1,10 @@
 ---
 title: 'FAQ'
-description: 'Frequently asked questions about grith.'
+description: 'Short answers to the questions people ask before and just after installing grith.'
 section: 'resources'
 order: 3
 tier: 'community'
-version: '0.1.0'
+version: '0.3.1'
 lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resources/faq.mdx'
 ---
@@ -13,148 +13,147 @@ editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/resource
 
 ### Is grith a sandbox?
 
-No. grith decides whether a syscall runs; the kernel still runs it. The agent
-operates against the real filesystem, real network, real OS. Containment is
-opt-in via [zones](/docs/concepts/session-containment), but those score-based,
-not kernel-enforced.
+No. grith decides whether a syscall runs; the kernel still runs it. The agent works
+against the real filesystem, network and OS - no isolation, no network namespace, no
+privilege drop.
 
-If you want hard isolation, run grith _inside_ a container or user namespace.
-The two are complementary.
+For hard isolation, run grith inside a container or a user namespace; the two are
+complementary. [Limitations](/docs/security/limitations) lists what grith does not stop.
 
-### Does grith require root?
+### Does grith need root?
 
-No. grith uses ptrace, which on default Linux configurations works without
-root for processes you spawn yourself. See
-[Installation: permissions](/docs/start/installation#permissions).
+No. grith uses ptrace on processes it spawns itself, which needs either `CAP_SYS_PTRACE`
+or a Yama `ptrace_scope` of 0 or 1. The Debian/Ubuntu default of 1 is fine.
 
 ### Does grith slow my agent down?
 
-Not noticeably for normal interactive use. Typical pipeline latency is 8–12ms;
-agents usually wait on the model for hundreds of ms per turn. Heavy syscall
-workloads (large file scans, refactors writing many files) add measurable
-overhead — see [Performance & tuning](/docs/ops/performance-tuning).
+Startup costs about 200 ms per supervised launch - PTY allocation, ptrace attach,
+seccomp install. Steady state is cheaper: most syscalls never reach the proxy at all and
+cost typically under 50 µs; only the ones that do reach it cost a few milliseconds. Those
+figures were measured in March 2026 on a 0.1.x build and have not been re-measured for
+v0.3.1; [Performance tuning](/docs/ops/performance-tuning) has the caveats.
 
-### Does grith call out to grith.ai?
+### Can grith see my source code or my prompts?
 
-grith contacts grith.ai for:
+grith does not read file contents. `read`, `write` and `writev` are never trapped - grith
+judges what is touched, not what is transferred, and a `FileWrite` record hashes the path
+rather than the data.
 
-- Update checks (daily, disable with `update_check = false`).
-- Profile update checks (weekly, disable with `profile_update_check = false`).
-- License refresh (every 6 hours on Pro).
-- Cloud analytics, on a paid plan. It is on by default and publishes aggregated
-  rollups and security events every 30 seconds — see
-  [Analytics & cost](/docs/pro/analytics-and-cost) for the full payload. Turn it
-  off with `grith analytics disable` or `general.audit_sync = false`.
+Prompts and model responses are between your agent and its provider - grith is not in
+that conversation. The exception is the built-in agent (`grith run` and the REPL), where
+grith is the provider client, so the prompt passes through grith on your machine. It is
+not uploaded there either.
 
-It does NOT send:
+### Does grith contact grith.ai?
 
-- Raw audit records. Nothing uploads the audit log itself.
-- Command lines and arguments, raw file paths, URLs.
-- Prompts, model responses, source code, file contents, payload bytes.
-- Environment values and secrets.
-- Provider API keys.
+On any install: a supervisor-profile refresh from `api.grith.ai`, at most once every six
+hours, off with `[general] profile_update_check = false`. The version check is not one of
+these calls - it asks GitHub's release API, caches the answer for 24 hours, and goes away
+with `GRITH_NO_UPDATE_CHECK` or `[general] update_check = false`.
 
-## Platforms
+Signed in on a paid plan: a licence refresh roughly every 24 hours, plus analytics sync -
+aggregated rollups and security-event summaries every 30 seconds, and each closed UTC day
+as one archived file. Never commands, arguments, file paths, URLs, prompts, model
+responses, file contents, environment values or provider keys. Two caveats worth knowing
+first: project names travel in clear text, and destinations are HMACed unless an owner
+opts into clear labels. See [Analytics](/docs/pro/analytics).
 
-### Does it work on macOS / Windows?
+<Terminal>
+  {`$ grith analytics status
+Cloud analytics sync
+  Consent:  not recorded yet — turns on automatically with a paid plan
+            (or run \`grith analytics enable\`)
+  Account:  not signed in — run \`grith pro login\`
+  Plan:     requires a Pro plan
+  Config:   audit sync on
+  Device:   not registered yet
+  Pending:  0 day(s) awaiting upload, 0 security event(s)`}
+</Terminal>
 
-Not in v0.2. The supervisor uses ptrace+seccomp, which is Linux-specific.
-macOS and Windows ports are in active development for v2.0.
+## Platforms and agents
 
-Until then: Linux VM, container, or Docker. grith in a container works fine.
+### Which platforms?
 
-### Does it work on aarch64?
+Linux x86_64 (kernel 4.8+) and Linux aarch64 (kernel 5.3+), as static musl binaries, so
+Raspberry Pi 4/5, Graviton and Ampere all work and the installer picks the right one.
+Anything else, macOS and Windows included, is unsupported and the installer refuses to
+run there. A Linux VM or container works fine.
 
-Yes. grith runs natively on Linux aarch64 (kernel 5.3+) — the supervisor has a
-per-architecture register and syscall-number backend, and the release ships a
-static `aarch64-unknown-linux-musl` binary. Raspberry Pi 4/5, AWS Graviton, and
-Ampere are all supported. The one-line installer picks the right binary
-automatically.
+### Which agents?
 
-### Does it work on NixOS / Arch / Fedora / etc?
+Eleven profiles are compiled into the binary and `grith exec` picks one from the
+target's basename - Claude Code, Codex, Aider, Goose, Cursor, Cline, OpenClaw and
+Copilot, plus `generic`, `generic-cli` and `grith-repl`. Anything unrecognised runs
+under `generic`, which is a working profile rather than a bare one. See
+[Built-in profiles](/docs/profiles/built-in-profiles).
 
-Yes. grith ships as a statically-linked musl binary (x86_64 and aarch64) that
-works on any Linux distro. The shipping install script is distro-aware for placement; the
-binary itself doesn't care.
+## Filters and tuning
 
-## Filters
+### Can I turn a filter off?
 
-### Can I turn off a specific filter?
+Yes. All 18 filters are on by default and every toggle is an off switch.
 
-Yes, in `~/.config/grith/config.toml`:
+<ConfigExample
+  code={`[proxy.filters.behavioural]
+enabled = false`}
+/>
 
-```toml
-[proxy.filters.behavioural]
-enabled = false
-```
+Consider raising `proxy.auto_allow_threshold` first - it is the narrower change. Either
+way the new value applies at the next daemon restart, not on the next call.
 
-But understand what you're losing — each filter exists for a reason. Disable
-sparingly and consider raising `auto_allow_threshold` instead.
+### Can I write my own filter?
 
-### Can I add my own filter?
+Not as code. What you can change is the data the filters read - the path, command,
+secret, egress, DLP, canary and containment rule files, and the meta-rules. See
+[Filter config files](/docs/config/filter-config-files).
 
-Custom filters are an Enterprise feature in v0.1. They're authored in Rust and
-shipped via the [centralised policy bundle](/docs/pro/centralised-policies).
-Open-source custom filter SDK is planned for v0.2.
+### Why did a call score exactly 8.0 and still get queued?
 
-### Why does the secret scanner have so many patterns?
+Because 8.0 queues. The thresholds are strict on both ends: allow at or below 3.0, queue
+above 3.0 up to and including 8.0, deny above 8.0.
 
-1,620+ patterns covers a wide credential vocabulary (cloud providers, SaaS
-APIs, CI/CD, databases, crypto, etc). The cost is small — Aho-Corasick / regex
-sets are linear in content length, not in pattern count.
+## Pro
 
-## Pricing
+### What does Pro add?
 
-### How much does Pro cost?
-
-$25/user/month monthly, $21/user/month annual (≈17% off). Up to 25 users. See
-[grith.ai/pricing](https://grith.ai/pricing).
+Analytics history and cloud sync, the team policy editor, a concurrency ceiling of 64
+supervised sessions instead of 2, and [notifications](/docs/pro/notifications), which are
+parked and not available yet. That is the whole list - filters, supervisor, digest,
+dashboard and every CLI command are in the community edition.
 
 ### Is the community edition feature-limited?
 
-No. The community edition is the full grith product — all 18 filters, the
-supervisor, the digest, all CLI tools. Pro adds team-scope features (sync,
-shared keys, channels, analytics).
+Only on concurrency. Community allows 2 concurrent supervised sessions and a paid licence
+raises the ceiling to 64 - though a stock install still stops at 4 until you raise
+`supervisor.max_concurrent_sessions`. Both caps apply and the lower one wins.
 
-### Is there a free trial?
+### How much is Pro, and is there a trial?
 
-The community edition is free forever, no trial required. Pro features can
-be evaluated by signing up at grith.ai/teams — first 14 days don't bill.
+$25 per user per month, or $21 billed annually, up to 25 users - see
+[grith.ai/pricing](https://grith.ai/pricing). The trial is 14 days and one seat, one per
+team and one per email.
 
-## Privacy / security
+## Privacy
 
-### Where do my API keys live?
+### Where do my provider API keys live?
 
-Local: `~/.config/grith/keys/<provider>.key` (perms 0600). For Pro teams,
-optionally synced encrypted from the dashboard — never visible to grith.ai in
-plaintext. See [Encrypted key management](/docs/pro/encrypted-key-management).
+grith takes the first of: the provider's `api_key` in its `[llm.*]` block, the
+environment variable named by `api_key_env` (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+`OPENROUTER_API_KEY`), or a file under `~/.config/grith/provider-keys/` pulled by
+`grith pro sync`. Synced files are
+encrypted at rest with AES-256-GCM under a key derived from your account API key, so
+anyone holding that API key can decrypt them. See
+[Encrypted key management](/docs/pro/encrypted-key-management).
 
 ### Where does my audit log live?
 
-Local: `~/.local/share/grith/audit/audit.db`. The audit log itself never leaves
-the machine. On a paid plan, cloud analytics publishes aggregated rollups and
-security events derived from it — counts, score histograms, per-filter activity
-and labels, never the records themselves. It is on by default and turned off
-with `grith analytics disable` or `general.audit_sync = false`.
+`~/.local/share/grith/audit/audit.db`, hash-chained, with records older than the
+retention window archived to `cold/` on the same machine. It never leaves that machine -
+the cloud sync that used to upload records was retired in v0.3.1, and the team dashboard
+shows security events and rollups instead.
 
-### Can grith see my source code?
+## Still stuck
 
-It sees the _fact_ of file reads (paths, sizes, timestamps), not the
-contents — grith never stores file or payload bytes in the audit log. The model
-that's running inside your agent sees the content; that's between you and your
-provider.
-
-### What about my chat history with the model?
-
-grith doesn't see it. The agent talks to the provider; grith only sees the
-syscalls the agent makes as a result.
-
-## Troubleshooting
-
-See [Troubleshooting](/docs/guides/troubleshooting).
-
-## Still stuck?
-
-- [GitHub Discussions](https://github.com/grith-ai/grith/discussions)
-- [Discord](https://grith.ai/discord)
-- Email support@grith.ai (Pro+).
+[Troubleshooting](/docs/guides/troubleshooting) covers the failures people actually hit.
+After that: [GitHub issues](https://github.com/grith-ai/grith/issues) or
+[grith.ai/contact](https://grith.ai/contact).
