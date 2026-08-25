@@ -53,8 +53,7 @@ Error: Not logged in. Run: grith pro login`}
 
 ## `sync` pulls, it does not upload
 
-<Callout type="warning" title="The --help text for sync is stale">
-`grith pro sync --help` still says "Upload audit records to cloud and pull team policies".
+<Callout type="info" title="Sync moves team state, not your audit log">
 The raw audit-record upload was **retired**. `grith pro sync` pulls team policies, team
 configuration and provider keys, and pushes reputation data. It uploads no audit records,
 and nothing on the team dashboard is a copy of your audit log.
