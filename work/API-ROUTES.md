@@ -7,14 +7,13 @@
 | DELETE | `/api/ipc/sessions/:id` |
 | DELETE | `/api/policies/:name` |
 | DELETE | `/api/supervisor/sessions/:id` |
-| GET | `/api/analytics/activity` |
-| GET | `/api/analytics/compliance` |
-| GET | `/api/analytics/cost` |
-| GET | `/api/analytics/summary` |
+| GET | `/api/analytics/v2/free` |
+| GET | `/api/analytics/v2/pro` |
 | GET | `/api/audit` |
 | GET | `/api/audit/:id` |
 | GET | `/api/audit/exfil-stats` |
 | GET | `/api/audit/export` |
+| GET | `/api/audit/summary` |
 | GET | `/api/canaries` |
 | GET | `/api/config` |
 | GET | `/api/digest` |
@@ -51,6 +50,7 @@
 | POST | `/api/digest/:id/webhook-review` |
 | POST | `/api/digest/clear-all` |
 | POST | `/api/ipc/audit/ingest` |
+| POST | `/api/ipc/audit/ingest-batch` |
 | POST | `/api/ipc/dashboard/pair-code` |
 | POST | `/api/ipc/digest/expire` |
 | POST | `/api/ipc/digest/items` |

@@ -1,19 +1,19 @@
 {
   "_note": "Hand-corrected against grith v0.3.1 (crates/grith-server/src/routes/mod.rs, supervisor.rs and lib.rs). The upstream generator reads the curated crates/grith-docgen/data/api.toml, which is not derived from the router and is stale: it omits the /api prefix, lists four analytics routes deleted in 0.3.1, a GET /events WebSocket that never existed, and a POST /sync/configs write path. Re-running `npm run gen:references` will revert this file until that TOML is fixed in the grith repo.",
   "auth_levels": {
-    "open": "No token, ever. Some of these still return 403 FEATURE_GATED on Community - open is not free.",
-    "dashboard": "Dashboard token when one is configured; inert, and therefore open, when none is.",
     "csrf": "Dashboard token plus the x-grith-csrf header.",
-    "nonce": "Single-use nonce carried in the callback URL. No CSRF layer.",
-    "pair-code": "Single-use pairing code in the request body. No CSRF layer.",
+    "dashboard": "Dashboard token when one is configured; inert, and therefore open, when none is.",
     "ipc": "Daemon bearer token from ~/.config/grith/daemon.token.",
+    "nonce": "Single-use nonce carried in the callback URL. No CSRF layer.",
+    "open": "No token, ever. Some of these still return 403 FEATURE_GATED on Community - open is not free.",
+    "pair-code": "Single-use pairing code in the request body. No CSRF layer.",
     "ws": "Origin-versus-Host check, plus ?token=<dashboard token> when one is configured."
   },
   "base_url": "http://127.0.0.1:3141",
   "groups": [
     {
-      "name": "Health & tier",
       "description": "Liveness, licence state and the effective configuration. The three status reads never require a token.",
+      "name": "Health & tier",
       "routes": [
         {
           "auth": "open",
@@ -63,8 +63,8 @@
       ]
     },
     {
-      "name": "Proxy",
       "description": "Filter pipeline state and dry-run evaluation. The dry-run has its own rate bucket at 20 rps.",
+      "name": "Proxy",
       "routes": [
         {
           "auth": "open",
@@ -87,8 +87,8 @@
       ]
     },
     {
-      "name": "Digest",
       "description": "The quarantine queue: calls that scored above 3.0 and at or below 8.0, held for a human.",
+      "name": "Digest",
       "routes": [
         {
           "auth": "dashboard",
@@ -183,8 +183,8 @@
       ]
     },
     {
-      "name": "Audit",
       "description": "The hash-chained audit log of every decision grith made.",
+      "name": "Audit",
       "routes": [
         {
           "auth": "dashboard",
@@ -234,8 +234,8 @@
       ]
     },
     {
-      "name": "Analytics",
       "description": "The local analytics projection, read from the audit database. Free is a first-class server response, not a client-side mask over the Pro payload - the feature check runs before storage access.",
+      "name": "Analytics",
       "routes": [
         {
           "auth": "dashboard",
@@ -258,8 +258,8 @@
       ]
     },
     {
-      "name": "Canaries",
       "description": "Decoy credentials the canary filter watches for. Responses expose only id, label and a four-character value_prefix - never the token itself.",
+      "name": "Canaries",
       "routes": [
         {
           "auth": "dashboard",
@@ -300,8 +300,8 @@
       ]
     },
     {
-      "name": "Supervisor sessions",
       "description": "Live supervised sessions. Nested at /api/supervisor, with both the dashboard-token and CSRF layers applied. The two session reads below sit outside that nesting.",
+      "name": "Supervisor sessions",
       "routes": [
         {
           "auth": "dashboard",
@@ -369,8 +369,8 @@
       ]
     },
     {
-      "name": "Sync & policies",
       "description": "Team policy and shared config pulled from grith.ai. Pro. No audit records are uploaded through any of these routes.",
+      "name": "Sync & policies",
       "routes": [
         {
           "auth": "open",
@@ -447,8 +447,8 @@
       ]
     },
     {
-      "name": "Dashboard & onboarding",
       "description": "The browser bootstrap. Pairing is how a tab gets the dashboard token; the code is single-use and has no TTL.",
+      "name": "Dashboard & onboarding",
       "routes": [
         {
           "auth": "open",
@@ -489,8 +489,8 @@
       ]
     },
     {
-      "name": "Daemon IPC",
       "description": "Loopback-only routes authenticated by the daemon bearer token in ~/.config/grith/daemon.token. Six of them carry no /ipc/ path segment, which catches people out. Rate bucket 10000 rps.",
+      "name": "Daemon IPC",
       "routes": [
         {
           "auth": "ipc",
@@ -729,13 +729,13 @@
       ]
     },
     {
-      "name": "WebSocket",
       "description": "The only two routes not nested under /api. No subscribe protocol and no heartbeat protocol: the server answers client Ping frames with Pong and ignores client text and binary entirely. Auth is Origin-versus-Host plus ?token=<dashboard token>, because browsers cannot set WebSocket request headers.",
+      "name": "WebSocket",
       "routes": [
         {
           "auth": "ws",
           "ipc_only": false,
-          "method": "GET",
+          "method": "WS",
           "path": "/ws/live",
           "since": null,
           "summary": "Live event stream. Frames are loose JSON objects: proxy_evaluation (two different shapes share the name), digest_queued / digest_reviewed / digest_escalated as {\"type\": ..., \"item\": <full DigestItem>}, server_shutdown, and three untyped supervisor frames with no type field at all.",
@@ -744,7 +744,7 @@
         {
           "auth": "ws",
           "ipc_only": false,
-          "method": "GET",
+          "method": "WS",
           "path": "/ws/supervisor/{id}",
           "since": null,
           "summary": "The same stream narrowed to one session: only frames whose session_id equals the path id. 400 INVALID_ID on a non-UUID, 404 SESSION_NOT_FOUND if the session is unknown.",
@@ -753,6 +753,9 @@
       ]
     }
   ],
+  "omitted": {
+    "notifications": "GET /api/notifications/channels, GET /api/notifications/status and POST /api/notifications/test/{channel} are mounted on the router but are not published. Notifications are not available on v0.3.1 - see /docs/pro/notifications. Documenting the endpoints would teach a parked feature."
+  },
   "schema_version": 1,
   "source": "crates/grith-server/src/routes/mod.rs (hand-corrected for v0.3.1)",
   "verified_against": "grith 0.3.1"
