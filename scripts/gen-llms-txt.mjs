@@ -10,6 +10,8 @@ const ROOT = path.resolve(new URL('.', import.meta.url).pathname, '..');
 const CONTENT = path.join(ROOT, 'content/docs');
 const OUT = path.join(ROOT, 'public/llms.txt');
 const SITE = 'https://docs.grith.ai';
+// The release these docs describe. Bump on a release, alongside the frontmatter.
+const VERSION = '0.3.1';
 
 const SECTIONS = [
   ['start', 'Start here'],
@@ -22,7 +24,6 @@ const SECTIONS = [
   ['guides', 'Guides'],
   ['security', 'Security'],
   ['pro', 'Pro'],
-  ['enterprise', 'Enterprise'],
   ['ops', 'Operations'],
   ['resources', 'Resources'],
 ];
@@ -41,6 +42,7 @@ function readSection(slug) {
         title: data.title ?? f,
         description: data.description ?? '',
         order: data.order ?? 99,
+        status: data.status ?? 'shipped',
       };
     })
     .sort((a, b) => a.order - b.order);
@@ -52,6 +54,10 @@ const lines = [
   'grith is a security-first local AI agent platform. It intercepts every',
   'syscall an AI agent makes, scores it through 18 filters, and routes',
   'ambiguous calls to a human-review queue.',
+  '',
+  `These docs describe grith v${VERSION}, the current release. It runs on Linux`,
+  'x86_64 and aarch64; there is no macOS or Windows build. Every page describes',
+  'behaviour that ships today - the one exception is marked [coming soon].',
   '',
   `Site: ${SITE}`,
   '',
@@ -65,7 +71,8 @@ for (const [slug, label] of SECTIONS) {
   lines.push(`### ${label}`);
   lines.push('');
   for (const d of docs) {
-    lines.push(`- [${d.title}](${SITE}/docs/${d.slug}) — ${d.description}`);
+    const soon = d.status === 'planned' ? ' [coming soon]' : '';
+    lines.push(`- [${d.title}](${SITE}/docs/${d.slug})${soon} — ${d.description}`);
   }
   lines.push('');
 }

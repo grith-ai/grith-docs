@@ -18,6 +18,17 @@ interface Group {
 
 const GROUPS = apiData.groups as Group[];
 
+// Auth vocabulary is defined in api.json under `auth_levels`.
+const authColour: Record<string, string> = {
+  open: 'bg-surface-2 text-text-secondary',
+  dashboard: 'bg-info-light text-info',
+  csrf: 'bg-warning-light text-warning-text',
+  nonce: 'bg-warning-light text-warning-text',
+  'pair-code': 'bg-warning-light text-warning-text',
+  ipc: 'bg-purple-light text-purple',
+  ws: 'bg-info-light text-info',
+};
+
 const methodColour: Record<string, string> = {
   GET: 'bg-info-light text-info',
   POST: 'bg-green-light text-accent-text',
@@ -107,14 +118,13 @@ export default function ApiRouteTable({ group, showHeadings = true }: ApiRouteTa
                             Ent
                           </span>
                         )}
-                        {r.ipc_only && (
-                          <span className="rounded-pill bg-surface-2 font-label text-text-secondary inline-block px-1.5 py-0.5 text-[9px] font-medium uppercase">
-                            IPC
-                          </span>
-                        )}
-                        {r.auth === 'local' && (
-                          <span className="rounded-pill bg-warning-light font-label text-warning-text inline-block px-1.5 py-0.5 text-[9px] font-medium uppercase">
-                            local
+                        {r.auth && (
+                          <span
+                            className={`rounded-pill font-label inline-block px-1.5 py-0.5 text-[9px] font-medium uppercase ${
+                              authColour[r.auth] ?? 'bg-surface-2 text-text-secondary'
+                            }`}
+                          >
+                            {r.auth}
                           </span>
                         )}
                         {r.since && (

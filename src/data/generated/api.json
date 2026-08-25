@@ -1,50 +1,61 @@
 {
+  "_note": "Hand-corrected against grith v0.3.1 (crates/grith-server/src/routes/mod.rs, supervisor.rs and lib.rs). The upstream generator reads the curated crates/grith-docgen/data/api.toml, which is not derived from the router and is stale: it omits the /api prefix, lists four analytics routes deleted in 0.3.1, a GET /events WebSocket that never existed, and a POST /sync/configs write path. Re-running `npm run gen:references` will revert this file until that TOML is fixed in the grith repo.",
+  "auth_levels": {
+    "open": "No token, ever. Some of these still return 403 FEATURE_GATED on Community - open is not free.",
+    "dashboard": "Dashboard token when one is configured; inert, and therefore open, when none is.",
+    "csrf": "Dashboard token plus the x-grith-csrf header.",
+    "nonce": "Single-use nonce carried in the callback URL. No CSRF layer.",
+    "pair-code": "Single-use pairing code in the request body. No CSRF layer.",
+    "ipc": "Daemon bearer token from ~/.config/grith/daemon.token.",
+    "ws": "Origin-versus-Host check, plus ?token=<dashboard token> when one is configured."
+  },
+  "base_url": "http://127.0.0.1:3141",
   "groups": [
     {
-      "description": "Liveness checks and license / plan-tier reporting.",
       "name": "Health & tier",
+      "description": "Liveness, licence state and the effective configuration. The three status reads never require a token.",
       "routes": [
         {
-          "auth": "none",
+          "auth": "open",
           "ipc_only": false,
           "method": "GET",
-          "path": "/health",
+          "path": "/api/health",
           "since": null,
-          "summary": "Server liveness probe.",
+          "summary": "Liveness probe: status, version, uptime and per-subsystem state, plus audit_quarantined / audit_read_only when the chain is not writable.",
           "tier": null
         },
         {
-          "auth": "none",
+          "auth": "open",
           "ipc_only": false,
           "method": "GET",
-          "path": "/tier",
+          "path": "/api/tier",
           "since": null,
-          "summary": "Current plan tier and license expiry.",
+          "summary": "Plan tier, seats, session cap, renewal date, billing portal URL and the feature map the licence gate resolved.",
           "tier": null
         },
         {
-          "auth": "none",
+          "auth": "open",
           "ipc_only": false,
           "method": "GET",
-          "path": "/license/status",
+          "path": "/api/license/status",
           "since": null,
-          "summary": "License validity and refresh state.",
+          "summary": "Licence validity, seats, air-gapped flag, hours since the last refresh and the refresh state.",
           "tier": null
         },
         {
-          "auth": "local",
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/config",
+          "path": "/api/config",
           "since": null,
-          "summary": "Read the active configuration.",
+          "summary": "Read the effective configuration - every layer already merged.",
           "tier": null
         },
         {
-          "auth": "local",
+          "auth": "csrf",
           "ipc_only": false,
           "method": "PUT",
-          "path": "/config",
+          "path": "/api/config",
           "since": null,
           "summary": "Update configuration values at runtime.",
           "tier": null
@@ -52,443 +63,383 @@
       ]
     },
     {
-      "description": "Persisted audit log of every filter decision.",
-      "name": "Audit",
+      "name": "Proxy",
+      "description": "Filter pipeline state and dry-run evaluation. The dry-run has its own rate bucket at 20 rps.",
       "routes": [
         {
-          "auth": null,
+          "auth": "open",
           "ipc_only": false,
           "method": "GET",
-          "path": "/audit",
+          "path": "/api/proxy/status",
           "since": null,
-          "summary": "List audit events (paginated).",
+          "summary": "Thresholds, allow / queue / deny counts and per-filter statistics.",
           "tier": null
         },
         {
-          "auth": null,
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/proxy/test",
+          "since": null,
+          "summary": "Dry-run one tool call through all 18 filters. Body is {\"tool_call\": {...}}; the response carries composite_score, action, decision_reason, evaluation_time_ms, filters_evaluated and filter_results[].",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "name": "Digest",
+      "description": "The quarantine queue: calls that scored above 3.0 and at or below 8.0, held for a human.",
+      "routes": [
+        {
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/audit/export",
+          "path": "/api/digest",
           "since": null,
-          "summary": "Export audit events as JSON or CSV.",
+          "summary": "List queued items awaiting review.",
           "tier": null
         },
         {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
-          "method": "GET",
-          "path": "/audit/exfil-stats",
+          "method": "POST",
+          "path": "/api/digest/clear-all",
           "since": null,
-          "summary": "Aggregate exfiltration analytics over the recent window.",
+          "summary": "Clear the whole queue.",
           "tier": null
         },
         {
-          "auth": null,
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/digest/{id}/approve",
+          "since": null,
+          "summary": "Approve this call and let it run.",
+          "tier": null
+        },
+        {
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/digest/{id}/deny",
+          "since": null,
+          "summary": "Deny this call. The syscall returns EPERM.",
+          "tier": null
+        },
+        {
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/digest/{id}/learn",
+          "since": null,
+          "summary": "Approve, and record the decision as an observation for the learned reputation table.",
+          "tier": null
+        },
+        {
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/digest/{id}/escalate",
+          "since": null,
+          "summary": "Mark the item escalated and dispatch an escalation notification.",
+          "tier": null
+        },
+        {
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/digest/{id}/unlock-egress",
+          "since": null,
+          "summary": "Approve and trust this destination for the rest of the session.",
+          "tier": null
+        },
+        {
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/digest/{id}/deny-terminate",
+          "since": null,
+          "summary": "Deny and terminate the originating process tree.",
+          "tier": null
+        },
+        {
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/digest/{id}/allow-always",
+          "since": null,
+          "summary": "Approve and persist a learned rule for this call shape.",
+          "tier": null
+        },
+        {
+          "auth": "nonce",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/digest/{id}/webhook-review",
+          "since": null,
+          "summary": "Apply a decision delivered through a webhook callback. Authenticated by the single-use nonce in the callback URL, so no CSRF header applies.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "description": "The hash-chained audit log of every decision grith made.",
+      "routes": [
+        {
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/audit/{id}",
+          "path": "/api/audit",
+          "since": null,
+          "summary": "List audit records. Query: limit (default 20, max 100), offset, session_id, include=full|all.",
+          "tier": null
+        },
+        {
+          "auth": "dashboard",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/api/audit/export",
+          "since": null,
+          "summary": "Export records. Query: format=json|csv, limit (default 1000), include_cold, from_date=YYYY-MM-DD.",
+          "tier": null
+        },
+        {
+          "auth": "dashboard",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/api/audit/exfil-stats",
+          "since": null,
+          "summary": "Exfiltration rollup over the last 500 records, top 10 destinations.",
+          "tier": null
+        },
+        {
+          "auth": "dashboard",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/api/audit/summary",
+          "since": "0.3.1",
+          "summary": "Decision counts for a window without rescanning the log. Query: window=today|7d|30d|all (default 7d), include=full|all. An unrecognised window falls back to 7d rather than erroring.",
+          "tier": null
+        },
+        {
+          "auth": "dashboard",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/api/audit/{id}",
           "since": null,
           "summary": "Fetch one audit record.",
           "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "POST",
-          "path": "/ipc/audit/ingest",
-          "since": null,
-          "summary": "Internal IPC: ingest a batch of audit records.",
-          "tier": null
         }
       ]
     },
     {
-      "description": "The quarantine queue: ambiguous calls awaiting human review.",
-      "name": "Digest",
+      "name": "Analytics",
+      "description": "The local analytics projection, read from the audit database. Free is a first-class server response, not a client-side mask over the Pro payload - the feature check runs before storage access.",
       "routes": [
         {
-          "auth": null,
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/digest",
+          "path": "/api/analytics/v2/free",
           "since": null,
-          "summary": "List queued items.",
-          "tier": null
+          "summary": "Seven-day projection. Available on Community.",
+          "tier": "community"
         },
         {
-          "auth": null,
-          "ipc_only": true,
+          "auth": "dashboard",
+          "ipc_only": false,
           "method": "GET",
-          "path": "/ipc/digest/items/{id}",
+          "path": "/api/analytics/v2/pro",
           "since": null,
-          "summary": "Fetch one digest item with full forensics.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/digest/{id}/approve",
-          "since": null,
-          "summary": "Approve and execute.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/digest/{id}/deny",
-          "since": null,
-          "summary": "Deny and block.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/digest/{id}/learn",
-          "since": null,
-          "summary": "Approve and train the reputation system.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/digest/{id}/escalate",
-          "since": null,
-          "summary": "Escalate to team (Pro).",
+          "summary": "Thirty- and ninety-day projections. Gated on usage_analytics; returns 503 ANALYTICS_UNAVAILABLE when an older grith owns the audit database.",
           "tier": "pro"
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/digest/{id}/unlock-egress",
-          "since": null,
-          "summary": "Approve and whitelist the destination for this session.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/digest/{id}/deny-terminate",
-          "since": null,
-          "summary": "Deny and kill the originating process tree.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/digest/{id}/allow-always",
-          "since": null,
-          "summary": "Permanent allowlist for this call shape (Pro).",
-          "tier": "pro"
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/digest/{id}/webhook-review",
-          "since": null,
-          "summary": "Apply a decision delivered via webhook callback.",
-          "tier": null
         }
       ]
     },
     {
-      "description": "Filter pipeline state and dry-run evaluation.",
-      "name": "Proxy",
-      "routes": [
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "GET",
-          "path": "/proxy/status",
-          "since": null,
-          "summary": "Filter stats, thresholds, and queue depth.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "POST",
-          "path": "/proxy/test",
-          "since": null,
-          "summary": "Dry-run a tool call shape. Returns the would-be decision.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "POST",
-          "path": "/proxy/evaluate",
-          "since": null,
-          "summary": "Internal IPC: evaluate a real syscall request.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "GET",
-          "path": "/proxy/status/full",
-          "since": null,
-          "summary": "Internal IPC: extended state including per-filter scores.",
-          "tier": null
-        }
-      ]
-    },
-    {
-      "description": "Active supervised sessions and their lifecycle (IPC only).",
-      "name": "Supervisor sessions",
-      "routes": [
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "GET",
-          "path": "/ipc/sessions",
-          "since": null,
-          "summary": "List active supervisor sessions.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "POST",
-          "path": "/ipc/sessions",
-          "since": null,
-          "summary": "Register a new session.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "GET",
-          "path": "/ipc/sessions/{id}",
-          "since": null,
-          "summary": "Fetch session details.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "PUT",
-          "path": "/ipc/sessions/{id}",
-          "since": null,
-          "summary": "Update session metadata.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "DELETE",
-          "path": "/ipc/sessions/{id}",
-          "since": null,
-          "summary": "Unregister a session.",
-          "tier": null
-        },
-        {
-          "auth": null,
-          "ipc_only": true,
-          "method": "POST",
-          "path": "/ipc/sessions/{id}/kill",
-          "since": null,
-          "summary": "Terminate a session and its process tree.",
-          "tier": null
-        }
-      ]
-    },
-    {
-      "description": "Registered trap tokens that prove exfiltration if observed leaving the box.",
       "name": "Canaries",
+      "description": "Decoy credentials the canary filter watches for. Responses expose only id, label and a four-character value_prefix - never the token itself.",
       "routes": [
         {
-          "auth": null,
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/canaries",
+          "path": "/api/canaries",
           "since": null,
           "summary": "List registered canary tokens.",
           "tier": null
         },
         {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
           "method": "POST",
-          "path": "/canaries",
+          "path": "/api/canaries",
           "since": null,
-          "summary": "Add a new canary token.",
+          "summary": "Register a canary token.",
           "tier": null
         },
         {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
           "method": "DELETE",
-          "path": "/canaries/{id}",
+          "path": "/api/canaries/{id}",
           "since": null,
           "summary": "Remove a canary token.",
           "tier": null
         },
         {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
           "method": "POST",
-          "path": "/canaries/{id}/rotate",
+          "path": "/api/canaries/{id}/rotate",
           "since": null,
-          "summary": "Rotate the canary value while keeping its identity.",
+          "summary": "Replace the value, keeping the label and id.",
           "tier": null
         }
       ]
     },
     {
-      "description": "Channel configuration and delivery health.",
-      "name": "Notifications",
+      "name": "Supervisor sessions",
+      "description": "Live supervised sessions. Nested at /api/supervisor, with both the dashboard-token and CSRF layers applied. The two session reads below sit outside that nesting.",
       "routes": [
         {
-          "auth": null,
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/notifications/channels",
+          "path": "/api/supervisor/sessions",
           "since": null,
-          "summary": "List configured channels and their states.",
+          "summary": "List active supervised sessions.",
           "tier": null
         },
         {
-          "auth": null,
-          "ipc_only": false,
-          "method": "GET",
-          "path": "/notifications/status",
-          "since": null,
-          "summary": "Per-channel delivery health and recent failures.",
-          "tier": null
-        },
-        {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
           "method": "POST",
-          "path": "/notifications/test/{channel}",
+          "path": "/api/supervisor/sessions",
           "since": null,
-          "summary": "Send a synthetic notification to verify a channel.",
+          "summary": "Register a session.",
+          "tier": null
+        },
+        {
+          "auth": "dashboard",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/api/supervisor/sessions/{id}",
+          "since": null,
+          "summary": "Fetch one session's detail.",
+          "tier": null
+        },
+        {
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "POST",
+          "path": "/api/supervisor/sessions/{id}/kill",
+          "since": null,
+          "summary": "Terminate the session and its process tree.",
+          "tier": null
+        },
+        {
+          "auth": "csrf",
+          "ipc_only": false,
+          "method": "DELETE",
+          "path": "/api/supervisor/sessions/{id}",
+          "since": null,
+          "summary": "Unregister the session.",
+          "tier": null
+        },
+        {
+          "auth": "dashboard",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/api/inventory/{session_id}",
+          "since": null,
+          "summary": "Binaries pinned for this session.",
+          "tier": null
+        },
+        {
+          "auth": "dashboard",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/api/sessions/{session_id}/listener-rewrites",
+          "since": null,
+          "summary": "Every wildcard-to-loopback listener clamp the supervisor performed. Note the path is /api/sessions, not /api/supervisor/sessions.",
           "tier": null
         }
       ]
     },
     {
-      "description": "Aggregated usage, cost, and activity. Pro feature.",
-      "name": "Analytics",
-      "routes": [
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "GET",
-          "path": "/analytics/summary",
-          "since": null,
-          "summary": "Top-line stats: call volume, decisions split, cost.",
-          "tier": "pro"
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "GET",
-          "path": "/analytics/cost",
-          "since": null,
-          "summary": "Provider cost breakdown by model and user.",
-          "tier": "pro"
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "GET",
-          "path": "/analytics/activity",
-          "since": null,
-          "summary": "Call volume trends and per-session timelines.",
-          "tier": "pro"
-        },
-        {
-          "auth": null,
-          "ipc_only": false,
-          "method": "GET",
-          "path": "/analytics/compliance",
-          "since": null,
-          "summary": "Structured evidence bundles designed to support compliance reporting (grith is not certified).",
-          "tier": "enterprise"
-        }
-      ]
-    },
-    {
-      "description": "Cloud-sourced team policies and shared filter configs. Pro feature.",
       "name": "Sync & policies",
+      "description": "Team policy and shared config pulled from grith.ai. Pro. No audit records are uploaded through any of these routes.",
       "routes": [
         {
-          "auth": null,
+          "auth": "open",
           "ipc_only": false,
           "method": "GET",
-          "path": "/sync/status",
+          "path": "/api/sync/status",
           "since": null,
-          "summary": "Cloud sync state and last successful pull.",
+          "summary": "Cloud sync state and last successful pull. In the open bucket, but still returns 403 FEATURE_GATED on Community.",
           "tier": "pro"
         },
         {
-          "auth": null,
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/sync/configs",
+          "path": "/api/sync/configs",
           "since": null,
           "summary": "List synced team configs.",
           "tier": "pro"
         },
         {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
           "method": "POST",
-          "path": "/sync/configs",
+          "path": "/api/sync/apply",
           "since": null,
-          "summary": "Apply a synced config bundle to this device.",
+          "summary": "Merge synced JSON configs into team-config.toml in the config directory.",
           "tier": "pro"
         },
         {
-          "auth": null,
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/policies",
+          "path": "/api/policies",
           "since": null,
-          "summary": "List custom policies.",
+          "summary": "List team policies.",
           "tier": "pro"
         },
         {
-          "auth": null,
+          "auth": "dashboard",
           "ipc_only": false,
           "method": "GET",
-          "path": "/policies/{name}",
+          "path": "/api/policies/{name}",
           "since": null,
           "summary": "Fetch one policy.",
           "tier": "pro"
         },
         {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
           "method": "POST",
-          "path": "/policies",
+          "path": "/api/policies",
           "since": null,
           "summary": "Create a policy.",
           "tier": "pro"
         },
         {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
           "method": "PUT",
-          "path": "/policies/{name}",
+          "path": "/api/policies/{name}",
           "since": null,
           "summary": "Update a policy.",
           "tier": "pro"
         },
         {
-          "auth": null,
+          "auth": "csrf",
           "ipc_only": false,
           "method": "DELETE",
-          "path": "/policies/{name}",
+          "path": "/api/policies/{name}",
           "since": null,
           "summary": "Delete a policy.",
           "tier": "pro"
@@ -496,63 +447,313 @@
       ]
     },
     {
-      "description": "Read and reset the adaptive trust table (IPC only).",
-      "name": "Reputation",
+      "name": "Dashboard & onboarding",
+      "description": "The browser bootstrap. Pairing is how a tab gets the dashboard token; the code is single-use and has no TTL.",
       "routes": [
         {
-          "auth": null,
-          "ipc_only": true,
+          "auth": "open",
+          "ipc_only": false,
           "method": "GET",
-          "path": "/reputation/table",
+          "path": "/api/onboarding/status",
           "since": null,
-          "summary": "Dump the current trust table.",
+          "summary": "Whether the first-run dashboard intro is still pending.",
           "tier": null
         },
         {
-          "auth": null,
-          "ipc_only": true,
+          "auth": "csrf",
+          "ipc_only": false,
           "method": "POST",
-          "path": "/reputation/observe",
+          "path": "/api/onboarding/dismiss",
           "since": null,
-          "summary": "Record a single observation.",
+          "summary": "Dismiss the first-run onboarding card.",
           "tier": null
         },
         {
-          "auth": null,
-          "ipc_only": true,
+          "auth": "csrf",
+          "ipc_only": false,
           "method": "POST",
-          "path": "/reputation/reset",
+          "path": "/api/onboarding/intro-seen",
           "since": null,
-          "summary": "Wipe learned trust (start over).",
+          "summary": "Mark the dashboard intro as seen.",
           "tier": null
         },
         {
-          "auth": null,
-          "ipc_only": true,
+          "auth": "pair-code",
+          "ipc_only": false,
           "method": "POST",
-          "path": "/reputation/save",
+          "path": "/api/dashboard/pair",
           "since": null,
-          "summary": "Force-flush the trust table to disk.",
+          "summary": "Exchange a single-use pairing code for the dashboard token. Carries its own proof, so no CSRF header applies; a bad or spent code returns 401 PAIR_CODE_INVALID.",
           "tier": null
         }
       ]
     },
     {
-      "description": "Real-time event stream for the dashboard.",
-      "name": "WebSocket",
+      "name": "Daemon IPC",
+      "description": "Loopback-only routes authenticated by the daemon bearer token in ~/.config/grith/daemon.token. Six of them carry no /ipc/ path segment, which catches people out. Rate bucket 10000 rps.",
       "routes": [
         {
-          "auth": null,
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/api/reputation/table",
+          "since": null,
+          "summary": "Dump the learned trust table.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/reputation/observe",
+          "since": null,
+          "summary": "Record one approve or deny observation.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/reputation/reset",
+          "since": null,
+          "summary": "Wipe the learned trust table.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/reputation/save",
+          "since": null,
+          "summary": "Flush the trust table to disk.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/proxy/evaluate",
+          "since": null,
+          "summary": "Evaluate a live tool call. The learned reputation table is applied here, after the pipeline, and only when the pipeline returned QUEUE.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/api/proxy/status/full",
+          "since": null,
+          "summary": "Extended proxy state including per-filter scores.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/audit/ingest",
+          "since": null,
+          "summary": "Append one audit record.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/audit/ingest-batch",
+          "since": "0.3.1",
+          "summary": "Append a batch of audit records in one round trip.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/inventory/install",
+          "since": null,
+          "summary": "Pin a binary into the session inventory.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/digest/items",
+          "since": null,
+          "summary": "Enqueue a held call for review.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/api/ipc/digest/items/{id}",
+          "since": null,
+          "summary": "Fetch one digest item with full forensics.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/digest/items/{id}/status",
+          "since": null,
+          "summary": "Record the reviewed outcome for a digest item.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/digest/expire",
+          "since": null,
+          "summary": "Expire items past the review timeout.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/api/ipc/sessions",
+          "since": null,
+          "summary": "List registered sessions.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/sessions",
+          "since": null,
+          "summary": "Register a session.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/session-reservations",
+          "since": null,
+          "summary": "Reserve session capacity before the target is spawned, so a limit rejection can never arrive after the tool has run code.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/session-reservations/{id}/activate",
+          "since": null,
+          "summary": "Convert a reservation into a live session.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "DELETE",
+          "path": "/api/ipc/session-reservations/{id}",
+          "since": null,
+          "summary": "Cancel a reservation.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/sessions-prune",
+          "since": null,
+          "summary": "Evict sessions whose process is gone.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "GET",
+          "path": "/api/ipc/sessions/{id}",
+          "since": null,
+          "summary": "Fetch one session.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "PUT",
+          "path": "/api/ipc/sessions/{id}",
+          "since": null,
+          "summary": "Update session metadata.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "DELETE",
+          "path": "/api/ipc/sessions/{id}",
+          "since": null,
+          "summary": "Unregister a session.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/sessions/{id}/kill",
+          "since": null,
+          "summary": "Terminate a session and its process tree.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/events",
+          "since": null,
+          "summary": "The only event-injection endpoint. Body must be a JSON object with a type key, at most 64 KiB; success is 202.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/ipc/dashboard/pair-code",
+          "since": null,
+          "summary": "Mint a single-use dashboard pairing code.",
+          "tier": null
+        },
+        {
+          "auth": "ipc",
+          "ipc_only": true,
+          "method": "POST",
+          "path": "/api/server/shutdown",
+          "since": null,
+          "summary": "Shut the daemon down. Carries the IPC bearer as its proof, so no CSRF header applies.",
+          "tier": null
+        }
+      ]
+    },
+    {
+      "name": "WebSocket",
+      "description": "The only two routes not nested under /api. No subscribe protocol and no heartbeat protocol: the server answers client Ping frames with Pong and ignores client text and binary entirely. Auth is Origin-versus-Host plus ?token=<dashboard token>, because browsers cannot set WebSocket request headers.",
+      "routes": [
+        {
+          "auth": "ws",
           "ipc_only": false,
           "method": "GET",
-          "path": "/events",
+          "path": "/ws/live",
           "since": null,
-          "summary": "Upgrade to a WebSocket. Streams digest, session, audit, and notification events.",
+          "summary": "Live event stream. Frames are loose JSON objects: proxy_evaluation (two different shapes share the name), digest_queued / digest_reviewed / digest_escalated as {\"type\": ..., \"item\": <full DigestItem>}, server_shutdown, and three untyped supervisor frames with no type field at all.",
+          "tier": null
+        },
+        {
+          "auth": "ws",
+          "ipc_only": false,
+          "method": "GET",
+          "path": "/ws/supervisor/{id}",
+          "since": null,
+          "summary": "The same stream narrowed to one session: only frames whose session_id equals the path id. 400 INVALID_ID on a non-UUID, 404 SESSION_NOT_FOUND if the session is unknown.",
           "tier": null
         }
       ]
     }
   ],
   "schema_version": 1,
-  "source": "crates/grith-docgen/data/api.toml (curated)"
+  "source": "crates/grith-server/src/routes/mod.rs (hand-corrected for v0.3.1)",
+  "verified_against": "grith 0.3.1"
 }
