@@ -1,53 +1,72 @@
 ---
-title: "[llm]"
-description: "LLM provider configuration — Ollama, OpenAI, Anthropic, OpenRouter."
-section: "config"
-order: 5
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/llm.mdx"
+title: '[llm]'
+description: 'Provider and model for grith run and the REPL, and the three places an API key can come from.'
+section: 'config'
+order: 7
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/llm.mdx'
 ---
 
-Provider configuration for `grith run` / built-in REPL. If you only supervise external
-agents (Claude Code, Codex, Aider), they manage their own model connections — this
-section can stay at defaults.
+This section only affects grith's own agent - `grith run` and the REPL. Supervising an
+external tool with `grith exec` does not use it: Claude Code, Codex and the rest bring their
+own model connections.
 
-<ConfigKeyTable section="llm" />
+| Key                | Default                                  |
+| ------------------ | ---------------------------------------- |
+| `default_provider` | `"ollama"`                               |
+| `ollama.base_url`  | `"http://localhost:11434"`               |
+| `ollama.model`     | `"llama3.1:8b"`                          |
+| `openai.model`     | `"gpt-4o-mini"`                          |
+| `anthropic.model`  | `"claude-sonnet-4-5-20250514"`           |
+| `openrouter.model` | `"anthropic/claude-sonnet-4-5-20250514"` |
 
-<ConfigKeyTable section="llm.ollama" />
+`default_provider` must be one of `ollama`, `openai`, `anthropic` or `openrouter`. Anything
+else is a fatal validation error.
 
-<ConfigKeyTable section="llm.openai" />
+<ConfigExample
+  code={`[llm]
+default_provider = "anthropic"
 
-<ConfigKeyTable section="llm.anthropic" />
+[llm.anthropic]
+model = "claude-sonnet-4-5-20250514"`}
+/>
 
-<ConfigKeyTable section="llm.openrouter" />
+`grith config set` accepts `llm.default_provider`, both Ollama keys, `llm.openai.model` and
+`llm.anthropic.model`. The OpenRouter model is edited in the file. `GRITH_LLM_PROVIDER`
+switches provider for one invocation without touching config.
 
-## API keys
+<Callout type="warning" title="Three model defaults move under an overlay">
+  The OpenAI, Anthropic and OpenRouter model defaults are among the five keys that change value the
+  moment any config file exists. See [the sparse-file
+  trap](/docs/config/overview#the-sparse-file-trap).
+</Callout>
 
-API keys can live in two places:
+## Where the API key comes from
 
-1. **Inline in the config file**, e.g. `api_key = "sk-..."`. Permissioned to `0600`
-   on the user config file.
-2. **Environment variable** — provider-prefixed: `OPENAI_API_KEY`,
-   `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`. Env vars take precedence over
-   inline values.
+Three sources, first hit wins:
 
-For Pro teams, an encrypted shared keystore is available; see
-[Encrypted key management](/docs/pro/encrypted-key-management).
+1. **`api_key` in the config file.** Explicit and highest priority.
+2. **The environment variable named by `api_key_env`** - `OPENAI_API_KEY`,
+   `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` by default. Change the name if your environment
+   uses a different one.
+3. **A synced provider key** at `~/.config/grith/provider-keys/<provider>.json`, written by
+   `grith pro sync`. Encrypted at rest and decrypted with your account key.
 
-## Switching providers per call
+An empty value at any level falls through to the next.
 
-```
-grith run --provider anthropic "explain mutexes"
-grith run --provider ollama "explain mutexes"
-```
+<ConfigExample
+  title="Point at a differently-named variable"
+  code={`[llm.anthropic]
+api_key_env = "WORK_ANTHROPIC_KEY"`}
+/>
 
-`--provider` overrides `default_provider` for that invocation. The other provider
-configs stay in the config file but aren't touched.
+Ollama needs no key. If you only supervise external agents, this whole section can stay at
+its defaults.
 
 ## See also
 
-- [Connect a model](/docs/start/connect-a-model) — getting-started guide
+- [Connect a model](/docs/start/connect-a-model)
 - [`grith run`](/docs/cli/run)
-- [Encrypted key management (Pro)](/docs/pro/encrypted-key-management)
+- [Encrypted key management](/docs/pro/encrypted-key-management)

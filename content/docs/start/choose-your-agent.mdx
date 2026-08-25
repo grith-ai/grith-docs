@@ -1,89 +1,94 @@
 ---
-title: "Choose your agent"
-description: "Pick the built-in supervisor profile that matches the AI agent you'll be running."
-section: "start"
+title: 'Choose your agent'
+description: 'grith picks a supervisor profile from the command name. Here is the table it uses, the eleven built-in profiles, and what a profile changes.'
+section: 'start'
 order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/choose-your-agent.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/choose-your-agent.mdx'
 ---
 
-grith ships with built-in **supervisor profiles** for the popular AI agents. A profile
-is a curated set of routine paths, commands, and network destinations that the agent
-needs to do its job — paths grith already trusts and routes to auto-allow without
-quarantining.
+You usually do not choose. `grith exec` matches the basename of the command you asked it
+to supervise against a fixed table and picks the profile itself.
 
-You don't have to use a built-in profile. The `generic` profile gives you strict
-defaults (project-only file access, no shell, no network) and you can [write your
-own](/docs/profiles/writing-a-custom-profile) for any agent. But starting from a
-built-in profile is faster and tends to produce a quieter digest.
+| Command basename         | Profile       |
+| ------------------------ | ------------- |
+| `claude`, `claude-code`  | `claude-code` |
+| `codex`                  | `codex`       |
+| `aider`                  | `aider`       |
+| `goose`                  | `goose`       |
+| `copilot`, `copilot-cli` | `copilot`     |
+| `cursor-agent`           | `cursor`      |
+| `cline`                  | `cline`       |
+| `openclaw`               | `openclaw`    |
+| anything else            | `generic`     |
 
-## Built-in profiles
+Basename only. No config sniffing, no version detection, no fuzzy matching. Note that the
+`cursor` profile is selected by `cursor-agent`, which is what the Cursor CLI is called on
+disk.
 
-| Agent | Profile flag | Notes |
-| --- | --- | --- |
-| Claude Code | `--profile claude-code` | Anthropic API + node/cargo/python toolchains + GitHub |
-| OpenAI Codex CLI | `--profile codex` | Codex's stdlib of editors and exec patterns |
-| Aider | `--profile aider` | git-heavy workflow + provider API |
-| Goose | `--profile goose` | Block's agent with native tool calling |
-| GitHub Copilot CLI | `--profile copilot` | gh-cli integration and suggestions |
-| Cursor (CLI/agent mode) | `--profile cursor` | Cursor's helper subprocesses |
-| Cline (Claude Dev / extension CLI) | `--profile cline` | Browser auth, MCP servers |
-| OpenClaw | `--profile openclaw` | Community fork patterns |
-| Anything else | `--profile generic-cli` | Standard CLI tools (git, npm, pip, etc.) |
-| Strictest | `--profile generic` | Project-local files only, nothing else |
+To override, pass `--profile`:
 
-All profiles extend `generic`, so any restriction set in `generic` applies to every
-profile unless explicitly relaxed.
+<Terminal command="grith exec --profile generic-cli -- ./our-house-agent" />
 
-## How a profile shapes scoring
+## The eleven built-in profiles
 
-The profile changes which calls go directly to auto-allow versus get scored
-fully. Concretely, a profile declares:
+| Profile       | For                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| `generic`     | The default. Any tool grith does not recognise.                                                        |
+| `generic-cli` | Shell work by hand. Adds VS Code and GitHub destinations. Opt-in only - auto-detection never picks it. |
+| `grith-repl`  | grith's own REPL. Not something you select.                                                            |
+| `claude-code` | Claude Code.                                                                                           |
+| `codex`       | OpenAI Codex CLI.                                                                                      |
+| `aider`       | Aider.                                                                                                 |
+| `goose`       | Goose.                                                                                                 |
+| `copilot`     | GitHub Copilot CLI.                                                                                    |
+| `cursor`      | Cursor CLI.                                                                                            |
+| `cline`       | Cline CLI.                                                                                             |
+| `openclaw`    | OpenClaw.                                                                                              |
 
-- `routine_paths` — read/write paths the agent needs (e.g. `${PROJECT_DIR}/**`,
-  `~/.cache/{agent}/**`).
-- `routine_commands` — shell commands the agent runs frequently (e.g. `git status`,
-  `npm install`, `cargo build`).
-- `routine_destinations` — network hosts the agent needs (e.g. `api.anthropic.com`,
-  `github.com`, `registry.npmjs.org`).
-- `routine_exec_roots` — directories the agent's helper processes live in.
-- `readonly_paths` — paths it can read but not write.
+They are compiled into the binary. There is no profiles file to edit and no
+`~/.config/grith/profiles.toml`.
 
-When a syscall hits a routine entry, the corresponding filter contributes a negative
-score (i.e. argues for allow) and the call usually auto-allows. Anything outside the
-routine set runs through the full filter stack at normal weight.
+<Callout type="info" title="Some profiles disable the tool's own sandbox">
+  `claude-code`, `codex` and `cursor` launch their tool with its inner sandbox turned off, on
+  purpose: two nested supervisors fight over ptrace, and the answer is one boundary, not two. grith
+  is that boundary.
+</Callout>
 
-## Picking a profile when in doubt
+## What a profile changes
 
-1. **You're running a known agent** → use its named profile.
-2. **You're running a wrapper around a known agent** → use the wrapped agent's profile.
-3. **You're shelling around in `bash` directly** → use `generic-cli`.
-4. **You're paranoid or testing** → use `generic` and let everything land in the digest.
+A profile is a list of routine paths, commands, network destinations and executable
+roots. At session start grith turns that list into a session allowlist. A call that
+matches it is allowed immediately: no filters run, no score is computed, and the proxy is
+never invoked. Everything else goes through the full pipeline.
 
-## Custom profiles
+Two things a profile deliberately cannot do:
 
-If your team has a house tool, an internal agent, or a fork of an upstream agent, you
-can either:
+- **It is ignored under containment.** Once a session is contained, the allowlist is not
+  consulted at all, including the profile's trusted destinations.
+- **It cannot wave through a spawn that hands authority away.** Listing `docker` as a
+  routine command does not bypass authority-delegating spawn enforcement.
 
-- Extend an existing profile by copying it into `~/.config/grith/profiles/` and
-  editing.
-- Write one from scratch — see [Writing a custom profile](/docs/profiles/writing-a-custom-profile).
+Do not read `generic` as "trusts nothing". Every profile inherits a shared defaults block,
+so even `generic` carries 34 routine paths and 64 routine commands - shells, `git`, the
+usual inspection and text tools, and the toolchain scratch directories under `/tmp` that
+would otherwise generate a prompt per build.
 
-For Pro teams, profiles can be centrally managed and synced — see
-[Team sync](/docs/pro/team-sync).
+## You cannot write a profile
 
-## Auditing a profile
+There is no profile authoring surface on v0.3.1 - no user profiles file, no
+`grith profile create`, no dashboard editor. What you have instead:
 
-After a session, `grith profile audit --profile <name> --trace <syscall-log>` rebuilds
-the call graph and shows which routine entries were exercised, which were never
-touched, and which calls escaped the routine set and went through full scoring. Useful
-for tightening a profile that's grown too permissive.
+- **Answer prompts.** `l` at a prompt saves a permanent rule for that exact target,
+  scoped to the profile you were running.
+- **Widen the project boundary** with `supervisor.trust.additional_project_roots` and
+  `include_linked_worktrees` in `config.toml`.
+- **Pick a different built-in** with `--profile`.
 
-## Next
+## See also
 
-- [Connect a model](/docs/start/connect-a-model) — BYOK setup so your agent has
-  something to talk to.
-- [Your first supervised session](/docs/start/first-supervised-session) — worked
-  example end-to-end.
+- [How profiles work](/docs/profiles/how-profiles-work) - merge order, and the exact matching rules.
+- [Built-in profiles](/docs/profiles/built-in-profiles) - what each profile carries.
+- [Workspace boundary](/docs/concepts/workspace-boundary) - fencing a session to its project.

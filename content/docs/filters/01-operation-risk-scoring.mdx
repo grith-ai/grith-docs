@@ -1,61 +1,69 @@
 ---
-title: "1. Operation risk scoring"
-description: "Baseline risk score for every call, by operation class."
-section: "filters"
-order: 10
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/01-operation-risk-scoring.mdx"
+title: '1. Operation risk scoring'
+description: 'The baseline every call starts from, decided purely by what kind of operation it is.'
+section: 'filters'
+order: 1
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/01-operation-risk-scoring.mdx'
 ---
 
 | | |
 | --- | --- |
-| **Phase** | Static |
-| **Score range** | +1 to +3 |
-| **Module** | `crates/grith-proxy/src/filters/operation_risk.rs` |
-| **Config file** | — (built-in) |
+| **Phase** | 1, static |
+| **Score** | 0.0 - 5.0 |
+| **Source** | `crates/grith-proxy/src/filters/operation_risk.rs` |
+| **Config** | none - the table is compiled in |
 
-The operation risk filter is the foundation of the score: a small additive
-contribution based on what kind of call this is. Every call gets a contribution,
-even on the auto-allow path.
+The first number on every call. It looks only at the operation type, never at what the
+operation touches: a read of `/etc/shadow` and a read of `README.md` both get 0.0 here, and
+filters 2 and 3 are what tell them apart.
 
-## What it catches
+## The table
 
-A coarse-grained "is this kind of operation inherently risky?" score:
+| Operation | Score |
+| --- | --- |
+| `FileRead`, `DirList` | 0.0 |
+| `DirCreate` | 0.2 |
+| `FileAppend`, `FileRename` | 0.3 |
+| `FileWrite`, `FileLink`, `NetConnect`, `NetListen`, `DnsQuery` | 0.5 |
+| `HttpRequest` - GET, HEAD, OPTIONS, DELETE | 0.5 |
+| `HttpRequest` - POST, PUT, PATCH | 1.0 |
+| `ShellExec`, `ProcessSpawn`, `FileDelete`, `FileChmod` | 1.0 |
+| `FileChmod` setting setuid or setgid | 5.0 |
+| `OwnershipChange`, `FilesystemMutation`, `CrossProcessAccess`, `NamespaceOp` | 5.0 |
+| `DbusMethodCall` the supervisor did not recognise | 5.0 |
 
-| Operation | Base | Reasoning |
-| --- | --- | --- |
-| `file_read` | +0.5 | Reads can leak; usually fine in routine paths. |
-| `file_write` | +1.5 | Writes can corrupt or implant. |
-| `shell` | +2.0 | Arbitrary code execution. |
-| `network` | +1.5 | Egress. Always interesting. |
-| `exec` (spawn process) | +2.0 | New supervised subprocess. |
-| `chmod` / `chown` | +2.0 | Privilege escalation surface. |
-| `unlink` / `rmdir` | +1.0 | Destructive. |
-| `rename` | +1.0 | Can move files out of zone. |
-| `socket bind` | +1.5 | Opens up listening sockets. |
-| `kill` | +3.0 | Signals other processes. Rare and conspicuous. |
+Reads score nothing at all. That is deliberate: a read is the most common call an agent
+makes, and pricing it here would tax every session for nothing.
 
-The exact numbers are tuned per operation. They're conservative enough that a single
-operation-risk score is never enough on its own to land in the queue zone; they need
-to combine with other filter contributions.
+Two distinctions are worth knowing. A body-bearing HTTP method scores double a read-shaped
+one, because an outbound body is the exfil-relevant shape. And a `chmod` that sets the setuid
+or setgid bit scores 5.0 rather than 1.0 - the octal mode is inspected, so `0o4755` is priced
+like `chmod +s`, not like a plain permission change:
 
-## What it doesn't do
+<Terminal>
+{`$ grith proxy test '{"type":"FileChmod","path":"/home/u/projects/api/run.sh","mode":2541}'
 
-This filter doesn't look at *what* the operation touches. A `file_read` of
-`/etc/passwd` and a `file_read` of `~/proj/README.md` both get the same +0.5 from
-this filter; the path-aware filters (2, 3, 9) are responsible for differentiating.
+  Tool call:   FileChmod(/home/u/projects/api/run.sh, 4755)
+  Score:       5.0
+  Decision:    QUEUE (Medium)
 
-## Tuning
+  Filter Breakdown:
+    + operation-risk         5.0  [error]  setuid/setgid permission change: /home/u/projects/api/run.sh (mode 4755)`}
+</Terminal>
 
-Most tuning happens via downstream filters. If you find that the auto-allow zone is
-too aggressive for a particular operation class, the cleanest knob is the threshold
-itself (`proxy.auto_allow_threshold`) rather than re-weighting this filter — the
-operation risk numbers are calibrated against the rest of the pipeline.
+## Spawn provenance
+
+`ProcessSpawn` normally scores 1.0. It drops to 0.5 when the routine-provenance signal fires -
+the binary was launched from a profile-declared routine root, is not outbound-capable, sits on
+a path with no unsafe write permissions, and matches the hash pinned at session start.
+
+That signal is **off by default** (`proxy.spawn.routine_provenance_signal = false`). On a
+stock install every spawn takes the 1.0 baseline.
 
 ## See also
 
+- [2. Static path matching](/docs/filters/02-static-path-matching) - what the operation touches
 - [Composite scoring](/docs/concepts/composite-scoring)
-- [Filter 2: Static path matching](/docs/filters/02-static-path-matching)
-- [Phase 1 — Static](/docs/filters/phase-1-static)

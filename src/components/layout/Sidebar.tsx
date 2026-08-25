@@ -4,18 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Badge from '@/components/shared/Badge';
-
-interface SidebarDoc {
-  slug: string;
-  title: string;
-  tier?: string;
-}
-
-interface SidebarSection {
-  slug: string;
-  label: string;
-  docs: SidebarDoc[];
-}
+import type { SidebarSection } from '@/lib/sidebar-data';
 
 export default function Sidebar({
   sections,
@@ -72,6 +61,7 @@ export default function Sidebar({
                     <span className="truncate">{doc.title}</span>
                     {doc.tier === 'pro' && <Badge variant="pro">Pro</Badge>}
                     {doc.tier === 'enterprise' && <Badge variant="enterprise">Ent</Badge>}
+                    {doc.status === 'planned' && <Badge variant="roadmap">Soon</Badge>}
                   </Link>
                 </li>
               ))}

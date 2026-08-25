@@ -1,55 +1,57 @@
 ---
-title: "grith init"
-description: "Generate a default configuration file in the user config directory."
-section: "cli"
+title: 'grith init'
+description: 'Write a default config.toml. It overwrites any file already there, with no backup and no merge.'
+section: 'cli'
 order: 14
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/init.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/init.mdx'
 ---
 
 ```
 grith init
 ```
 
-Generate `~/.config/grith/config.toml` from the shipping defaults. Run once after
-install.
+Writes `$HOME/.config/grith/config.toml` from the shipping defaults and prints
+`Created default config at <path>`. No flags beyond the
+[global ones](/docs/cli/overview).
 
-The file is the same as `config/default.toml` in the grith repo, including all
-inline comments. Edit freely; layers and precedence work normally
-(see [`grith config`](/docs/cli/config) for the layering model).
+<Callout type="danger" title="It overwrites, unconditionally">
+There is no backup, no merge and no prompt. If `config.toml` already exists, `grith init`
+replaces it. To change one value on an existing file, use
+[`grith config set`](/docs/cli/config).
+</Callout>
 
-## Behaviour
+## Where it writes, and what from
 
-- Creates `~/.config/grith/` if it doesn't exist (perms `0700`).
-- Writes `config.toml` with perms `0600`.
-- Won't overwrite an existing config file.
+The path is literally `$HOME/.config/grith/config.toml`. `XDG_CONFIG_HOME` is not
+consulted, and neither is `GRITH_CONFIG_DIR` - that variable moves the daemon's state
+files, not the config.
 
-```
-grith init              # safe, errors if config already exists
-```
+The defaults come from the first of these that exists: `config/default.toml` relative to
+the working directory, then the same path relative to the repository root, then the copy
+compiled into the binary. An installed user always gets the compiled-in copy, so the
+result does not depend on where you were standing when you ran it.
 
-To regenerate from scratch, delete the existing file first, then run `grith init`
-again.
+`init` also stamps `onboarded = true` into `[general]`, so the
+[setup wizard](/docs/cli/setup) does not fire over the config you just made.
 
-## What's in the generated file
+## After running it
 
-The full default config — every section with shipping defaults and inline comments.
-Sections include:
+The file is around 360 lines, comments included, and covers every section the daemon
+reads. Print the effective result with [`grith config`](/docs/cli/config) - that output is
+the merged struct with the comments stripped, so it is shorter - and see
+[Configuration overview](/docs/config/overview) for which layer wins.
 
-- `[general]` — daemon basics (log level, audit dir, plan tier).
-- `[proxy]` — scoring thresholds and filter sub-configs.
-- `[reputation]` — trust table parameters.
-- `[digest]` — queue behaviour.
-- `[llm]` — provider configuration (Ollama by default).
-- `[supervisor]` — interception parameters, default profile.
-- `[server]` — daemon HTTP server settings.
-
-See [Configuration overview](/docs/config/overview) for what each section does.
+<Callout type="warning" title="Do not hand-write a sparse config">
+Every configuration layer is deep-merged from a whole serialised struct, so a two-line
+overlay file quietly contributes Rust defaults for everything it omits - including an
+empty `supervisor.default_profile`, which fails validation and stops the CLI. Start from
+`grith init` and edit, or use `grith config set`.
+</Callout>
 
 ## See also
 
-- [`grith config`](/docs/cli/config)
-- [Installation](/docs/start/installation)
-- [Quickstart](/docs/start/quickstart)
+- [`grith config`](/docs/cli/config) - print or change a single key
+- [Configuration overview](/docs/config/overview) - layers and precedence

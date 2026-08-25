@@ -1,65 +1,69 @@
 ---
-title: "What's in Pro"
-description: "Team-scope features on top of the community core."
-section: "pro"
+title: 'What Pro adds'
+description: 'The four things a Pro licence turns on, what stays identical on Community, and what it costs.'
+section: 'pro'
 order: 1
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/whats-in-pro.mdx"
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/whats-in-pro.mdx'
 ---
 
 <PlanBadge tier="pro" />
 
-The community edition is the full grith product. Pro adds team-scope features on top:
-shared policy, team-wide analytics, encrypted key sharing, and managed notifications (coming soon).
+Pro turns on four things and raises one limit. Everything that decides what an agent may do -
+the 18 filters, the scoring, the supervisor, the audit chain - is identical on Community.
 
-## Headline features
+## What the licence gates
 
-- **Team sync** — centrally-managed profiles, scoring thresholds, and filter
-  configs distributed signed to every team device.
-- **Encrypted team key sync** — share OpenAI / Anthropic / OpenRouter API keys
-  across the team without leaking them anywhere.
-- **Centralised policies** — author policies once in the dashboard, apply to
-  any subset of the team.
-- **Usage analytics** — per-developer cost, decision split, session timelines.
-- **Cost tracking** — provider spend by model, by user, by project.
-- **Notification channels** *(coming soon)* — managed Slack, Telegram and more,
-  connected from the dashboard with no local setup.
-- **Escalation** — route a digest item to another team member from the CLI or
-  channel.
+| Feature key | What it covers |
+| --- | --- |
+| `usage_analytics` | The Pro panels on the local dashboard (30 and 90-day windows) and the team analytics on grith.ai. |
+| `cloud_sync` | `grith pro sync`, shared team configs, and provider-key sharing. |
+| `policy_editor` | The policy editor on grith.ai and the local `/api/policies` routes. |
+| `notification_channels` | Parked. See [Notifications](/docs/pro/notifications). |
+
+That is the whole list. The tier comes from the signed licence and nothing else -
+`[general] plan_tier` in your config is a display string that grants no entitlement, and the
+daemon overwrites it from the licence at start.
+
+## Concurrent supervised sessions
+
+Community allows **2** concurrent supervised sessions. A paid licence raises the ceiling to
+**64**.
+
+<Callout type="warning" title="A stock paid install still caps at 4">
+The effective cap is the lower of your licence ceiling and
+`supervisor.max_concurrent_sessions`, which ships at `4`. Raise that key to use the full 64.
+See [Supervisor config](/docs/config/supervisor).
+</Callout>
+
+## What does not change
+
+- All 18 filters, the same scores and the same thresholds.
+- Audit records stay on the machine. Cloud analytics publishes counts and rollups, never the
+  records - see [Analytics](/docs/pro/analytics).
+- The learned reputation table leaves the machine only when you run `grith pro sync`, and your
+  local learned rules never leave it at all.
+- Bring your own model keys.
 
 ## Pricing
 
-- **$25/user/month**, billed monthly.
-- **$21/user/month**, billed annually (≈17% off, two months free).
-- Up to 25 users.
-- Email support.
+$25 per user per month billed monthly, $21 per user per month billed annually, up to 25 users.
+A free trial runs 14 days on one seat, one per team and one per email address.
 
-For more than 25 users or compliance-grade needs, see
-[Enterprise](/docs/enterprise/whats-in-enterprise).
+<Terminal command="grith pro start-trial" />
 
-## What stays the same
+Or sign in to an existing plan:
 
-The community core is unchanged on Pro:
+<Terminal command="grith pro login" />
 
-- All 18 filters with all the same scoring.
-- Local-first by default. Audit data stays local unless `audit_sync = true`.
-- Per-device reputation table.
-- BYOK model access.
+Running grith across an organisation larger than 25 users: get in touch at
+[grith.ai/contact](https://grith.ai/contact).
 
-## Sign up
+## Where to go next
 
-```
-grith pro login
-```
-
-Walks the device-auth flow in a browser. After approval the device joins your
-team. See [Authentication](/docs/pro/authentication).
-
-## See also
-
-- [Authentication](/docs/pro/authentication)
-- [License lifecycle](/docs/pro/license-lifecycle)
-- [Team setup](/docs/guides/team-setup)
-- [Enterprise tier](/docs/enterprise/whats-in-enterprise)
+- [Authentication](/docs/pro/authentication) - linking a machine to your account.
+- [Licence lifecycle](/docs/pro/license-lifecycle) - refresh, grace windows, revocation.
+- [Analytics](/docs/pro/analytics) - what leaves the machine, and what never does.
+- [Team sync](/docs/pro/team-sync) - what `grith pro sync` moves, in both directions.

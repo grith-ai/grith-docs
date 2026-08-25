@@ -1,54 +1,120 @@
 ---
-title: "Supervisor sessions"
-description: "IPC-only routes for registering, listing, and killing supervised sessions."
-section: "api"
-order: 5
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/supervisor.mdx"
+title: 'Supervisor sessions'
+description: 'List, inspect, create and terminate supervised sessions, plus the two session-scoped reads that sit outside this prefix.'
+section: 'api'
+order: 8
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/supervisor.mdx'
 ---
 
-<ApiRouteTable group="Supervisor sessions" showHeadings={false} />
+Five routes, nested at `/api/supervisor`. This is the surface the dashboard's session list
+and its terminate button use.
 
-All routes in this group are **IPC-only** — they reject non-loopback callers at the
-listener. The thin-client supervisor (`grith exec` when a daemon is running) uses
-these to register itself and report session state.
+| Method | Path                                 |
+| ------ | ------------------------------------ |
+| GET    | `/api/supervisor/sessions`           |
+| POST   | `/api/supervisor/sessions`           |
+| GET    | `/api/supervisor/sessions/{id}`      |
+| POST   | `/api/supervisor/sessions/{id}/kill` |
+| DELETE | `/api/supervisor/sessions/{id}`      |
 
-## Session shape
+Two auth layers apply to all five: the dashboard token on every method once one exists, and
+`x-grith-csrf` on the three mutations. `GET`s use the general rate bucket, mutations the
+write bucket.
 
-```json
-{
-  "id": "uuid-...",
-  "profile": "claude-code",
-  "zone": "dayjob",
-  "started_at": "2026-05-14T09:02:13Z",
+These are not the routes [`grith exec`](/docs/cli/exec) uses. A supervised CLI session
+registers itself over the daemon-token IPC surface at `/api/ipc/sessions` - see
+[Daemon IPC](/docs/api/ipc).
+
+## GET /api/supervisor/sessions
+
+`{sessions, total}`, where each entry is a summary:
+
+<CodeBlock
+  language="json"
+  title="One session summary"
+  code={`{
+  "id": "9c4f...",
+  "tool_name": "claude-code",
+  "project_name": "api",
+  "cwd": "/home/u/projects/api",
+  "tty": "pts/21",
   "root_pid": 17421,
-  "root_command": "claude",
-  "tree_pids": [17421, 17430, 17440],
-  "decisions": { "allow": 781, "queue": 38, "deny": 15 },
-  "last_activity": "2026-05-14T09:14:32Z",
-  "frozen": false
-}
-```
+  "uptime_seconds": 742,
+  "last_activity_seconds": 12,
+  "stats": {
+    "total_intercepted": 88214,
+    "total_allowed": 4702,
+    "total_queued": 96,
+    "total_denied": 14,
+    "total_filtered_noise": 83402,
+    "foreign_abi_denied": 0
+  },
+  "containment_remaining_seconds": 480
+}`}
+/>
 
-## Lifecycle
+`total_intercepted` counts every trapped syscall including noise, so it dwarfs the other
+three. Allowed plus queued plus denied is the number of calls the proxy actually scored.
+`last_activity_seconds` is driven by scored calls only, so background noise does not keep a
+session looking busy. `containment_remaining_seconds` is absent unless the session is under
+a windowed containment.
 
-A thin client typically:
+## `GET /api/supervisor/sessions/{id}`
 
-1. `POST /ipc/sessions` — register itself. Daemon assigns an id and returns the
-   active config snapshot.
-2. `GET /ipc/sessions/{id}` — periodically pull current config (in case of
-   config-reload events).
-3. `PUT /ipc/sessions/{id}` — update activity heartbeat.
-4. `DELETE /ipc/sessions/{id}` — unregister at exit.
+`id`, `tool_name`, `root_pid`, `uptime_seconds`, `process_tree_pids`, the same `stats`, and
+`containment_remaining_seconds` when the session is contained. A non-UUID is
+`400 INVALID_ID`; an unknown id is `404 SESSION_NOT_FOUND`.
 
-`POST /ipc/sessions/{id}/kill` is callable from any local origin (it's how
-`grith supervisor kill` and the dashboard's terminate button work) but still
-requires loopback.
+## POST /api/supervisor/sessions
+
+Starts a supervised session inside the daemon rather than from a terminal. `tool_name` is
+required; supply `root_pid` to attach to a running process, or `command` to spawn one.
+`start_interception` defaults to true.
+
+<CodeBlock
+  language="json"
+  title="POST /api/supervisor/sessions"
+  code={`{ "tool_name": "claude-code", "command": ["claude"], "start_interception": true }`}
+/>
+
+The response is `{id, tool_name, root_pid, interception_started}`.
+
+Admission is refused before anything is attached or spawned, which is the point: an empty
+`tool_name`, or `start_interception` with neither `root_pid` nor `command`, is
+`400 INVALID_REQUEST`; a quarantined audit chain is `503 AUDIT_QUARANTINED` and a read-only
+audit database is `503 AUDIT_READ_ONLY`; no free seat under the licence ceiling is
+`429 SESSION_LIMIT_REACHED`. A daemon that cannot record a decision does not start a session
+it would have to run unrecorded.
+
+## Ending a session
+
+`POST /api/supervisor/sessions/{id}/kill` and `DELETE /api/supervisor/sessions/{id}` do the
+same thing - they share one handler: stop the interception task, remove the session from
+the registry, and return `{id, status, tool_name, final_stats, interception_stopped}` with
+`status` set to `terminated`.
+
+## Two session reads that are not under this prefix
+
+| Method | Path                                           | What                                                   |
+| ------ | ---------------------------------------------- | ------------------------------------------------------ |
+| GET    | `/api/inventory/{session_id}`                  | The binaries pinned at session start                   |
+| GET    | `/api/sessions/{session_id}/listener-rewrites` | Every wildcard bind the supervisor clamped to loopback |
+
+Note the second path: `/api/sessions/...`, not `/api/supervisor/sessions/...`. Both are
+plain sensitive reads.
+
+The inventory response carries `session_id`, `binaries_pinned`, `total_scanned`,
+`truncated` and `entries` of `{path, sha256}`. `truncated` means the walk hit its 5000-file
+cap and stopped short, which is a signal to narrow `routine_exec_roots`.
+
+Each listener rewrite carries `id`, `timestamp`, `pid`, `tool`, `original_addr`,
+`rewritten_addr` and `clamp_profile_entry` - the profile entry that authorised the clamp.
+An empty list is the common case.
 
 ## See also
 
-- [Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions)
 - [`grith supervisor`](/docs/cli/supervisor)
-- [`grith exec`](/docs/cli/exec)
+- [Daemon and sessions](/docs/concepts/daemon-and-sessions)

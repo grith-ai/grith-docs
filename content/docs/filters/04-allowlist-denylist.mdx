@@ -1,86 +1,84 @@
 ---
-title: "4. Allowlist / denylist"
-description: "User-managed allow and deny rules with explicit priority over static patterns."
-section: "filters"
-order: 13
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/04-allowlist-denylist.mdx"
+title: '4. Allowlist / denylist'
+description: 'Your own allow and deny patterns - the one filter that can pull the composite down.'
+section: 'filters'
+order: 4
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/04-allowlist-denylist.mdx'
 ---
 
 | | |
 | --- | --- |
-| **Phase** | Static |
-| **Score range** | -1 to +3 |
-| **Module** | `crates/grith-proxy/src/filters/allowlist.rs` |
+| **Phase** | 1, static |
+| **Score** | **-1.0** on an allow hit, **+3.0** on a deny hit |
+| **Source** | `crates/grith-proxy/src/filters/allowlist.rs` |
+| **Config** | `~/.config/grith/filters/allowlist.toml`, plus an optional `./config/filters/allowlist.toml` |
 
-The user-managed allow/deny list. Edited primarily through digest decisions ("approve
-+ learn", "allow always"), not by hand.
+Your own patterns. The denylist is checked first and an explicit deny always wins; the first
+matching entry decides, and the filter returns immediately.
 
-## What it catches
+This is one of three filters that can emit a negative score. An allowlist hit subtracts 1.0
+from the composite:
 
-Whatever you've taught it. A `learn`-tagged approval from the digest writes an entry:
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/projects/api/.env"}'
 
-```
-allowlist  file_read /home/you/.ssh/config       (per-session)
-allowlist  shell    git status                   (permanent, "allow-always")
-denylist   network  api.dangerous.example         (permanent, user deny rule)
-```
+  Score:       5.0
+  Decision:    QUEUE (Medium)
 
-Entries can be:
+  Filter Breakdown:
+    + path-match             3.0  [warning]  Access to environment file
+    + sensitive-path-heuristic   3.0  [warning]  read access to environment file
+    + allowlist             -1.0  [notice]  Path matches allowlist: */projects/api/.env`}
+</Terminal>
 
-- **Per-session** — applies until the session exits. Default for "approve once" with
-  the destination unlocked.
-- **Permanent** — applies across sessions. Set by `allow-always` (Pro) or by direct
-  edit of the user allowlist file.
+A denylist hit adds 3.0:
 
-## How it contributes
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/projects/api/infra/main.tfstate"}'
 
-For a matching call:
+  Score:       7.0
+  Decision:    QUEUE (Critical)
 
-- **Allowed** entries contribute `-1.0` (pulls toward allow).
-- **Denied** entries contribute `+3.0` (pushes toward deny). The filter doesn't return
-  hard DENY — it lets the composite drive the decision — except via the dedicated
-  capability filter for hard gates.
+  Filter Breakdown:
+    + path-match             4.0  [error]  Access to Terraform state file
+    + allowlist              3.0  [error]  Path matches denylist: *.tfstate`}
+</Terminal>
 
-## Editing by hand
+<Callout type="warning" title="It is a hint, not a bypass">
+-1.0 does not overturn a 5.0 path rule, and it cannot rescue a call from a capability deny or
+a canary hit. The allowlist argues for allow; the composite still decides.
+</Callout>
 
-The allowlist file lives at `~/.config/grith/allowlist.toml`:
+## The file
 
-```toml
-[[allow]]
-operation = "shell"
-target    = "git status"
-reason    = "always fine; learned 2026-05-12"
-scope     = "permanent"
+Entries live under `[[allow]]` and `[[deny]]`. Each has a `pattern` and an optional `plugins`
+list that scopes it to particular callers - omit it and the entry applies to everything.
+
+<ConfigExample title="~/.config/grith/filters/allowlist.toml" code={`[[allow]]
+pattern = "*/projects/api/.env"
 
 [[deny]]
-operation = "network"
-target    = "api.dangerous.example"
-reason    = "data went somewhere we couldn't audit"
-scope     = "permanent"
-```
+pattern = "*.tfstate"
+`} />
 
-Edit, then run `grith config reload` to apply without restarting the daemon.
+Patterns support a leading `*`, a trailing `*`, or both. A bare pattern matches exactly or as
+a path suffix, so `.env` matches any `.env`. A single `*` matches everything.
 
-## Inspection
+## Where it is written from
 
-```
-grith digest list --filter "matched=allowlist"
-grith config show allowlist
-```
+The digest's **allow always** action appends an entry here for you - the exact path for a
+file call, `*://host/*` for a URL, the full command line for a shell call, `address:port` for
+a socket - scoped to the plugin that made the call. Duplicates are not re-added.
 
-## What it doesn't do
-
-Allowlist is a contribution, not an override. A canary trip or a capability deny
-will still deny, even if the call is in the allowlist. That's intentional: the
-allowlist is a hint, not a bypass.
+This is the one filter config file with a user-level layer. `~/.config/grith/filters/allowlist.toml`
+is merged on top of `./config/filters/allowlist.toml` if that exists; every other filter file
+resolves from the working directory or the copy embedded in the binary. Changes are read at
+daemon start, so restart the daemon after a hand edit.
 
 ## See also
 
-- [Filter 6: Capability enforcement](/docs/filters/06-capability-enforcement) — hard
-  gates
-- [Adaptive reputation](/docs/concepts/adaptive-reputation) — automated equivalent
-- [Reviewing the digest](/docs/start/reviewing-the-digest) — `learn` and
-  `allow-always` actions
+- [Reviewing the digest](/docs/start/reviewing-the-digest) - where allow always comes from
+- [Filter config files](/docs/config/filter-config-files)

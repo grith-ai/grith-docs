@@ -1,0 +1,117 @@
+---
+title: 'grith analytics'
+description: 'Check, consent to or turn off cloud analytics sync, and verify that archived days still match the dashboard.'
+section: 'cli'
+order: 17
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/analytics.mdx'
+---
+
+<PlanBadge tier="pro" />
+
+```
+grith analytics status
+grith analytics enable [--yes]
+grith analytics disable
+grith analytics verify-archives [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+```
+
+Controls whether this machine sends aggregated metrics to your team dashboard. The local
+[analytics](/docs/pro/analytics) projection is always built, signed in or not; these
+commands only govern the upload.
+
+## `status`
+
+<Terminal>
+{`$ grith analytics status
+Cloud analytics sync
+  Consent:  not recorded yet — turns on automatically with a paid plan
+            (or run \`grith analytics enable\`)
+  Account:  not signed in — run \`grith pro login\`
+  Plan:     requires a Pro plan
+  Config:   audit sync on
+  Device:   not registered yet
+  Pending:  0 day(s) awaiting upload, 0 security event(s)`}
+</Terminal>
+
+Sync needs all four of those to line up: recorded consent, a signed-in account, a plan
+that includes analytics, and `general.audit_sync` left on. `Device` shows this machine's
+registration, and `Pending` is the upload backlog. The daemon reads `general.audit_sync`
+once at start, so a change to that key needs `grith daemon restart` before it takes.
+
+## `enable`
+
+Prints the consent summary, then asks. This is the exact text, and it is the contract:
+
+<Terminal>
+{`$ grith analytics enable
+Cloud analytics sync sends aggregated usage metrics from this machine
+to your team's dashboard at grith.ai:
+
+  - counts of allowed, queued and denied operations, by hour and day
+  - security filter activity and score distributions
+  - session, project, profile and tool names
+  - AI model usage and estimated cost
+  - security event summaries (what was blocked, and why)
+
+Once a day closes, the same information for that day is also
+uploaded as a single file, one row per operation, to encrypted
+private storage. It is kept for 90 days.
+
+It never includes commands, file paths, file contents, prompts or
+model responses.
+
+Cloud analytics is included with paid plans and turns on
+automatically once you are signed in. Turn it off any time with
+\`grith analytics disable\`.
+
+Enable cloud analytics sync? [y/N]`}
+</Terminal>
+
+Answer yes and it confirms, then explains the cadence: while the daemon is running and you
+are signed in to a plan that includes analytics, this machine registers itself and syncs
+every 30 seconds. `--yes` skips the question for scripts. Enabling also clears a revoked
+device identity so the machine can register again.
+
+## `disable`
+
+Prints `Cloud analytics sync is disabled.` and the machine stops uploading and reports
+itself as sync-disabled. Data already synced stays in the team dashboard - manage it
+there.
+
+## `verify-archives` <SinceTag version="0.3.1" />
+
+Downloads each archived day, checks it byte-for-byte, rebuilds the analytics from it and
+compares against what the server accepted. It is an audit of your own dashboard.
+
+Defaults to yesterday back 29 days - a 30-day window. `--from` and `--to` are UTC days.
+
+<Terminal>
+{`$ grith analytics verify-archives
+This machine has not registered for cloud analytics yet.
+Run \`grith analytics status\` to see why.`}
+</Terminal>
+
+A registered machine prints `Checking archived days from <a> to <b>...` and then one row
+per day: `[ok]` or `[FAIL]`, the day, its revision, the row count and a label, with an
+indented detail line where there is something to say. It finishes with either
+`All <n> archived day(s) rebuilt to exactly the analytics the server accepted.` or a count
+of the days that did not.
+
+<Callout type="warning" title="A mismatch exits non-zero, on purpose">
+This command is meant to run as a check. Any disagreeing day makes it fail, so it can sit
+in a scheduled job without anyone reading the output. Keep the output when reporting a
+mismatch - it names the day and the revision.
+</Callout>
+
+Bad input is rejected before any network call: a malformed date gives
+`dates must look like YYYY-MM-DD`, and a reversed range gives
+`--from must not be after --to`. An empty window is not an error - it says
+`No archived days in that range.` and exits `0`.
+
+## See also
+
+- [Analytics](/docs/pro/analytics) - what is uploaded, what never is
+- [`grith audit rebuild-analytics`](/docs/cli/audit) - rebuild the local projection

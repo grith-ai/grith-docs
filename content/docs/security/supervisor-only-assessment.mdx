@@ -1,91 +1,102 @@
 ---
-title: "Supervisor-only security assessment"
-description: "Formal evaluation of the supervisor as the sole defence path — without the rest of the filter pipeline."
-section: "security"
+title: 'Supervisor-only assessment'
+description: 'grith enforces on one path. This is what that path carries, what has been closed, and what has not.'
+section: 'security'
 order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/supervisor-only-assessment.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/supervisor-only-assessment.mdx'
 ---
 
-This page evaluates grith in a degenerate mode — the **supervisor-only** scenario
-— where filtering is at minimum and the security guarantee rests on syscall
-interception alone. Useful for understanding what grith protects even when
-filters are misconfigured or disabled.
+grith v0.3.1 has a single enforcement path. There is no second sandbox behind the supervisor: if
+ptrace and seccomp-BPF do not catch a call, nothing does. An internal assessment in early 2026
+asked whether that one path could carry every control grith claims. This page reports where that
+stands on v0.3.1 - what the supervisor carries on its own, what has been closed since, and what
+is still open.
 
-A more formal version is in `grith/docs/SUPERVISOR-ONLY-SECURITY-ASSESSMENT.md`
-in the product repo.
+If you are auditing grith, read this alongside [Limitations](/docs/security/limitations).
 
-## The scenario
+## What the supervisor carries on its own
 
-Configure grith with the bare minimum:
+| Control | On v0.3.1 |
+| --- | --- |
+| `operation-risk`, `path-match`, `sensitive-path-heuristic` | Full. The path is resolved from the syscall itself. |
+| `argument`, `secret-scan`, `command` | Full. They read the command line and argv the supervisor already reconstructs. |
+| `destructive-action`, `dlp-gate`, `canary` | Full over the mapped call types. |
+| `egress-policy`, `reputation`, `egress-rate` | Full for connects, HTTP requests, and datagram sends that name a destination. Bytes on an already-connected socket are not re-evaluated per send. |
+| `behavioural`, `rate-limit`, `session-containment`, `taint` | Full. All four key on the supervisor's own call stream, scoped per session. |
+| `allowlist` | Works, but starts empty. It carries only what your session grants and your saved allowlist put in it. |
+| `capability` | Mechanism works. Ships with no grants, and with no grants the filter is permissive. |
+| Meta-rules and composite scoring | Full. They operate on filter output, so they are unaffected by how the call was captured. |
+| Queue, human review, audit trail | Full. Every supervisor evaluation goes through the same decision model and the same hash-chained record. |
 
-```toml
-[supervisor]
-enabled = true
+## Closed since the assessment
 
-[proxy]
-auto_allow_threshold = 1000   # effectively disable scoring → everything allows
-```
+**Filter state is session-scoped.** `taint`, `rate-limit` and `behavioural` key on a scope
+attached to every call - the conversation id where there is one, otherwise the session's own
+UUID. The taint registry was a global path map; it no longer is, and it expires at one hour.
+Cross-session contamination is gone.
 
-In this configuration the supervisor still intercepts syscalls and records them
-to the audit log — but every call auto-allows because no filter can reach the
-threshold.
+**Datagram sends with an explicit destination are scored.** A `sendto` naming an arbitrary
+address used to be dropped as noise, which let a payload leave with no evaluation and no audit
+record without even needing a connect. It now surfaces as a connect and runs the egress path.
+Raw `AF_PACKET` sends do the same, and raw socket creation is denied at `socket()` for `AF_PACKET`
+and for netlink families beyond routing.
 
-## What's still defended
+**Abstract-namespace unix sockets are matched.** They render as `unix:@<name>` at classification,
+so a control socket can no longer hide in the abstract namespace.
 
-Despite filter degeneration:
+**The delegating-binary classifier is no longer basename-only.** A spawn is matched by argv
+basename, by canonical path after symlink resolution, and by content SHA-256 against a set pinned
+at session start - which defeats both `ln -s systemd-run x` and `cp /usr/bin/systemd-run /tmp/x`.
 
-1. **Observability** — every syscall is recorded with full context. An attack
-   that succeeds is still fully observable afterwards.
-2. **Process tree visibility** — `grith supervisor list` shows everything an
-   agent spawned, including helpers and shells.
-3. **Auditable termination** — the operator can kill any session at any time
-   via `grith supervisor kill`. The agent has no way to prevent this.
-4. **Forensic record** — every call is in the audit log. Post-incident
-   reconstruction works.
+**D-Bus is decided per method call.** A connect to a bus endpoint arms message inspection instead
+of escalating the whole connection, and each method call is checked against an allowlist.
 
-## What's not defended
+**Escape enforcement is on by default.** `enforce_authority_delegating_spawn` and
+`enforce_control_socket_connect` both default to `true`, and a call that would be enforced
+deliberately skips the session-allowlist short-circuit - otherwise a profile that lists `docker` or
+`tmux` as routine would make the whole mechanism a silent no-op.
 
-Without active filtering:
+**Interceptor failure terminates the tree.** If the interceptor errors, the supervisor terminates
+every tracee rather than exiting cleanly and leaving them running unsupervised. `PTRACE_O_EXITKILL`
+covers the other direction: a supervisor crash SIGKILLs its tracees.
 
-- Calls execute. The supervisor doesn't block; it observes.
-- Credential exfiltration runs through to completion. The DLP gate and canary
-  filter aren't in the loop.
-- No quarantine queue triggers; no human review prompts.
+## Still open
 
-## When supervisor-only is appropriate
+- **No payload inspection.** `read`, `write` and `writev` are not trapped, so grith judges what is
+  touched and not what is transferred.
+- **The capability filter ships permissive.** It enforces only once grants are declared.
+- **The mount/ownership and namespace coverage categories are off at defaults.** `chown`, `mount`,
+  `unshare` and `setns` are not evaluated unless you turn them on. Cross-process `ptrace` coverage,
+  which shares the category-2 name, is on.
+- **PTY ownership is audit-only** unless `pty_ownership_enforce = true`.
+- **Five delegating-binary residuals** remain, listed on [Limitations](/docs/security/limitations).
 
-Limited cases:
+## The invariant it all rests on
 
-- **Initial deployment phase** — you want to see what the agent does before
-  you commit to filter tuning. Run in this mode for a week, audit, tighten.
-- **Compliance "audit log only" mandates** — some regulators want a full
-  audit trail without enforcement (audit-mode certifications). grith can run
-  in observation-only mode for these.
+Sticky session containment has no TTL - once a high-taint access arms it, it lasts until the
+session ends. That guarantee is only worth something if a supervised tool cannot start a fresh
+session for itself, so the invariant is: **session lifecycle is user-initiated only.**
 
-For all other production uses, enable the filters. The supervisor's value
-without filters is similar to running `strace` continuously — useful for
-forensics, not for defence.
+- `grith exec` runs the supervisor loop exactly once and propagates the result to its exit code.
+  There is no auto-retry path in the CLI or the supervisor.
+- The built-in agent loop retries on context overflow by shrinking the prompt inside the same
+  session. It never allocates a new scope.
+- The dashboard can start fresh sessions, but that endpoint is loopback-bound and token-gated, and
+  it is an operator action.
+- `SIGTERM` and `SIGINT` arriving at the supervisor are logged at high severity as
+  `shutdown_signal_received`, so the interesting case - a supervised tool signalling its own
+  supervisor - leaves a trail.
 
-## Audit log integrity in supervisor-only
-
-The audit log is the primary security artifact in this mode. Concerns:
-
-- **Tampering by the agent** — mitigated by filesystem perms; the agent runs
-  with the user's UID and `~/.local/share/grith/audit/` is `0600`-owned by
-  the user.
-- **Tampering by local root** — out of scope (root can do anything).
-- **Append-only guarantee** — not currently enforced; planned for v0.2 via
-  WORM-style append-only log option.
-
-For high-assurance audit, stream to a SIEM with append-only retention
-configured at the SIEM level — see
-[SIEM integration (Enterprise)](/docs/enterprise/siem-integration).
+The consequence: an attacker working through the model cannot wait out containment or reset it,
+without your cooperation. The one thing that does reset it is a CI wrapper that retries
+`grith exec` on failure. If your environment does that, know that each retry is a new session with
+a clean scope.
 
 ## See also
 
-- [Threat model](/docs/security/threat-model)
-- [Trust boundaries](/docs/security/trust-boundaries)
-- [Filter overview](/docs/filters/overview)
+- [Limitations](/docs/security/limitations)
+- [Session containment](/docs/concepts/session-containment)
+- [Syscall interception](/docs/concepts/syscall-interception)

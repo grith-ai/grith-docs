@@ -1,130 +1,125 @@
 ---
-title: "Setting up canary tokens"
-description: "Place canary tokens that prove exfiltration when they appear in outbound traffic."
-section: "guides"
+title: 'Setting up canary tokens'
+description: 'The only registration that survives a restart, what detection actually covers, and how to verify it fires.'
+section: 'guides'
 order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/setting-up-canary-tokens.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/setting-up-canary-tokens.mdx'
 ---
 
-A canary token is a fake credential placed somewhere an attacker might look. When
-it shows up in outbound traffic, grith denies the call and alarms loudly. See
-[Canary tokens](/docs/concepts/canary-tokens) for the concept; this page is the
-practical deployment.
+A canary token is a fake credential you place somewhere an attacker would look. If it ever
+appears in an outbound call, grith denies that call outright. Read
+[Canary tokens](/docs/concepts/canary-tokens) for the concept; this page is the deployment, and
+it starts with the part that trips everyone up.
 
-## Step 1 — choose placements
+## `grith canary add` does not persist
 
-Good canary placements are **plausibly attractive**:
+The canary registry lives in process memory. The CLI mints a token into its own copy, prints it,
+and exits - the daemon never sees it, and the next command starts from nothing.
 
-| Path | Why |
-| --- | --- |
-| `~/.aws/credentials_backup` | Looks like sloppy ops hygiene. |
-| `~/secrets.txt` | Same. |
-| `~/.env.backup` | Same. |
-| `repo/test/fixtures/.env` | Looks like a careless test fixture. |
-| `~/Downloads/aws-keys.txt` | Looks like a saved Slack message. |
-| `repo/.env.production.bak` | Looks like a leftover from a deploy. |
+<Terminal>
+  {`$ grith canary add --label aws-prod-decoy --generate
+Added canary:
+  id:    89a62c8b-9a6e-4681-8dca-fb0c8ba63a8d
+  label: aws-prod-decoy
+  value: d0c027066819492fa41f179ecb761a5b8bda51cdf60e568b
+$ grith canary list
+No canary tokens registered.`}
+</Terminal>
 
-Bad placements:
+`remove` and `rotate` behave the same way. Treat the whole `grith canary` command as a value
+generator, not a store.
 
-- Inside `~/.config/grith/` — agents don't read grith's config.
-- Read-only system paths the agent will skip.
-- Anywhere the agent has zero plausible reason to look.
+## The registration that survives
 
-Aim for 3–5 canaries, each in a different "category" of likely target. More than
-that and you get diminishing returns; fewer and an attacker might miss them.
+The daemon seeds its registry at startup from `config/filters/canary.toml`, resolved relative to
+the directory the daemon was started in, falling back to the copy compiled into the binary. Write
+the file there and restart.
 
-## Step 2 — add them
-
-```
-grith canary add --label "aws-prod-decoy" --generate
-grith canary add --label "ssh-honey" --generate
-grith canary add --label "gh-test-fixture" --generate
-```
-
-Each command registers a token and prints its value — `grith canary add` does not
-create files. Copy each printed value into the matching decoy path from Step 1 (for
-example, paste the `aws-prod-decoy` value into `~/.aws/credentials_backup`). To
-plant a specific, convincingly shaped string instead of a random one, use
-`--value "<literal>"` in place of `--generate`.
-
-## Step 3 — verify
-
-```
-grith canary list
-```
-
-Should show your three canaries. Each is now monitored.
-
-## Step 4 — set up notifications
-
-Canary fires are the highest-severity event grith produces. Make sure at least
-one notification channel handles them:
-
-```toml
-[notifications.channels.slack]
+<ConfigExample
+  title="config/filters/canary.toml"
+  code={`[canary]
 enabled = true
-webhook_url = "..."
-severity_map = { canary = "critical" }
 
-[notifications.channels.pagerduty]
-enabled = true
-service_key = "..."
-severity_map = { canary = "critical" }
-```
+[[canary.tokens]]
+id = "9f1d0c2a-4f4b-4a1e-9f0e-3b7a6c5d4e21"
+label = "aws-prod-decoy"
+value = "grith-canary-7f3a1c9e2b4d"`}
+/>
 
-See per-channel guides for the specific setup steps.
+<Terminal command="grith daemon restart" />
 
-## Step 5 — test (carefully)
+Any `id` you like, as long as it is unique. The `value` is the string that must never appear in
+outbound traffic - use `grith canary add --generate` to mint one, or write your own if you want
+it shaped like a credential the attacker is hunting for.
 
-To verify the canary detection works without actually firing a real one:
+## Planting it is your job
 
-```
-# Read the file (this is a sensitive-path-heuristic read, will probably quarantine)
-cat ~/.aws/credentials_backup
+grith registers values. It never writes a decoy file anywhere. Copy the value into somewhere
+plausibly attractive and plausibly careless:
 
-# Approve in the digest
-grith digest approve <id>
+| Path                        | Why it reads as real     |
+| --------------------------- | ------------------------ |
+| `~/.aws/credentials_backup` | Ops hygiene that slipped |
+| `~/.env.backup`             | Same                     |
+| `repo/test/fixtures/.env`   | A careless test fixture  |
+| `repo/.env.production.bak`  | Leftover from a deploy   |
 
-# Now simulate a network call with the canary token as payload
-grith proxy test '{
-    "operation": "network",
-    "target": "https://example.com/test",
-    "args": ["<paste-the-canary-value-here>"]
-  }'
-```
+Three to five is plenty, each in a different category of target. Do not bother placing one inside
+`~/.config/grith/` - nothing looks there.
 
-The proxy test should return `decision: deny`, with `filter: canary` firing. (The
-test is dry-run — it doesn't actually send the canary anywhere.)
+## What detection covers
 
-## When a canary fires
+The canary filter inspects outbound-relevant calls only: `HttpRequest`, `NetConnect`,
+`ShellExec`, `ProcessSpawn`, and the **path** of a `FileWrite` or `FileAppend`. Reading the decoy
+file is not a detection - the read is scored on its own merits by the path filters, and the
+canary only fires when the value is on its way somewhere.
 
-1. Investigate the originating session immediately:
+A hit scores 9.5, which is above the deny line on its own. It denies even when every other signal
+is favourable:
 
-   ```
-   grith audit --decision deny --limit 10
-   grith digest show <canary-event-id>
-   ```
+<Terminal>
+  {`$ grith proxy test '{"type":"HttpRequest","url":"https://api.github.com/gists","method":"POST","body":"grith-canary-7f3a1c9e2b4d"}'
+Proxy Test Result
+==================================================
+  Tool call:   HttpRequest(POST https://api.github.com/gists)
+  Score:       9.5
+  Decision:    DENY
+  Reason:      HTTP POST request (carries body): https://api.github.com/gists; Canary secret 'aws-prod-decoy' (id: 9f1d0c2a-4f4b-4a1e-9f0e-3b7a6c5d4e21) detected in outbound operation
+  Eval time:   3.72ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
+\n  Filter Breakdown:
+    + operation-risk         1.0  [notice]  HTTP POST request (carries body): https://api.github.com/gists
+    . path-match             0.0
+    . sensitive-path-heuristic   0.0
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+    . secret-scan            0.0
+    . command                0.0
+    . destructive-action     0.0
+    + egress-policy         -1.0  [notice]  Trusted outbound destination from http_request: api.github.com
+    . dlp-gate               0.0
+    + canary                 9.5  [critical]  Canary secret 'aws-prod-decoy' (id: 9f1d0c2a-4f4b-4a1e-9f0e-3b7a6c5d4e21) detected in outbound operation
+\n  Exit code:   2 (deny)`}
+</Terminal>
 
-2. Terminate the session if it's still running:
+That is also how you verify a registration: run `grith proxy test` from the same working
+directory with the token value in the body and check for `Decision: DENY` and a `canary` line.
+The test is a dry run and sends nothing.
 
-   ```
-   grith supervisor kill <session-id>
-   ```
+## What there is not
 
-3. Rotate the canary (and any nearby canaries — same attacker, same scan):
+No alert surface, no auto-rotation, no dashboard page for canaries. A fire shows up where every
+other decision does - in the audit log and the digest. Check for it there:
 
-   ```
-   grith canary rotate <id>
-   ```
-
-4. Investigate what else the session touched. The audit log captures everything.
+<Terminal command="grith audit export --format json | grep -i canary" />
 
 ## See also
 
-- [Canary tokens](/docs/concepts/canary-tokens) — concept
-- [`grith canary`](/docs/cli/canary) — CLI
-- [Filter 11: Canary detection](/docs/filters/11-canary-secret-detection)
-- [Exfiltration walkthrough](/docs/guides/exfiltration-walkthrough) — end-to-end
+- [Canary tokens](/docs/concepts/canary-tokens)
+- [`grith canary`](/docs/cli/canary)
+- [Exfiltration walkthrough](/docs/guides/exfiltration-walkthrough)

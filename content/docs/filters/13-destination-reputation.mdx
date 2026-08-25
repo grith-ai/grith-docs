@@ -1,0 +1,87 @@
+---
+title: '13. Destination reputation'
+description: 'A fixed domain list plus two shape checks - not the learned trust table.'
+section: 'filters'
+order: 13
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/13-destination-reputation.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 3, context |
+| **Score** | -1.0 to 4.0 |
+| **Source** | `crates/grith-proxy/src/filters/reputation.rs` |
+| **Config** | `config/filters/domains.toml`; gated by `proxy.filters.reputation.enabled` (default `true`) |
+
+<Callout type="info" title="Two different things share this name">
+This page is about the **filter**: a fixed domain list, evaluated inside the pipeline like any
+other filter. The **learned reputation table** behind `grith reputation` is a separate
+mechanism that runs *after* the pipeline, only on a queued call. See
+[Adaptive reputation](/docs/concepts/adaptive-reputation).
+</Callout>
+
+## The four verdicts
+
+| Verdict | Score | Source |
+| --- | --- | --- |
+| `known-malicious` | **4.0** | the `[known_malicious]` list |
+| `raw-ip-destination` | **3.0** | the host is four dotted octets |
+| `suspicious-tld` | **2.0** | a compiled TLD list |
+| `known-safe` | **-1.0** | the `[known_safe]` list |
+| unknown | 0.0 | anything else - explicitly neutral |
+
+An unknown host contributes nothing here. Pricing the unfamiliar is
+[egress-policy](/docs/filters/10-egress-policy)'s job; this filter only speaks when it
+recognises something.
+
+Suspicious TLDs, compiled in: `.xyz`, `.top`, `.tk`, `.ml`, `.ga`, `.cf`, `.gq`, `.buzz`,
+`.work`, `.click`, `.link`, `.info`, `.pw`, `.cc`, `.su`.
+
+The shipped `[known_malicious]` list covers tunnelling and interaction services - `ngrok.io`,
+`serveo.net`, `localhost.run`, `burpcollaborator.net`, `interact.sh`, `oastify.com`,
+`canarytokens.com`, `requestbin.net`, `pipedream.net`, `webhook.site` - and paste or transfer
+sinks: `paste.ee`, `transfer.sh`, `file.io`.
+
+<Terminal>
+{`$ grith proxy test '{"type":"HttpRequest","method":"GET","url":"https://webhook.site/abc123"}'
+
+  Score:       8.0
+  Decision:    QUEUE (Critical)
+
+  Filter Breakdown:
+    + operation-risk         0.5  [notice]  HTTP request: GET https://webhook.site/abc123
+    + egress-policy          3.5  [warning]  Unknown outbound destination from http_request: webhook.site
+    + reputation             4.0  [critical]  Known malicious domain: webhook.site
+
+  Exit code:   1 (queue (critical))`}
+</Terminal>
+
+Exactly 8.0, and it queues. The deny test is `score > 8.0`, so a call landing on the line
+itself goes to a human rather than being refused.
+
+## What it reads
+
+`HttpRequest` uses the URL host. `NetConnect` uses the address. `ShellExec` and `ProcessSpawn`
+have every `http://` or `https://` URL extracted from the reconstructed command line, and the
+worst host wins. Everything else is skipped.
+
+Control-class unix sockets - the session D-Bus, X11, tmux, screen - return no match. Their
+paths are not hostnames, and treating them as such flagged `/run/user/1000/foo.info` as a
+suspicious `.info` domain.
+
+## Editing the lists
+
+`config/filters/domains.toml` carries `[known_safe]` and `[known_malicious]`, each with a
+`domains` array. Matching is exact and case-insensitive - `github.com` does not cover
+`api.github.com`, so list both.
+
+Two things in that file are not read: the `patterns` array under `[known_malicious]` and the
+whole `[suspicious]` section. The suspicious-TLD list is compiled into the binary.
+
+## See also
+
+- [10. Egress policy](/docs/filters/10-egress-policy) - the trust list that does cover subdomains
+- [Adaptive reputation](/docs/concepts/adaptive-reputation) - the learned table

@@ -1,0 +1,96 @@
+---
+title: '9. Destructive action'
+description: 'Formats, wipes, drops and teardowns - hard-denied when catastrophic, escalated when they target production.'
+section: 'filters'
+order: 9
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/09-destructive-action.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 2, pattern |
+| **Score** | 3.5 - 5.0 queue band, **9.0** hard deny |
+| **Source** | `crates/grith-proxy/src/filters/destructive_action.rs` |
+| **Config** | `proxy.destructive_action.enabled` - default `true` |
+
+Three tiers. Catastrophic host or storage destruction scores 9.0, past the deny line on its
+own. A destructive operation aimed at production is escalated to the same 9.0. The same
+operation aimed at anything else queues. Scoped, recoverable work scores nothing.
+
+Every matching rule is evaluated and the highest score wins.
+
+## Always denied - 9.0
+
+| Rule | Fires on |
+| --- | --- |
+| `filesystem-format` | `mkfs`, `mkfs.*`, `mke2fs`, `mkswap`, `mkdosfs`, `mkntfs` |
+| `filesystem-signature-wipe` | `wipefs` |
+| `rm-no-preserve-root` | `rm --no-preserve-root` |
+| `dd-device-write` | `dd of=` a raw block device |
+| `shred-device` | `shred` against a raw block device |
+| `rm-filesystem-root` | a recursive `rm` whose target is the filesystem root |
+| `rm-system-directory` | `rm -rf` of `/boot`, `/bin`, `/usr`, `/etc`, `/var`, `/home` and similar |
+| `rm-database-data-directory` | `rm -rf` of a database data directory |
+| `destructive-write-database-data-directory` | a write, delete or rename inside a database data directory |
+
+`/dev/null`, `/dev/zero`, `/dev/random`, tty and fd nodes are not block devices, so `dd
+of=/dev/null` is unaffected.
+
+<Terminal>
+{`$ grith proxy test '{"type":"ShellExec","command":"rm","args":["-rf","/"]}'
+
+  Score:       10.0
+  Decision:    DENY
+  Reason:      Shell execution: rm -rf /; recursive delete of the filesystem root
+
+  Filter Breakdown:
+    + operation-risk         1.0  [notice]  Shell execution: rm -rf /
+    + destructive-action     9.0  [critical]  recursive delete of the filesystem root
+
+  Exit code:   2 (deny)`}
+</Terminal>
+
+## Denied if it targets production, queued otherwise
+
+| Rule | Queue score |
+| --- | --- |
+| `sql-drop-database`, `aws-s3-bucket-delete`, `kubectl-delete-all`, `kubectl-delete-namespace` | 4.5 |
+| `sql-drop-schema`, `sql-drop-table`, `cql-drop-keyspace`, `redis-flush`, `gcs-recursive-delete`, `terraform-destroy`, `az-group-delete`, `gcloud-delete`, `flyctl-destroy` | 4.0 |
+| `sql-truncate`, `aws-s3-recursive-delete`, `helm-uninstall` | 3.5 |
+
+A target counts as production when an alphanumeric-delimited segment of the command is `prod`,
+`production`, `prd`, `live` or `mainnet`, or when the command names a managed database
+endpoint - `.rds.amazonaws.com`, `.redshift.amazonaws.com`, `.cache.amazonaws.com`,
+`.sql.googleapis.com`, `.database.windows.net`, `.documents.azure.com`.
+
+Segment matching means `s3://prod-backups`, `/srv/prod/infra` and `drop database prod` all
+register, while `product-catalog`, `staging-builds` and `reproduce.sh` do not.
+
+## Always queued, never denied
+
+| Rule | Score |
+| --- | --- |
+| `docker-run-privileged`, `docker-run-pid-host`, `docker-run-host-mount` | 5.0 |
+| `rm-backup-location`, `destructive-write-backup-location`, `shred` of a file | 4.5 / 4.0 |
+| `rm-data-mount`, `destructive-write-data-mount` | 4.0 |
+| `docker-prune` | 3.5 |
+
+Container escalation - `--privileged`, `--pid=host`, or a bind-mount of the docker socket or
+a writable sensitive host path - is mediated rather than denied. It is sometimes legitimate in
+CI, so it stops for a human instead.
+
+## What is deliberately allowed
+
+`aws s3 rm` of a single object outside production is routine and scores nothing; only a
+recursive delete, a bucket-root delete, or a production target is flagged. `rm -rf` of a
+project or scratch directory scores nothing. Read-only database queries, `kubectl get` and
+`helm list` score nothing. Over-blocking ordinary development is treated as a bug in this
+filter, not a safety margin.
+
+## See also
+
+- [8. Command structure analysis](/docs/filters/08-command-structure-analysis)
+- [Composite scoring](/docs/concepts/composite-scoring)

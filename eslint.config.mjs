@@ -6,9 +6,11 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   globalIgnores([
-    '.next/**',
-    'out/**',
-    'build/**',
+    // Build output, at the repo root and inside any nested git worktree.
+    '**/.next/**',
+    '**/out/**',
+    '**/build/**',
+    '.worktrees/**',
     'next-env.d.ts',
   ]),
 ]);

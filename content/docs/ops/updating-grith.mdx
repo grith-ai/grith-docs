@@ -1,0 +1,90 @@
+---
+title: 'Updating grith'
+description: 'How to move to a new release, how grith tells you one exists, and how to switch that off.'
+section: 'ops'
+order: 4
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/updating-grith.mdx'
+---
+
+You update grith by re-running the installer. There is no `grith update`
+subcommand.
+
+<Terminal command="curl -fsSL https://grith.ai/install | sh" />
+
+The installer resolves the latest release, downloads the tarball and its
+checksum, and verifies the SHA-256 - a mismatch is fatal. If `cosign` is on your
+PATH it also fetches the sigstore bundle and verifies the signature, and a
+signature that is present but invalid is fatal too. It stages the new binary
+inside the destination directory and moves it into place, so a running grith can
+replace itself.
+
+Never pin a version in that command. It resolves the latest release on purpose.
+
+## How grith tells you
+
+`[general] update_check` is `true` by default and drives two different notices.
+
+**The REPL and `grith run` ask.** They query the GitHub releases API inline with
+a 3-second timeout, print the new version and a link to its release page, and
+prompt `Install now? [y/N]`. Answering `y` runs the installer and exits. Both
+stdin and stderr have to be terminals, so scripts are never prompted.
+
+**`grith exec` prints one line and carries on.** The line names your version,
+the new version and the install command. It never reads stdin - the supervised
+tool owns that - and never waits on the network: it prints whatever answer is
+cached in `~/.config/grith/update-check.json`, however old, and refreshes on a
+background thread at most once every 24 hours. Only stderr has to be a terminal,
+so redirected logs and CI output stay clean.
+
+Both fail silently when the network is unavailable. Being offline never blocks a
+launch.
+
+## Where the binary lives decides what the prompt can do
+
+| The running binary is in | What the prompt does                                         |
+| ------------------------ | ------------------------------------------------------------ |
+| `~/.local/bin`           | Updates in place. This is the installer's default            |
+| `/usr/local/bin`         | Re-runs the installer with `--global`                        |
+| Anywhere else            | Refuses, and prints the release page and the install command |
+
+The refusal is deliberate. Installing to `~/.local/bin` over a copy that runs
+from a cargo build or a distro package would put a second grith on your PATH,
+and every launch would keep running the old one whilst re-offering the same
+update.
+
+## After updating
+
+Restart the daemon so the running one matches the binary:
+
+<Terminal command="grith daemon restart" />
+
+Until you do, `grith daemon status` reports the mismatch, and a supervised
+session refuses to start against a daemon of the wrong version rather than
+talking to it. grith replaces a stale daemon on its own only when it can
+positively identify it from its identity file; without that it will not kill an
+unidentified process holding the port.
+
+## Turning the checks off
+
+<ConfigExample
+  code={`[general]
+update_check = false
+profile_update_check = false`}
+/>
+
+`GRITH_NO_UPDATE_CHECK` disables the version check for a shell or a CI job - the
+variable being set at all is enough, whatever its value. grith makes one other
+outbound check at startup, for supervisor-profile overlays;
+`profile_update_check = false` or `GRITH_NO_PROFILE_UPDATE` stops that one.
+
+Licence validation is separate and is not covered by either switch. See
+[Licence lifecycle](/docs/pro/license-lifecycle).
+
+## See also
+
+- [Verifying releases](/docs/ops/verifying-releases)
+- [Installation](/docs/start/installation)
+- [`[general]` config](/docs/config/general)

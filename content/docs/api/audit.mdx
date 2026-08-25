@@ -1,85 +1,108 @@
 ---
-title: "Audit"
-description: "Browse, export, and aggregate the audit log over REST."
-section: "api"
-order: 2
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/audit.mdx"
+title: 'Audit'
+description: 'Page the audit log, aggregate a window, export it, and read the exfiltration rollup.'
+section: 'api'
+order: 5
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/audit.mdx'
 ---
 
-The audit log over REST. Same data as [`grith audit`](/docs/cli/audit).
+The same hash-chained records [`grith audit`](/docs/cli/audit) prints. Every route here is
+a sensitive read: send the dashboard token as `x-grith-csrf` once one exists.
 
-<ApiRouteTable group="Audit" showHeadings={false} />
+| Method | Path                     | What                                          |
+| ------ | ------------------------ | --------------------------------------------- |
+| GET    | `/api/audit`             | A page of records                             |
+| GET    | `/api/audit/summary`     | Counts for one window (new in 0.3.1)          |
+| GET    | `/api/audit/{id}`        | One record                                    |
+| GET    | `/api/audit/export`      | Bulk export, JSON or CSV                      |
+| GET    | `/api/audit/exfil-stats` | Exfiltration rollup over the last 500 records |
 
-## Query parameters (list)
+Every one of them verifies the chain first. A tampered chain is `500 AUDIT_CHAIN_BROKEN`, a
+mismatched archive boundary is `500 AUDIT_CHAIN_ANCHOR_MISMATCH`, and a missing anchor is
+`503 AUDIT_CHAIN_UNANCHORED`. None of them repairs anything - run
+`grith audit diagnose`, which still works when the rest of the surface does not.
 
-| Param | Type | Default | What |
-| --- | --- | --- | --- |
-| `limit` | int | 20 | Page size (max 100). |
-| `cursor` | string | — | Pagination cursor from a previous response. |
-| `session` | uuid | — | Filter to one session. |
-| `since` | ISO 8601 / duration | — | Earliest event time (e.g. `1h`, `2026-05-13T00:00:00Z`). |
-| `decision` | `allow\|queue\|deny` | — | Filter by decision. |
+## GET /api/audit
 
-## Response shape
+| Param        | Default | Notes                                                            |
+| ------------ | ------- | ---------------------------------------------------------------- |
+| `limit`      | 20      | Capped at 100                                                    |
+| `offset`     | 0       |                                                                  |
+| `session_id` | -       | A UUID. Returns every record for that session and ignores paging |
+| `include`    | `full`  | `all` also returns the compact short-circuit rows                |
 
-```json
-{
-  "items": [
-    {
-      "id": "uuid-...",
-      "ts": "2026-05-14T09:14:23Z",
-      "session": "abc12345-...",
-      "operation": "file_read",
-      "target": "/home/you/.ssh/config",
-      "decision": "queue",
-      "resolved": "deny",
-      "composite_score": 4.2,
-      "filters": [...],
-      "profile": "claude-code",
-      "pid": 17421,
-      "command": "claude"
-    }
-  ],
-  "next_cursor": "opaque-..."
-}
-```
+The response is `{records, total, limit, offset, include}` - or just `{records, total}` for a
+`session_id` query, which has no paging to report. A record carries `id`,
+`timestamp`, `session_id`, `plugin_id`, `tool_call_type`, `arguments_summary`,
+`arguments_hash`, `composite_score`, `proxy_action` (`allow`, `queue` or `deny`),
+`filter_results`, `evaluation_time_ms`, `source` and, for supervised calls,
+`supervised_tool`, `supervised_pid` and `project_name`.
 
-## Export
+`arguments_summary` is truncated and redacted; `arguments_hash` is the SHA-256 of the full
+arguments, which is what makes the chain verifiable without storing the arguments.
 
-```
-GET /audit/export?format=json
-GET /audit/export?format=csv
-```
+## GET /api/audit/summary
 
-Streams the full record set (subject to `limit`, default 1000) in the requested
-format. Use for ETL into a SIEM or data warehouse.
+<SinceTag version="0.3.1" /> One query, one window, one consistent set of numbers. The dashboard
+used to build its breakdown client-side from whatever page it happened to have while the headline
+came from a whole-database count, so the two described different populations.
 
-## Exfil stats
+<CodeBlock
+  language="json"
+  title="GET /api/audit/summary?window=7d"
+  code={`{
+  "window": "7d",
+  "since": "2026-08-17T09:14:23+00:00",
+  "total": 4812,
+  "allow": 4702,
+  "queue": 96,
+  "deny": 14,
+  "include": "full"
+}`}
+/>
 
-```
-GET /audit/exfil-stats
-```
+`window` is `today`, `7d`, `30d` or `all`, defaulting to `7d`. An unrecognised value falls
+back to `7d` rather than returning `400`, so a stale browser tab still renders. `today` is
+midnight **UTC**, matching how the timestamps are stored - not the browser's local
+midnight. `since` is `null` for `all`. `include` behaves as it does on `/api/audit`.
 
-Aggregate analytics over the recent window. Shape:
+## GET /api/audit/export
 
-```json
-{
-  "window_size": 500,
-  "top_destinations": [
-    { "host": "api.example.com", "count": 12, "decision_split": { "allow": 10, "deny": 2 } }
-  ],
-  "canary_fires": [
-    { "canary_id": "ca-7f1...", "label": "aws-prod-decoy", "ts": "..." }
-  ],
-  "top_sessions_by_queue_events": [...]
-}
-```
+| Param          | Default | Notes                                                                       |
+| -------------- | ------- | --------------------------------------------------------------------------- |
+| `format`       | `json`  | `csv` returns `text/csv; charset=utf-8`                                     |
+| `limit`        | 1000    |                                                                             |
+| `include_cold` | `false` | Also read the compressed archives under `<audit_dir>/cold/`                 |
+| `from_date`    | -       | `YYYY-MM-DD`. Only filters which archive files are read, not active records |
+
+JSON is `{records, count}`. With `include_cold=true` the archive rows are merged in and the
+whole set is re-sorted newest-first; leave it off and the export stays cheap.
+
+## GET /api/audit/exfil-stats
+
+A rollup over the last 500 records, counting only the queued and denied ones where an
+egress, DLP, canary or containment filter matched:
+
+<CodeBlock
+  language="json"
+  title="GET /api/audit/exfil-stats"
+  code={`{
+  "total_blocked": 6,
+  "total_queued": 11,
+  "total_redacted": 2,
+  "by_protocol": { "http": 9, "network": 5, "shell-transport": 3 },
+  "top_blocked_destinations": [ { "domain": "sink.example", "count": 4 } ]
+}`}
+/>
+
+Destinations are parsed best-effort out of `arguments_summary`, so a call whose summary
+carries no URL contributes to the protocol counts but not to the destination list. The
+list is the top 10.
 
 ## See also
 
 - [`grith audit`](/docs/cli/audit)
-- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)
-- [SIEM integration](/docs/enterprise/siem-integration)
+- [Analytics](/docs/api/analytics) - the rolled-up view of the same data

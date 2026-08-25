@@ -1,190 +1,139 @@
 ---
 title: 'grith exec'
-description: 'Supervise an external CLI tool with OS-level syscall interception.'
+description: 'Supervise an external CLI tool at the syscall level - flags, session verbs, prompt keys and the daemon requirement.'
 section: 'cli'
 order: 2
 tier: 'community'
-version: '0.1.0'
-lastUpdated: '2026-08-21'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/exec.mdx'
 ---
 
 ```
 grith exec [OPTIONS] -- <COMMAND> [ARGS...]
+grith exec [OPTIONS] --attach <PID>
 ```
 
-Spawn `<COMMAND>` (or attach to an existing PID) under grith's syscall-level
-supervisor. Every interesting syscall the process tree makes routes through the
-filter pipeline before execution.
-
-This is the workhorse command — almost every real grith session starts with
-`grith exec`.
-
-## Synopsis
+Spawn a tool under grith's [syscall interception](/docs/concepts/syscall-interception), or
+attach to one already running. Everything the tool touches - files, processes, sockets,
+D-Bus - is scored before the kernel is allowed to carry it out.
 
 ```
-grith exec [--profile <NAME>]
-           [--attach <PID>] [--allow-queued] [--workspace-only]
-           [--syscall-log <FILE>] [--trace-syscalls-jsonl <FILE>]
-           -- <COMMAND> [ARGS...]
+grith exec -- claude
+grith exec --profile codex -- codex
 ```
 
-The double-dash (`--`) is required when the supervised command has its own flags. It
-tells `grith` where its options stop and the target command's begin.
+The [profile](/docs/profiles/how-profiles-work) is picked from the program's basename
+unless you name one. Anything unrecognised falls back to `supervisor.default_profile`,
+which ships as `generic`.
 
-## Options
+## Flags
 
-| Flag                            | Type   | Default   | Description                                                                                  |
-| ------------------------------- | ------ | --------- | -------------------------------------------------------------------------------------------- |
-| `--profile <NAME>`              | string | `generic` | Supervisor profile to use. See [Choose your agent](/docs/start/choose-your-agent).           |
-| `--attach <PID>`                | u32    | —         | Attach to an existing process by PID instead of spawning. Useful for already-running agents. |
-| `--allow-queued`                | flag   | off       | In a non-interactive session (no terminal), allow and log queued operations instead of the default fail-closed auto-deny. No effect in an interactive session, where the approval dialog is shown. |
-| `--workspace-only`              | flag   | off       | Deny file reads and writes outside the workspace instead of scoring them. See [Workspace-only sessions](#workspace-only-sessions). |
-| `--syscall-log <FILE>`          | path   | —         | Log every syscall request and decision to a file (human-readable).                           |
-| `--trace-syscalls-jsonl <FILE>` | path   | —         | Write raw pre-filter syscall forensics to a JSONL file. Heavyweight; use for forensics.      |
+| Flag | What it does |
+| --- | --- |
+| `--profile <NAME>` | Use a specific built-in profile instead of auto-detection. |
+| `--attach <PID>` | Supervise a process that is already running, instead of spawning one. No seccomp filter is installed on an attach, so every syscall costs a ptrace stop. |
+| `--workspace-only` | Confine file access to the workspace. See below. |
+| `--allow-queued` | In a session with no terminal, allow and log queued operations instead of denying them. |
+| `--syscall-log <FILE>` | Write every syscall request and its decision to a file. The file is created fresh each run, so point each session at its own path. |
+| `--trace-syscalls-jsonl <FILE>` | Write raw pre-filter forensics records as JSONL, for [`grith profile audit`](/docs/cli/profile-audit). |
 
-## Examples
+## `--workspace-only` <SinceTag version="0.3.1" />
 
-Spawn Claude Code with the matching profile:
+Restricts file access to the directory `grith exec` was launched in, its linked git
+worktrees, and anything in `supervisor.trust.additional_project_roots`. Reads and writes
+outside that set are denied rather than scored.
 
-```
-grith exec --profile claude-code -- claude
-```
+System runtime paths stay readable and the profile's routine paths still work - otherwise
+most tools could not start. Network and process spawning are unaffected; this fences the
+filesystem only.
 
-Wrap a plain bash session:
-
-```
-grith exec --profile generic-cli -- bash
-```
-
-Fence a session to the project you launched it in:
-
-```
-cd ~/projects/some-repo
-grith exec --workspace-only --profile claude-code -- claude
-```
-
-Attach to an already-running Python REPL:
-
-```
-grith exec --attach 17421
-```
-
-(The target must be a descendant of a process you can ptrace. See
-[Installation: permissions](/docs/start/installation#permissions).)
-
-Forensic record-and-replay:
-
-```
-grith exec \
-    --profile claude-code \
-    --trace-syscalls-jsonl ~/.cache/grith/last.jsonl \
-    -- claude
-
-# Later, audit the recorded session against the profile:
-grith profile audit --profile claude-code --trace ~/.cache/grith/last.jsonl
-```
-
-## What it does, in order
-
-1. Connects to the local daemon, auto-starting one if none is running. If it cannot
-   establish a trusted, version-compatible daemon connection, `grith exec` fails closed:
-   it refuses to start the supervised session and exits non-zero. There is no in-process
-   or no-daemon fallback.
-2. `fork()` the target process. The child calls `ptrace(PTRACE_TRACEME)` to be traced
-   by the parent, then installs its own seccomp filter.
-3. Child `execve()`s the target binary, which raises a ptrace exec-stop.
-4. The parent catches the exec-stop, sets its ptrace options, resumes the child, and
-   the supervisor takes over.
-5. Every interesting syscall (configured set: file ops, exec, sockets, network) traps
-   to the supervisor.
-6. The call shape is sent through the filter pipeline.
-7. Decision (`ALLOW` / `QUEUE` / `DENY`) is applied via `ptrace(PTRACE_SYSCALL)` or
-   register rewriting.
-
-## Workspace-only sessions
-
-By default the workspace is a *trusted* region: paths inside it are trusted,
-paths outside it are scored, and a low-scoring read outside it is auto-allowed
-without a prompt. `--workspace-only` makes it a *boundary* instead. A file read
-or write whose target is outside the workspace is denied rather than scored —
-including the read-only opens `[supervisor.noise_reduction] ignore_read_only`
-waves through today.
-
-The workspace is:
-
-- the directory you ran `grith exec` in,
-- every linked git worktree of that repository (`[supervisor.trust]
-  include_linked_worktrees`, on by default — the main worktree included, so
-  launching from a subdirectory covers the repository root; a worktree git
-  reports still has to pass the checks described under
-  [`[supervisor.trust]`](/docs/config/supervisor#workspace-trust)),
-- anything listed in `[supervisor.trust] additional_project_roots`.
-
-Your other projects, the rest of your home directory, `/mnt`, `/media` and
-`/srv` are not in it.
-
-Three things stay reachable, because the supervised tool could not run
-otherwise:
-
-1. **Noise paths** — `/proc`, `/sys`, the terminal, CA certificates.
-2. **Reads of system runtime paths** — `/usr`, `/lib`, `/bin`, `/etc`,
-   `/opt`, `/nix/store` and similar. A tool that cannot read `libc` does not
-   start. *Writes* into those trees are still refused.
-3. **The paths your profile declares routine** — `~/.claude`,
-   `~/.nvm/versions/**`, `/tmp/<tool>-*` and the rest of the profile's
-   `routine_paths`. The mode restricts a tool; it does not sabotage one.
-
-<Callout type="info">
-The boundary only ever **removes** access. Each exemption above means "the
-boundary does not decide this call" — never "allow it". The call still goes
-through the whole filter pipeline afterwards, so a read of `/etc/shadow` is
-exempt from the boundary and still denied by the secret-scanning filters.
+<Callout type="warning" title="The flag only tightens">
+There is no `--no-workspace-only`. A flag that could loosen a configured boundary would
+let anything able to invent an argv undo the operator's posture. To turn the boundary on
+permanently, set `supervisor.trust.restrict_to_workspace = true` in `config.toml`.
 </Callout>
 
-Refusals are recorded in the audit log as `workspace_only_blocked`, so a tool
-that stops working reads as restricted rather than broken. If something
-legitimate is outside the fence, add it to `additional_project_roots` rather
-than turning the mode off.
+Full behaviour, including what stays readable and which directories can be blocked, is on
+[The workspace boundary](/docs/concepts/workspace-boundary).
 
-The same posture is available permanently as `[supervisor.trust]
-restrict_to_workspace = true`. There is deliberately no `--no-workspace-only`:
-a flag that could loosen a configured boundary would let anything able to
-invent a command line undo it.
+## Headless sessions fail closed
 
-## PTY forwarding
+With no terminal and no dashboard overlay there is nobody to answer a prompt, so a queued
+operation is **denied immediately** rather than blocking for the review timeout.
+`--allow-queued` flips that to allow-and-log. It has no effect in an interactive session,
+where the dialog is shown as usual.
 
-For interactive targets (REPLs, shells, TUI agents) grith allocates a PTY pair and
-shuttles bytes transparently. Input editing, ANSI escapes, and signals (Ctrl-C,
-Ctrl-Z) work exactly as if grith weren't in the loop.
+That default is what you want in CI. See [Running in CI](/docs/guides/running-in-ci).
 
-### Scrolling and copy-paste
+## Answering a prompt
 
-The supervisor TUI captures the mouse so the **scroll wheel** drives grith's
-scrollback (otherwise the host terminal turns the wheel into arrow keys that
-agents reject). Mouse capture also means a plain click-drag selection is owned by
-grith, so the keys below switch between scrolling and selecting:
+When a call queues, the TUI shows a dialog:
 
-| Key                         | Action                                                                                                                                     |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Shift+PgUp` / `Shift+PgDn` | Scroll the terminal scrollback.                                                                                                            |
-| `Ctrl+T`                    | **Toggle select mode** — drops mouse capture and freezes the screen so you can drag-select and copy text. Press again to resume scrolling. |
-| `Ctrl+L`                    | Toggle the audit-log panel.                                                                                                                |
+| Key | Action |
+| --- | --- |
+| `a` | Allow this request; the exact target stays allowed for this session |
+| `d` | Block it; identical retries are blocked for a short window |
+| `l` | Allow, and save a permanent rule for this exact target |
+| `s` | Allow a directory for operations you pick, this session only |
+| `b` | Block a directory for the rest of the session <SinceTag version="0.3.1" /> |
+| `t` | Deny and stop the supervised tool |
+| `i` | Show raw arguments and the request id |
+| `h` | Help overlay |
+| `esc` | Deny |
 
-While select mode is on, the footer shows
-`SELECT MODE — drag to copy · wheel-scroll paused`, and repaints are frozen so
-your selection isn't wiped by live output. A permission prompt overrides the
-freeze so a queued decision is never hidden.
+`s` and `b` are offered only when the score is 8.0 or below. Nothing outlives the session
+unless you save it with `l`, and sensitive targets are never saved.
 
-## Exit behaviour
+Pressing `Ctrl+C` twice within a second force-quits and denies everything pending. The
+status bar advertises the rest: `[shift+pgup]` scroll, `[ctrl+t]` select text,
+`[ctrl+l]` log, `[a/d]` when prompted. `Ctrl+T` hands the mouse back to your terminal so
+drag-select and copy work normally, and pauses repaints while you select.
 
-- Exits with the target's exit code when the target exits normally.
-- Sends SIGTERM to the supervised tree on Ctrl-C; SIGKILL after a 5s grace period.
-- Records the session-end event in the audit log.
+## Managing sessions
+
+Three bare verbs, which are not in `--help`:
+
+```
+grith exec list
+grith exec kill <session-id>
+grith exec prune
+```
+
+They are matched only when there is no `--`, no `--profile` and no `--attach`. Given
+`grith exec -- list`, `list` is the program you are supervising.
+
+`list` prints one row per live session - short id, tool, project, pid, uptime, intercepted
+counts and containment state - then a capacity line. `kill` sends SIGTERM to the root pid.
+`prune` clears dead registry entries and reports how many are left.
+
+Both `kill` and `prune` are also offered in the message you get when the plan's concurrent
+session cap is reached. The effective ceiling is the **lower** of the licence cap and
+`supervisor.max_concurrent_sessions`. The licence allows 2 on Community and 64 on paid
+plans; the config ships at 4. So Community stops at 2 whatever the config says, and a
+stock paid install stops at 4 until you raise the config value.
+
+## It will not start without a daemon
+
+`exec` is a thin client over the local daemon and has no in-process fallback. If the
+daemon is missing, unauthenticated or a different version, no session starts at all.
+
+<Terminal>
+{`$ grith exec list
+Grith could not establish a trusted connection to the local daemon.
+Found a Grith daemon on 127.0.0.1:3141 running 0.2.5, but this CLI is 0.3.1.
+
+No supervised session was started.
+Run: grith dashboard restart
+Then retry the command.
+Error: daemon not ready (version_mismatch) — no supervised session was started`}
+</Terminal>
+
+The same refusal is logged as `daemon_unready_exec_refused` with a `code` naming the
+cause. `grith daemon restart` fixes the common ones.
 
 ## See also
 
-- [Supervisor profiles](/docs/concepts/supervisor-profiles)
-- [Syscall interception](/docs/concepts/syscall-interception)
-- [`grith supervisor list`](/docs/cli/supervisor) — see active sessions
-- [`grith profile audit`](/docs/cli/profile-audit) — forensic review
+- [Choose your agent](/docs/start/choose-your-agent) - which profile a tool gets
+- [The workspace boundary](/docs/concepts/workspace-boundary) - `--workspace-only` in full
+- [`grith supervisor`](/docs/cli/supervisor) - the same sessions from the other side

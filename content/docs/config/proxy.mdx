@@ -1,51 +1,98 @@
 ---
-title: "[proxy]"
-description: "Scoring thresholds and per-filter sub-configs."
-section: "config"
-order: 2
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/proxy.mdx"
+title: '[proxy]'
+description: 'Scoring thresholds, the filter switches, and the four behavioural knobs that change what fires.'
+section: 'config'
+order: 3
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/proxy.mdx'
 ---
 
-The `[proxy]` section configures the scoring engine — the thresholds and the queue
-timeout.
+Two numbers decide every call: allow at or below `auto_allow_threshold`, deny above
+`auto_deny_threshold`, queue in between.
 
-<ConfigKeyTable section="proxy" />
+| Key                      | Default | What it does                                                                                                                                                     |
+| ------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto_allow_threshold`   | `3.0`   | A composite at or below this is allowed silently.                                                                                                                |
+| `auto_deny_threshold`    | `8.0`   | A composite **above** this is denied. 8.0 itself queues.                                                                                                         |
+| `review_timeout_seconds` | `300`   | How long a queued call in `grith run` or the REPL waits before it is denied. A supervised `grith exec` session uses `supervisor.freeze_timeout_seconds` instead. |
 
-## Per-filter sub-sections
+Both comparisons are strict, on both ends. Validation refuses `auto_allow_threshold` at or
+above `auto_deny_threshold`, and either outside 0.0-10.0.
 
-Each filter has its own sub-section under `[proxy.filters.*]`:
+<ConfigExample
+  title="Quieter, and less safe"
+  code={`[proxy]
+auto_allow_threshold = 4.0
+auto_deny_threshold = 8.0`}
+/>
 
-<ConfigKeyTable section="proxy.filters.reputation" />
+Raising `auto_allow_threshold` moves calls out of the queue and into silent allow. Lowering
+`auto_deny_threshold` moves calls out of the queue and into silent deny. There is no setting
+that makes grith quieter without also making it less careful in one direction or the other.
+See [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) for the walkthrough
+and [Composite scoring](/docs/concepts/composite-scoring) for how a score is built.
 
-<ConfigKeyTable section="proxy.filters.behavioural" />
+## Filter switches
 
-<ConfigKeyTable section="proxy.filters.taint" />
+All 18 filters are on by default. Every section below is an off switch and nothing more:
+apart from the four `[proxy.filters.behavioural]` tunables, only `enabled` is read, and a
+filter's rules, patterns and scores live in
+[filter config files](/docs/config/filter-config-files) or in the binary, not here. Note that
+`[proxy.destructive_action]` sits alongside `[proxy.filters]` rather than inside it.
 
-<ConfigKeyTable section="proxy.filters.rate_limit" />
+| Section                               | Turns off                                                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `[proxy.filters.reputation]`          | The [destination reputation](/docs/filters/13-destination-reputation) filter, and the load of `domains.toml`.                  |
+| `[proxy.filters.taint]`               | [Taint tracking](/docs/filters/15-taint-tracking).                                                                             |
+| `[proxy.filters.rate_limit]`          | [Rate limiting](/docs/filters/17-rate-limiting).                                                                               |
+| `[proxy.filters.egress]`              | [Egress policy](/docs/filters/10-egress-policy) **and** [egress rate](/docs/filters/18-egress-rate) - one switch, two filters. |
+| `[proxy.filters.session_containment]` | [Session containment](/docs/filters/16-session-containment). ANDed with the `enabled` key in `containment.toml`.               |
+| `[proxy.destructive_action]`          | The [destructive-action](/docs/filters/09-destructive-action) filter.                                                          |
 
-<ConfigKeyTable section="proxy.filters.semantic" />
+`[proxy.filters.behavioural]` is the one filter section with real tunables:
 
-<ConfigKeyTable section="proxy.filters.egress" />
+| Key                           | Default |
+| ----------------------------- | ------- |
+| `enabled`                     | `true`  |
+| `min_calls_for_baseline`      | `200`   |
+| `mild_deviation_score`        | `1.0`   |
+| `significant_deviation_score` | `3.0`   |
 
-<ConfigKeyTable section="proxy.filters.session_containment" />
+## Behavioural knobs
 
-## Tuning thresholds
+Four keys outside `[proxy.filters]` change what fires rather than whether a filter runs.
 
-The most important pair is `auto_allow_threshold` and `auto_deny_threshold`:
+<ConfigExample
+  code={`[proxy.spawn]
+routine_provenance_signal = false
+taint_data_flow_only = true
+taint_outbound_requires_data_flow = true
 
-- **Lower auto-allow** = more calls go to queue (paranoid).
-- **Lower auto-deny** = more calls auto-deny (very paranoid).
-- **Higher auto-allow** = more calls auto-allow (quiet, less safe).
-- **Higher auto-deny** = fewer calls auto-deny (chatty queue).
+[proxy.rate_limit]
+risk_gated_burst = true`}
+/>
 
-See [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds) for the
-walkthrough.
+- **`taint_data_flow_only`** (on) - a spawn under session taint only scores when argv, env,
+  fd lineage or a shell pattern shows the tainted data actually reaching it. With it off, any
+  active taint adds 3.0 to every spawn, which is what used to flag reading `~/.npmrc` and
+  then running `npm install`.
+- **`taint_outbound_requires_data_flow`** (on) - narrows the same rule for outbound-capable
+  binaries, so `aws s3 ls` after reading `~/.aws/credentials` does not fire on the pairing
+  alone. Genuine exfiltration of the tainted data still does.
+- **`risk_gated_burst`** (on) - the rate-limit filter's volume penalties only apply to
+  operations carrying a risk signal. A burst of routine file churn in `~/.cache` or `.git/`
+  never escalates. Turning it off restores a frequency-blind burst counter and forfeits those
+  exemptions.
+- **`routine_provenance_signal`** (off) - a provenance-backed reduction for routine spawns.
+  Off by default.
+
+Turning the first three off makes grith noisier, not safer: each exists because it removed a
+class of false positive without removing a detection.
 
 ## See also
 
 - [Composite scoring](/docs/concepts/composite-scoring)
-- [Filter overview](/docs/filters/overview)
+- [Filter reference](/docs/filters/overview)
 - [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds)

@@ -15,17 +15,18 @@ const footerLinks: Record<string, FooterLink[]> = {
     { label: 'Website', href: WEBSITE_URL, external: true },
     { label: 'GitHub', href: GITHUB_URL, external: true },
     { label: 'Pro', href: '/docs/pro/whats-in-pro' },
-    { label: 'Enterprise', href: '/docs/enterprise/whats-in-enterprise' },
+    { label: 'Changelog', href: '/docs/resources/changelog' },
   ],
   Security: [
-    { label: 'Threat model', href: '/docs/security/threat-model' },
+    { label: 'Limitations', href: '/docs/security/limitations' },
+    { label: 'Threat model', href: '/docs/concepts/threat-model' },
     { label: 'Responsible disclosure', href: '/docs/security/responsible-disclosure' },
     { label: 'Advisories', href: '/docs/security/advisories' },
   ],
   Community: [
     { label: 'Discussions', href: GITHUB_URL + '/discussions', external: true },
     { label: 'Edit these docs', href: DOCS_REPO_URL, external: true },
-    { label: 'Changelog', href: '/docs/resources/changelog' },
+    { label: 'FAQ', href: '/docs/resources/faq' },
   ],
 };
 

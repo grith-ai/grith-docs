@@ -1,175 +1,85 @@
 ---
 title: 'grith daemon'
-description: 'Manage the long-running daemon that owns the shared subsystems and web dashboard.'
+description: 'Start, stop and check the daemon that owns the audit database, the digest queue and the dashboard - and authorise a browser.'
 section: 'cli'
 order: 9
 tier: 'community'
-version: '0.1.4'
-lastUpdated: '2026-06-15'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/daemon.mdx'
 ---
 
 ```
-grith dashboard [start | stop | restart | status | pair]
+grith daemon start | stop | restart | status | pair
 ```
 
-The daemon is the long-running grith process that owns the dashboard server, the
-shared audit + digest, the reputation table, and the notification dispatcher. See
-[Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions) for the
-"why".
+One long-running process owns the audit database, the digest queue, the proxy, the session
+registry, the reputation table and the HTTP server on `127.0.0.1:3141`. Supervised
+sessions are thin clients over it. No subcommand takes flags of its own.
 
-`grith daemon` and `grith dashboard` are the same command — use whichever reads
-better. The examples below use `grith dashboard`.
+<Callout type="info" title="grith dashboard is the same command">
+`grith dashboard <...>` is an alias for `grith daemon <...>`, and most of the daemon's own
+output still prints the `dashboard` spelling. Both work.
+</Callout>
 
-## Subcommands
+## `start`
 
-### `grith dashboard start`
+Spawns a detached background process and prints the URL, the pid and how to stop it. An
+explicit `start` also disables idle shutdown, so the daemon stays up until you stop it.
+A daemon that was auto-started by `grith exec` or `grith run` instead exits after
+`server.idle_shutdown_seconds`, 30 by default.
 
-Start the daemon **in the background** and print its connection details. The
-command returns immediately; the daemon keeps running until you stop it.
+If `server.enabled = false`, `start` and `restart` print
+`Dashboard server is disabled (server.enabled = false in config).` and do nothing.
 
-```
-grith dashboard start
-```
+## `status`
 
-```
-Dashboard started: http://127.0.0.1:3141  (opened in your browser)
-  Stop with: grith dashboard stop
-```
+<Terminal>
+{`$ grith daemon status
+Dashboard is not running.
+  Start: grith dashboard start`}
+</Terminal>
 
-On a desktop session grith **opens the dashboard in your browser automatically**,
-authorising it without ever printing the token (see
-[Browser authorisation](#browser-authorisation)). On a headless / SSH box it
-prints a one-time pairing link instead:
+The other branches are worth recognising:
 
-```
-Dashboard started: http://127.0.0.1:3141
-  Open this once to authorise your browser: http://127.0.0.1:3141/#pair=ab12cd…
-  Stop with: grith dashboard stop
-```
+| What it prints | What it means |
+| --- | --- |
+| `Dashboard is running.` with URL, PID, `Pair:` and `Stop:` lines | Normal. |
+| `A Grith daemon (<v>) is listening on 127.0.0.1:<port>, but no PID file identifies its process.` | An orphan from an earlier install or a crashed shell. `grith daemon restart` replaces it. |
+| `Dashboard is not running.` plus a line saying the port is in use by a process that is not a Grith daemon | Something else has the port. Free it, or change `server.port`. |
 
-The dashboard is also **auto-started for you** when you run
-[`grith run`](/docs/cli/run) or [`grith exec`](/docs/cli/exec) — those instances
-idle-shut-down when the session ends, whereas an explicit `grith dashboard start`
-persists until `grith dashboard stop`.
+A version line is added when the daemon on the port is not this CLI's version. That
+mismatch is also what makes [`grith exec`](/docs/cli/exec) refuse to start a session.
 
-Host and port come from the [`[server]` config](/docs/config/server) (default
-`127.0.0.1:3141`), or per-run via `GRITH_SERVER_PORT`. The HTTP API is documented
-in [API overview](/docs/api/overview).
+## `stop` and `restart`
 
-### `grith dashboard status`
+`stop` sends a shutdown request, waits for the process to exit, then removes the pid file.
+If it has not exited it says so and offers `kill -9 <pid>` rather than pretending.
 
-```
-$ grith dashboard status
-Dashboard is running.
-  URL:   http://127.0.0.1:3141
-  PID:   18123
-  Pair:  grith dashboard pair   (authorise a browser)
-  Stop:  grith dashboard stop
-```
+`stop` also handles an orphaned daemon with no pid file: it asks the port to shut down
+over an authenticated request, and if that is refused it tells you to find the pid with
+`ss -ltnp` yourself. `restart` is stop-then-start, and is the standard fix after upgrading
+grith.
 
-Prints "Dashboard is not running." (and how to start it) when it's down.
+## `pair`
 
-### `grith dashboard pair`
+Mints a **single-use** pairing code and builds a `#pair=<code>` URL, then either opens
+your browser or prints the link.
 
-Authorise a browser for the dashboard. Mints a fresh **single-use** pairing link
-and either opens it in your browser or prints it for you to open.
+<Terminal>
+{`$ grith daemon pair
+Dashboard is not running. Start it with: grith dashboard start`}
+</Terminal>
 
-```
-$ grith dashboard pair
-Opened the dashboard in your browser to authorise this session.
-```
+The fragment never reaches the server. The dashboard app reads it in the browser,
+exchanges it for a dashboard token, stores the token and strips the URL. The token
+survives daemon restarts, so pairing is a one-off per browser.
 
-Use it when a browser isn't authorised yet — a new browser, after clearing site
-data, or a second machine. A once-paired browser keeps working across daemon
-restarts, so you rarely need this more than once. See
-[Browser authorisation](#browser-authorisation).
-
-### `grith dashboard stop`
-
-Graceful shutdown. The daemon flushes the reputation table, finalises pending audit
-writes, unregisters sessions, and exits.
-
-```
-grith dashboard stop
-```
-
-### `grith dashboard restart`
-
-Stop the running daemon, then start this build in its place. Use it after
-upgrading grith, or to pick up config changes that only apply at startup.
-
-```
-grith dashboard restart
-```
-
-The stop half is graceful — the daemon flushes state and unregisters sessions
-before the new one binds — so restarts are clean on Pro (see
-[Restart safety](#restart-safety)).
-
-## Browser authorisation
-
-The dashboard binds **loopback-only** (`127.0.0.1:3141`) by default, but
-reachability on loopback is not treated as authorisation. Browser-facing
-mutations and sensitive reads (audit, digest, config, session detail, …) require
-a **per-server dashboard token**, stored at `~/.config/grith/dashboard.token`
-(`0600`) and reused across restarts. Low-sensitivity status (`/health`, `/tier`,
-`/proxy/status`) stays open for zero-config scripting.
-
-You never see or type the token. It reaches your browser one of two ways:
-
-- **Auto-open** (default, desktop): `grith dashboard start` / `grith run` /
-  `grith exec` open the browser at a `#pair=` URL that the SPA exchanges for the
-  token, then strips from the address bar. Controlled by
-  [`server.auto_open_dashboard`](/docs/config/server).
-- **One-time pairing link** (headless / SSH, or auto-open disabled): the CLI
-  prints `http://127.0.0.1:3141/#pair=<code>`. Open it once; the code is
-  **single-use** and consumed on first load, so a later screenshot of the link
-  is inert. Run `grith dashboard pair` any time to mint a fresh one.
-
-If a browser tab shows _"This browser isn't authorised…"_, run
-`grith dashboard pair` and reload. See
-[Trust boundaries](/docs/security/trust-boundaries) for the threat model.
-
-## What the dashboard shows
-
-- A **security-posture hero** — total tool calls inspected under Zero Trust, the
-  allow / review / deny split, live agents, and active filters.
-- **Sessions** led by the **project name** the agent is supervising (from its
-  working directory), with the tool, uptime, and a live indicator.
-- A **Share stats** button that exports a branded PNG of the aggregate posture
-  for socials. The image contains **only aggregate counts** — never a path,
-  project name, destination, or session detail — so it's safe to post.
-- Live evaluation scores, call-type breakdown, the three-phase filter pipeline,
-  the [quarantine digest](/docs/concepts/quarantine-digest), audit, the
-  session-pinned binary inventory, and listener-rewrite history.
-
-## Logs and pid
-
-| Path                              | What                                                      |
-| --------------------------------- | --------------------------------------------------------- |
-| `~/.config/grith/dashboard.pid`   | PID + port of the running dashboard daemon.               |
-| `~/.config/grith/dashboard.token` | Per-server browser auth token (`0600`). Delete to rotate. |
-| `~/.config/grith/daemon.token`    | Daemon IPC bearer token (`0600`).                         |
-| `~/.config/grith/config.toml`     | `[server]` section controls the daemon's HTTP server.     |
-
-## Running as a system service
-
-For unattended deployments, run the daemon under systemd / launchd / a process
-supervisor. The shipping unit files are at `contrib/systemd/grith.service` in the
-grith repo. See [Running as a daemon](/docs/ops/running-as-a-daemon) for the full
-operations guide.
-
-## Restart safety
-
-Restarts are clean on Pro (state is checkpointed before the stop). On community,
-in-flight digest items are dropped — they were never persistently stored, so a
-restart auto-denies them via timeout in the calling thin client.
+If the daemon is up but the code cannot be minted you get
+`Could not reach the dashboard daemon to mint a pairing code. Is it running? (grith dashboard status)`.
 
 ## See also
 
-- [Daemon and thin-client sessions](/docs/concepts/daemon-and-sessions)
-- [Trust boundaries](/docs/security/trust-boundaries) — the dashboard auth model
-- [Running as a daemon](/docs/ops/running-as-a-daemon)
-- [`[server]` config](/docs/config/server)
-- [Reverse proxy & TLS](/docs/guides/reverse-proxy-tls)
+- [Daemon and sessions](/docs/concepts/daemon-and-sessions) - what the daemon owns
+- [Running as a daemon](/docs/ops/running-as-a-daemon) - service files and lifecycle
+- [API authentication](/docs/api/authentication) - what the pairing token authorises

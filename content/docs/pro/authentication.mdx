@@ -1,102 +1,93 @@
 ---
-title: "Authentication"
-description: "Device-auth and API-key flows for linking a device to a Pro team."
-section: "pro"
+title: 'Authentication'
+description: 'Linking a machine to your grith.ai account with browser device auth or an API key, and where the credentials land.'
+section: 'pro'
 order: 2
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/authentication.mdx"
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/authentication.mdx'
 ---
 
 <PlanBadge tier="pro" />
 
-Pro devices authenticate to the team via one of two flows: **device-auth** (best
-for interactive sessions, opens a browser) or **API key** (for headless installs).
+One command links a machine to your account and installs its licence:
 
-## Device-auth (interactive)
+<Terminal command="grith pro login" />
 
-```
-grith pro login
-```
+## Browser device auth (the default)
 
-What happens:
+`grith pro login` with no flags runs a device-authorisation flow against `api.grith.ai`. It
+prints a verification URL - `https://grith.ai/device` - and an eight-character code with a dash
+in the middle, opens your browser, and polls every five seconds while you sign in and enter the
+code. The code is valid for ten minutes; if it lapses, run the command again for a new one.
 
-1. grith generates a one-time device code.
-2. Browser opens `grith.ai/device` with the code pre-filled.
-3. You sign in to grith.ai (if not already) and approve the device.
-4. grith receives a long-lived token, stores it at
-   `~/.config/grith/licenses/<team-id>.signed` (perms `0600`).
-5. License is now active; `grith pro status` confirms.
+Three things can come back other than success:
 
-The token is bound to this device and this team. Logging in to a different team
-adds a second token; both stay valid until explicit `grith pro logout`.
+- **Pending** - you have not finished in the browser yet. grith keeps polling.
+- **Expired** - the code timed out. Run `grith pro login` again.
+- **No active licence** - the sign-in worked but the team has no plan. grith prints the pricing
+  URL and stops. Start a plan or a trial, then run `grith pro login` again.
 
 ## API key (headless)
 
-For unattended installs — CI runners, Docker images, kiosk devices:
+For a machine with no browser - a CI runner, a container, a remote box:
 
-```
-grith pro login --api-key <KEY>
-```
+<Terminal command="grith pro login --api-key <KEY>" />
 
-Get an API key from the dashboard: **Settings → API keys → New key**. The key
-is shown once at creation; copy it then. Each key can be scoped to a single
-device or a class of devices.
+Generate the key from Settings in the grith.ai dashboard. It is the same credential the device
+flow ends up storing, so both paths land in the same place.
 
-API keys can be rotated or revoked from the dashboard without losing other
-devices' access.
+<Callout type="warning" title="The API key is the decryption key for synced provider keys">
+Team provider keys are encrypted at rest on this machine under a key derived from your account
+API key. Rotating the API key makes the existing envelopes undecryptable - re-run
+`grith pro sync` after a rotation. See [Encrypted key management](/docs/pro/encrypted-key-management).
+</Callout>
 
-## Verifying
+## Where credentials live
 
-```
-grith pro status
-```
+| File | Contents |
+| --- | --- |
+| `~/.config/grith/credentials.json` | Account and team id, API key, licence path, last validation and sync timestamps. Mode `0600`. |
+| `~/.config/grith/license.key` | The signed licence itself. Mode `0600`. |
 
-Shows: team, plan, license expiry, seats used, last refresh.
+One account per machine. There is no team switcher and no second credential slot - logging in
+again replaces what is there.
 
-## Common issues
+## Checking state
 
-### "Not enrolled" after login
+<Terminal>
+{`$ grith pro status
+Not logged in.
+  Run: grith pro login
+       or: grith pro login --api-key <key>`}
+</Terminal>
 
-The license refresh hasn't completed. Wait 30 seconds, retry. If persistent,
-check network connectivity to grith.ai:
+Once signed in, `grith pro status` prints the plan and tier, the account email, team and seat
+count, the renewal date with days remaining, the billing portal URL, when the licence was last
+validated, and - if a daemon is running - the next scheduled refresh and the last refresh
+failure. See [Licence lifecycle](/docs/pro/license-lifecycle).
 
-```
-curl https://grith.ai/health
-```
+## A running daemon re-gates immediately
 
-### "Invalid signature" on license
+`login`, `activate`, `refresh`, `start-trial` and `logout` signal a running daemon to re-read the
+licence file and re-apply the gate at once, with no network call. The concurrent-session cap and the gated
+features change on the spot rather than waiting for the daemon's next refresh. With no daemon
+running, the new tier applies at the next daemon start.
 
-The license file is corrupted or has been tampered with. Remove and re-login:
+## Logging out
 
-```
-rm ~/.config/grith/licenses/*.signed
-grith pro login
-```
+<Terminal>
+{`$ grith pro logout
+Logged out. Pro features disabled.`}
+</Terminal>
 
-### Multiple teams on one device
-
-Supported. Each `grith pro login` adds a license file. `grith pro status` shows
-which is active; switch with:
-
-```
-grith config set general.active_team <team-id>
-```
-
-## Logout
-
-```
-grith pro logout
-```
-
-Removes the local license cache and authentication state. Pro features lock
-out; community features unaffected. The device remains in the team's seat
-list on the dashboard until the team admin explicitly revokes (cleaner audit
-trail).
+This deletes `credentials.json` and `license.key`. Anything already pulled to disk - team
+policies, shared configs, provider-key envelopes, the analytics device registration - is left
+in place; the provider-key envelopes are no longer decryptable without the API key.
 
 ## See also
 
-- [License lifecycle](/docs/pro/license-lifecycle)
+- [Licence lifecycle](/docs/pro/license-lifecycle)
 - [`grith pro`](/docs/cli/pro)
 - [Team setup](/docs/guides/team-setup)

@@ -1,110 +1,91 @@
 ---
-title: "Centralised policies"
-description: "Author and distribute named policy bundles from the dashboard."
-section: "pro"
+title: 'Centralised policies'
+description: 'Authoring a team policy in the dashboard, where it lands on each device, and which team-managed settings actually change a decision.'
+section: 'pro'
 order: 5
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/centralised-policies.mdx"
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/centralised-policies.mdx'
 ---
 
 <PlanBadge tier="pro" />
 
-A **policy** is a named bundle of (scoring thresholds, filter configs, profile
-overrides, channel mappings) that can be applied to any subset of the team. Use
-policies to manage different security postures across roles, projects, or
-environments without editing each developer's local config.
+A team policy is a named JSON document authored in the grith.ai dashboard. Team admins and the
+team owner can create and edit one; every member's device pulls the current version with
+`grith pro sync` into `~/.config/grith/policies/<name>.json`.
 
-## Anatomy
+The whole surface is gated on the `policy_editor` feature, on the dashboard and on the daemon's
+own routes.
 
-A policy declares:
+## What a policy document holds
 
-- **Profile override** — which supervisor profile to use as the baseline.
-- **Threshold overrides** — `proxy.auto_allow_threshold`, `auto_deny_threshold`.
-- **Filter overrides** — paths.toml, egress.toml, etc. (any subset).
-- **Channel allowlist** — which notification channels can be used.
-- **Capability tightening** — narrow the capability set beyond the profile default.
+A policy document carries a name, a description, a version, created and updated timestamps and a
+`rules` object. You supply the name, the description and the rules; the daemon sets the version
+to 1 on create and bumps it on every update. The `rules` object is the part that matters:
 
-Example policy bundle from the dashboard:
+<CodeBlock
+  language="json"
+  title="policy rules"
+  code={`{
+  "proxy": {
+    "auto_allow_threshold": 3.0,
+    "auto_deny_threshold": 8.0
+  },
+  "filters": { "secret-scan": true },
+  "allowlists": {
+    "paths": [],
+    "commands": [],
+    "domains": []
+  }
+}`}
+/>
 
-```toml
-[policy.tight-prod]
-description = "Hardened policy for production-touching sessions"
+Validation is strict about three things: the name must be alphanumeric-plus-hyphen and 64
+characters or fewer; both thresholds must sit inside 0.0-10.0 with allow strictly below deny;
+and every key in `filters` must name a filter the running proxy actually registered. An unknown
+filter id is rejected rather than silently ignored. A file in the directory that does not match
+this shape is skipped by the list route rather than failing it.
 
-[policy.tight-prod.thresholds]
-auto_allow_threshold = 2.0
-auto_deny_threshold  = 6.0
+## The local routes
 
-[policy.tight-prod.profile]
-override = "minimal"
+All five require Pro. They read and write files in `~/.config/grith/policies/`.
 
-[policy.tight-prod.filters.egress]
-content = """
-[[deny]]
-host = "*"
-score = 5.0
-[[allow]]
-host = "internal.acme.com"
-score = -2.0
-"""
+| Route | Does |
+| --- | --- |
+| `GET /api/policies` | List every policy on this machine. |
+| `GET /api/policies/{name}` | Read one. |
+| `POST /api/policies` | Create one. `409` if the name is taken. |
+| `PUT /api/policies/{name}` | Update one and bump its version. |
+| `DELETE /api/policies/{name}` | Remove one. |
 
-[policy.tight-prod.channels]
-allowed = ["pagerduty", "slack-prod"]
-```
+## What actually changes a decision
 
-## Applying
+<Callout type="warning" title="A policy document is distributed, not enforced">
+The daemon scores tool calls against its own configuration - `config/default.toml`, then
+`~/.config/grith/config.toml`, then `./.grith/config.toml`, then `GRITH_*` environment
+variables. A pulled policy file is stored and served back over the API; it does not move a
+threshold or switch off a filter on its own.
+</Callout>
 
-In the dashboard, policies are applied either:
+Two team-managed things do change what a session does, and both arrive without any extra step:
 
-- **By default** — every device in the team gets it as the baseline.
-- **By role** — assigned to a tag, applied to devices with that tag.
-- **By session** — devices pick the policy at `grith exec` time with
-  `--policy <name>`.
+- **Team learned rules.** Rules an admin approves for a profile are merged into every new
+  session's allowlist on that profile, refreshed at session start.
+- **Team provider keys.** Pulled, decrypted locally and used for model calls.
 
-## Session-time selection
+To move a scoring threshold across a team today, ship it in each machine's `config.toml` - that
+is the file the daemon reads. See [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds).
 
-```
-grith exec --profile claude-code --zone dayjob --policy tight-prod -- claude
-```
+## Shared configs and `team-config.toml`
 
-The `--policy` overlay applies on top of the resolved profile + zone. Useful
-for "this is a production-touching session, tighten everything".
-
-If `--policy` isn't passed, the device's default policy is used.
-
-## Lifecycle
-
-Policies are versioned in the dashboard:
-
-- Edit → save as draft → preview → publish.
-- Published policies replace the prior version on next device sync.
-- Rollback to a prior version is one click in the dashboard; the device picks it
-  up on next sync.
-
-## Use cases
-
-- **Per-environment policies** — `dev`, `staging`, `prod` with progressively
-  tighter scoring.
-- **Per-role policies** — `engineer` vs. `oncall` vs. `incident-responder`,
-  each with different notification + threshold settings.
-- **Compliance policies** — `pci-touching` policy that auto-denies anything
-  egressing to non-allowlisted destinations.
-
-## Auditing policy changes
-
-Every policy edit is recorded in the dashboard's audit log:
-
-- Who edited.
-- When.
-- What changed (diff vs. prior version).
-
-For Enterprise compliance setups, this audit is exportable as part of
-[Compliance reporting](/docs/enterprise/compliance-reporting).
+Shared configs pulled by `grith pro sync` sit as JSON under `~/.config/grith/configs/`. Applying
+them from the dashboard merges them into `~/.config/grith/team-config.toml`, which the
+dashboard's configuration view treats as the shared baseline that local config overrides. The
+same caveat applies: it is the view's baseline, not the daemon's.
 
 ## See also
 
 - [Team sync](/docs/pro/team-sync)
-- [Team setup](/docs/guides/team-setup)
-- [`grith exec --policy`](/docs/cli/exec)
-- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)
+- [Config overview](/docs/config/overview)
+- [Sync and policies API](/docs/api/sync-and-policies)

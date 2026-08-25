@@ -1,116 +1,108 @@
 ---
-title: "grith audit"
-description: "Browse and export the audit log of every filter decision."
-section: "cli"
+title: 'grith audit'
+description: 'Read, verify, export and maintain the hash-chained audit log of every decision grith made.'
+section: 'cli'
 order: 5
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/audit.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/audit.mdx'
 ---
 
 ```
-grith audit [diagnose | export | compact]
-```
-
-The audit log is the persistent record of every decision grith made — including
-auto-allows. It lives in a SQLite database under `~/.local/share/grith/audit/`.
-
-## Subcommands
-
-| Subcommand | What it does |
-| --- | --- |
-| `export --format json` | Dump every record as a JSON array (stdout; redirect to a file). |
-| `export --format csv` | Same records, as CSV. |
-| `diagnose` | Inspect the audit chain — verification outcome, forks, and gaps. Read-only, and works even when the chain is quarantined. |
-| `compact` | Reclaim free database pages left by retention pruning. Manual maintenance: rewrites and atomically swaps the audit database; the daemon must be stopped and the chain must not be quarantined. |
-
-## Export
-
-```
-grith audit export --format json > audit.json
-grith audit export --format csv > audit.csv
-grith audit export --format json --offset 1000 --limit 1000   # page through in batches
-```
-
-JSON output is one record per array element. Paging is by `--offset` / `--limit`
-(default offset `0`, limit `1000`); there is no time or session filter on export —
-filter the emitted records downstream.
-
-## Diagnose the audit chain
-
-```
+grith audit
 grith audit diagnose
+grith audit export [--format json|csv] [--offset <N>] [--limit <N>]
+grith audit compact [--yes]
+grith audit rebuild-analytics [--yes]
 ```
 
-Read-only inspection of the tamper-evident audit chain. It reports the
-verification outcome and, if the chain is broken or forked, where the break is —
-including the sequence numbers involved. Unlike the other `audit` subcommands,
-`diagnose` still runs when the chain is quarantined (that is exactly when you need
-it), so it never refuses on a failed verification.
+The audit log is the durable record of every filter decision. Bare `grith audit` verifies
+the chain, then prints the last 10 records.
 
-## Compact the database
+<Terminal>
+{`$ grith audit
+Audit log: 0 total entries
+  No audit entries yet.`}
+</Terminal>
 
-```
-grith audit compact          # prompts for confirmation
-grith audit compact --yes    # skip the prompt (for scripts)
-```
+## `diagnose`
 
-Reclaims free pages left behind by retention pruning: it rewrites the audit
-database into a fresh copy, verifies that copy's chain, and atomically swaps it in;
-on any failure the original is left untouched. This is a manual maintenance
-operation — it never runs on a timer. It needs exclusive write access, so **stop
-the daemon first** (`grith daemon stop`), and it refuses to run on a quarantined
-chain so evidence is preserved. On success it prints the on-disk and free-page
-bytes reclaimed.
+Read-only, no flags, and the one audit command that still works when the chain is
+quarantined. Run it first whenever anything else refuses.
 
-## What a record looks like
+<Terminal>
+{`$ grith audit diagnose
+Chain status: writable
 
-```json
-{
-  "id": "uuid-...",
-  "ts": "2026-05-14T09:14:23Z",
-  "session": "abc12345-...",
-  "operation": "file_read",
-  "target": "/home/you/.ssh/config",
-  "decision": "queue",
-  "resolved": "deny",
-  "composite_score": 4.2,
-  "filters": [
-    { "name": "sensitive-path-heuristic", "score": 3.5 },
-    { "name": "path-match",               "score": 1.2 }
-  ],
-  "profile": "claude-code",
-  "pid": 17421,
-  "command": "claude"
-}
-```
+Full verification: chain is empty.
 
-`decision` is what the pipeline returned (allow / queue / deny). `resolved` is what
-ultimately happened (auto-allows have no resolved transition; queues resolve to
-allow/deny via review or timeout).
+Segments: 1 (continuous history)
 
-## Storage and retention
+Duplicate sequences: none.
+Sequence gaps: none.
 
-The active SQLite database keeps a bounded window of recent records and prunes
-older ones automatically. Retention is configured under `[audit]`:
+Assessment: no integrity problems detected.`}
+</Terminal>
 
-```toml
-[audit]
-retain_full_days     = 30     # days kept in the active database (0 = keep all)
-cold_storage_enabled = true   # archive pruned records under audit/cold/ first
-prune_interval_hours = 24     # prune cadence (0 = prune once on startup only)
-```
+## `export`
 
-Deleting rows does not shrink the SQLite file. Run `grith audit compact` to
-rewrite the database and reclaim the freed space — a manual operation that
-needs exclusive write access, so stop the daemon first (`grith daemon stop`).
+Defaults are `--format json`, `--offset 0`, `--limit 1000`. Records come newest first.
 
-See [Logging & audit retention](/docs/ops/logging-and-audit-retention) for the trade-
-offs.
+<Terminal>
+{`$ grith audit export --format csv --limit 2
+Showing 0 records (offset 0, limit 2, total 0)
+timestamp,plugin_id,tool_call_type,decision,score`}
+</Terminal>
+
+The count banner goes to **stderr** and the data to **stdout**, so
+`grith audit export > out.json` gives you a clean file. Only `json` and `csv` are
+handled; anything else prints `Unknown export format: <x>. Use 'json' or 'csv'.` and
+writes nothing.
+
+## `compact`
+
+A manual maintenance operation - never automatic. It rewrites the database to reclaim
+free pages left by retention pruning, then atomically swaps the file in.
+
+<Terminal>
+{`$ grith audit compact --yes
+Compaction complete.
+  On-disk: 200704 -> 200704 bytes (0 reclaimed)
+  Free pages inside DB: 0 -> 0 bytes (0 reclaimed)`}
+</Terminal>
+
+Without `--yes` it asks first, and a closed stdin counts as no:
+
+<Terminal>
+{`$ grith audit compact
+Compact the audit database (rewrites + atomically swaps the file)? [y/N] Aborted.`}
+</Terminal>
+
+## `rebuild-analytics` <SinceTag version="0.3.1" />
+
+Rebuilds the derived [analytics](/docs/pro/analytics) projection from the audit database
+plus the cold archives under `<audit_dir>/cold/`. Audit records themselves are never
+touched - the projection is a view over them, and this recomputes the view.
+
+<Terminal>
+{`$ grith audit rebuild-analytics --yes
+Analytics rebuild complete: 0 source records processed.`}
+</Terminal>
+
+Reach for it when the local dashboard's numbers look wrong, or after restoring an audit
+database from a backup.
+
+## Both maintenance commands refuse in two cases
+
+`compact` and `rebuild-analytics` each need exclusive write access to the database, and
+each bails rather than working on a chain it does not trust:
+
+- **A daemon owns the database.** The message tells you to stop it first with
+  `grith daemon stop`. Run the command, then start it again.
+- **The chain is quarantined.** It points you at `grith audit diagnose`.
 
 ## See also
 
-- [Audit API](/docs/api/audit) — same data, REST
-- [Analytics overview (Pro)](/docs/pro/analytics-and-cost)
-- [Compliance reporting (Enterprise)](/docs/enterprise/compliance-reporting)
+- [Logging and audit retention](/docs/ops/logging-and-audit-retention) - what is pruned, and when
+- [`grith log`](/docs/cli/log) - the same data, formatted to read

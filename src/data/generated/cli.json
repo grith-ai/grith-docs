@@ -1,92 +1,336 @@
 {
+  "_note": "Hand-extended from `grith --help` and every `grith <cmd> --help` on the v0.3.1 binary. The upstream generator walks the clap enum in crates/grith-core/src/main.rs and emits top-level commands only, so it produces \"partial\": true with no subcommands and no flags. Re-running `npm run gen:references` will drop the subcommand and flag detail below.",
+  "aliases": {
+    "dashboard": "daemon",
+    "onboarding": "setup"
+  },
   "commands": [
     {
       "description": "Execute a single task non-interactively",
       "name": "run",
-      "variant": "Run"
+      "variant": "Run",
+      "args": ["<TASK>"],
+      "subcommands": []
     },
     {
       "description": "Run the interactive first-run setup (welcome, provider, trial, guide)",
       "name": "setup",
-      "variant": "Setup"
+      "variant": "Setup",
+      "alias": "onboarding",
+      "subcommands": []
     },
     {
       "description": "Create default configuration",
       "name": "init",
-      "variant": "Init"
+      "variant": "Init",
+      "subcommands": [],
+      "doc_note": "Overwrites an existing config.toml unconditionally - no backup, no merge."
     },
     {
       "description": "Show or modify configuration",
       "name": "config",
-      "variant": "Config"
+      "variant": "Config",
+      "subcommands": [
+        {
+          "name": "set",
+          "description": "Set a configuration value"
+        }
+      ],
+      "doc_note": "Bare `grith config` prints the effective configuration. `set` accepts a fixed 58-key whitelist, not arbitrary dotted paths. There is no get, list, edit, validate or reload."
     },
     {
       "description": "Browse audit logs",
       "name": "audit",
-      "variant": "Audit"
+      "variant": "Audit",
+      "subcommands": [
+        {
+          "name": "diagnose",
+          "description": "Inspect the audit chain: verification outcome, forks, gaps (read-only)"
+        },
+        {
+          "name": "export",
+          "description": "Export audit logs as JSON or CSV"
+        },
+        {
+          "name": "compact",
+          "description": "Reclaim free pages left by pruning: rewrites + atomically swaps the audit database. A manual maintenance op (never automatic); requires that no daemon is running and the chain is not quarantined"
+        },
+        {
+          "name": "rebuild-analytics",
+          "description": "Rebuild the analytics projection from the audit database and cold archives"
+        }
+      ],
+      "doc_note": "`export` writes data to stdout and its count banner to stderr, so redirecting to a file gives clean output. `compact` and `rebuild-analytics` both refuse while the daemon owns the database, and both refuse on a quarantined chain; `diagnose` is the one that still works in quarantine."
     },
     {
       "description": "Manage digest queue",
       "name": "digest",
-      "variant": "Digest"
+      "variant": "Digest",
+      "subcommands": [
+        {
+          "name": "review",
+          "description": "Interactive digest review"
+        }
+      ],
+      "doc_note": "In `review`, `q` auto-denies the item currently on screen before quitting."
     },
     {
       "description": "Manage canary tokens used for exfiltration trap detection",
       "name": "canary",
-      "variant": "Canary"
+      "variant": "Canary",
+      "subcommands": [
+        {
+          "name": "list",
+          "description": "List registered canary tokens"
+        },
+        {
+          "name": "add",
+          "description": "Add a canary token"
+        },
+        {
+          "name": "remove",
+          "description": "Remove a canary token by ID"
+        },
+        {
+          "name": "rotate",
+          "description": "Rotate a canary token by ID (keeps label, replaces value)"
+        }
+      ],
+      "doc_note": "The registry is in-memory. These subcommands mutate a throwaway registry the daemon never sees; the only durable registration is [[canary.tokens]] in config/filters/canary.toml plus a daemon restart."
     },
     {
       "description": "Security proxy commands",
       "name": "proxy",
-      "variant": "Proxy"
+      "variant": "Proxy",
+      "subcommands": [
+        {
+          "name": "test",
+          "description": "Dry-run a tool call against the proxy"
+        }
+      ],
+      "doc_note": "`proxy test` exit codes: 0 allow, 1 queue, 2 deny."
     },
     {
       "description": "Supervise an external CLI tool with OS-level syscall interception",
       "name": "exec",
-      "variant": "Exec"
+      "variant": "Exec",
+      "args": ["[COMMAND]... (after --)"],
+      "flags": [
+        "--profile <PROFILE>",
+        "--attach <ATTACH>",
+        "--syscall-log <SYSCALL_LOG>",
+        "--trace-syscalls-jsonl <TRACE_SYSCALLS_JSONL>",
+        "--allow-queued",
+        "--workspace-only"
+      ],
+      "subcommands": [],
+      "doc_note": "Also accepts three bare verbs - `list`, `kill <id>`, `prune` - matched only when there is no --, no --profile and no --attach. A fail-closed thin client: it refuses to start a session without a version-matched daemon, and has no in-process fallback."
     },
     {
       "description": "List or manage active supervisor sessions",
       "name": "supervisor",
-      "variant": "Supervisor"
+      "variant": "Supervisor",
+      "subcommands": [
+        {
+          "name": "list",
+          "description": "List active supervisor sessions"
+        },
+        {
+          "name": "status",
+          "description": "Show details of a specific session"
+        },
+        {
+          "name": "kill",
+          "description": "Terminate a supervisor session and detach from the process"
+        }
+      ]
     },
     {
       "description": "Manage the grith daemon (dashboard server + shared subsystems)",
       "name": "daemon",
-      "variant": "Daemon"
+      "variant": "Daemon",
+      "alias": "dashboard",
+      "subcommands": [
+        {
+          "name": "start",
+          "description": "Start the daemon (dashboard server + shared subsystems) as a background process"
+        },
+        {
+          "name": "stop",
+          "description": "Stop the running daemon"
+        },
+        {
+          "name": "restart",
+          "description": "Restart the daemon (stop the running one, then start this build)"
+        },
+        {
+          "name": "status",
+          "description": "Check if the daemon is running"
+        },
+        {
+          "name": "pair",
+          "description": "Authorise a browser for the dashboard (mints a single-use pairing link)"
+        }
+      ]
     },
     {
       "description": "Manage Pro plan: login, status, sync, activate, logout",
       "name": "pro",
-      "variant": "Pro"
+      "variant": "Pro",
+      "subcommands": [
+        {
+          "name": "login",
+          "description": "Authenticate with grith.ai (device auth by default, API key optional)"
+        },
+        {
+          "name": "status",
+          "description": "Show plan status, license expiry, team info"
+        },
+        {
+          "name": "activate",
+          "description": "Fetch and activate a fresh license"
+        },
+        {
+          "name": "refresh",
+          "description": "Force an on-demand license refresh against grith.ai"
+        },
+        {
+          "name": "logout",
+          "description": "Remove credentials and license"
+        },
+        {
+          "name": "sync",
+          "description": "Pull team policies, shared configs and provider keys; push learned reputation"
+        },
+        {
+          "name": "upgrade",
+          "description": "Open the upgrade/pricing page in the default browser"
+        },
+        {
+          "name": "start-trial",
+          "description": "Start a free Pro trial (one-click when available, else opens signup)"
+        },
+        {
+          "name": "billing",
+          "description": "Show current plan and billing details; open billing portal in browser"
+        }
+      ],
+      "doc_note": "The binary's own --help text for `sync` still says \"Upload audit records to cloud\". That is stale: the raw audit-record upload was retired, and `sync` uploads no audit records. Without a licence, activate / refresh / billing / sync exit 1 with \"Not logged in\"; status reports it at exit 0."
+    },
+    {
+      "description": "Manage cloud analytics sync for this machine",
+      "name": "analytics",
+      "variant": "Analytics",
+      "subcommands": [
+        {
+          "name": "status",
+          "description": "Show cloud analytics sync status for this machine"
+        },
+        {
+          "name": "verify-archives",
+          "description": "Rebuild archived days from cloud storage and check they still match the analytics the server accepted"
+        },
+        {
+          "name": "enable",
+          "description": "Turn on cloud analytics sync (records your consent)"
+        },
+        {
+          "name": "disable",
+          "description": "Turn off cloud analytics sync on this machine"
+        }
+      ],
+      "doc_note": "`verify-archives` defaults to yesterday back 29 days and exits non-zero when any day disagrees, so it can run as a check."
     },
     {
       "description": "Manage notification channels",
       "name": "notifications",
-      "variant": "Notifications"
+      "variant": "Notifications",
+      "subcommands": [
+        {
+          "name": "status",
+          "description": "Show notification channel status and health"
+        },
+        {
+          "name": "channels",
+          "description": "List all available notification channels"
+        },
+        {
+          "name": "test",
+          "description": "Send a test notification to a specific channel"
+        }
+      ],
+      "doc_note": "Parked in v0.3.1. Every subcommand prints the same \"Notifications are coming soon.\" message and exits 0."
     },
     {
       "description": "View audit-backed session logs",
       "name": "log",
-      "variant": "Log"
+      "variant": "Log",
+      "flags": ["--tail", "--session <SESSION>", "--limit <LIMIT>"],
+      "subcommands": [],
+      "doc_note": "--session accepts a UUID or a session name. --limit defaults to 100 and is clamped."
     },
     {
       "description": "Manage supervisor profiles",
       "name": "profile",
-      "variant": "Profile"
+      "variant": "Profile",
+      "subcommands": [
+        {
+          "name": "audit",
+          "description": "Audit a forensic trace file against a profile"
+        }
+      ],
+      "doc_note": "`audit` is the only subcommand. There is no list, show, create, validate or diff - the profile set is compiled into the binary."
     },
     {
       "description": "Manage the reputation system",
       "name": "reputation",
-      "variant": "Reputation"
+      "variant": "Reputation",
+      "subcommands": [
+        {
+          "name": "show",
+          "description": "Show the learned reputation table with trust scores"
+        },
+        {
+          "name": "reset",
+          "description": "Reset all learned reputation data"
+        }
+      ],
+      "doc_note": "This is the learned Beta trust table, not the destination-reputation filter. It is applied after the pipeline and only on a QUEUE."
     },
     {
       "description": "Generate a shell completion script for grith",
       "name": "completions",
-      "variant": "Completions"
+      "variant": "Completions",
+      "args": ["<SHELL>  [bash, elvish, fish, powershell, zsh]"],
+      "subcommands": [],
+      "doc_note": "Works even when the config on disk is broken."
     }
   ],
-  "partial": true,
+  "global_flags": [
+    {
+      "flag": "--config <CONFIG>",
+      "description": "Path to configuration file"
+    },
+    {
+      "flag": "--log-level <LOG_LEVEL>",
+      "description": "Log level (trace, debug, info, warn, error)"
+    },
+    {
+      "flag": "--no-color",
+      "description": "Disable colored output"
+    },
+    {
+      "flag": "--project <PROJECT>",
+      "description": "Override the project name (defaults to current directory name)"
+    },
+    {
+      "flag": "--skip-onboarding",
+      "description": "Skip the first-run onboarding flow (also via GRITH_SKIP_ONBOARDING)"
+    }
+  ],
+  "partial": false,
+  "repl": "Running `grith` with no arguments starts the interactive REPL.",
   "schema_version": 1,
-  "source": "crates/grith-core/src/main.rs"
+  "source": "crates/grith-core/src/main.rs, captured from the v0.3.1 binary's --help tree",
+  "verified_against": "grith 0.3.1"
 }

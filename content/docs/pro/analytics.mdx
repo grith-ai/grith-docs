@@ -1,0 +1,166 @@
+---
+title: 'Analytics'
+description: 'What the local dashboard shows, what syncs to your team, and what never leaves the machine.'
+section: 'pro'
+order: 6
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/analytics.mdx'
+---
+
+<PlanBadge tier="pro" />
+
+Analytics is a projection built from your local audit log: counts, rollups and event summaries,
+with the operands stripped out. Community sees seven days of it on the local dashboard. Pro
+widens the window to 30 and 90 days and syncs the projection to your team.
+
+## Where the numbers come from
+
+The projection lives inside the audit SQLite database, alongside the records it is derived from -
+there is no second database and no separate collector. A materialiser walks the audit tail as
+records land, and only the daemon, which holds the audit writer lock, may update it. Everything
+else reads already-materialised rows. Rows are pruned at 90 days.
+
+| | Community | Pro |
+| --- | --- | --- |
+| Window | 7 days | 30 and 90 days |
+| Decision counts and rates | yes | yes |
+| Chain health and freshness | yes | yes |
+| Recent security events | newest 20 | up to 500 |
+| Usage, filter, session, model and destination rollups | - | yes |
+| Export | - | JSON and CSV from the dashboard, up to 90 days |
+
+The Community response is a first-class server response, not a Pro response with panels hidden in
+the browser - the feature check runs before storage is touched. When a row cap bites, the oldest
+rows are dropped first and the response flags itself `truncated`. If an older grith is holding
+the audit database, the analytics routes answer `503 ANALYTICS_UNAVAILABLE` and tell you to
+restart the daemon.
+
+## Cloud sync
+
+Sync runs from the daemon, not from a command. It needs all four of:
+
+1. signed in (`grith pro login`),
+2. a plan carrying `usage_analytics` and `cloud_sync`,
+3. `general.audit_sync = true` (the shipped default),
+4. a recorded consent receipt.
+
+<Callout type="info" title="Consent turns itself on for an entitled account">
+With no recorded choice on a signed-in paid account, the worker records the receipt itself and
+starts syncing - the server will not register a device without one. An explicit
+`grith analytics disable` is always honoured, and a consent-version bump stops uploads until
+you accept again.
+</Callout>
+
+Cadence starts at 30 seconds, and the server can steer it between 5 and 300 seconds in its
+heartbeat reply. With any of those four gates shut - or the device revoked - the worker falls
+back to re-checking every 60 seconds instead of uploading. Each tick sends a heartbeat and one
+day's snapshot, then at most one sealed-day archive - history never starves live security
+events. Coverage is strictly prospective: registration records a coverage start, and nothing
+from before consent is ever uploaded.
+
+<Terminal>
+{`$ grith analytics status
+Cloud analytics sync
+  Consent:  not recorded yet — turns on automatically with a paid plan
+            (or run \`grith analytics enable\`)
+  Account:  not signed in — run \`grith pro login\`
+  Plan:     requires a Pro plan
+  Config:   audit sync on
+  Device:   not registered yet
+  Pending:  0 day(s) awaiting upload, 0 security event(s)`}
+</Terminal>
+
+`grith analytics enable` prints the summary below and asks for confirmation.
+`grith analytics disable` stops this machine uploading and reports it as sync-disabled, rather
+than letting it age into looking offline; data already synced stays in the team dashboard.
+Setting `general.audit_sync = false` stops the whole thing.
+
+## What leaves the machine
+
+This is the summary the CLI prints before it turns sync on, verbatim:
+
+<Terminal>
+{`Cloud analytics sync sends aggregated usage metrics from this machine
+to your team's dashboard at grith.ai:
+
+  - counts of allowed, queued and denied operations, by hour and day
+  - security filter activity and score distributions
+  - session, project, profile and tool names
+  - AI model usage and estimated cost
+  - security event summaries (what was blocked, and why)
+
+Once a day closes, the same information for that day is also
+uploaded as a single file, one row per operation, to encrypted
+private storage. It is kept for 90 days.
+
+It never includes commands, file paths, file contents, prompts or
+model responses.
+
+Cloud analytics is included with paid plans and turns on
+automatically once you are signed in. Turn it off any time with
+\`grith analytics disable\`.`}
+</Terminal>
+
+The exclusion list is normative in the wire schema: `command`, `arguments`, `arguments_summary`,
+`raw_path`, `raw_url`, `prompt`, `model_response`, `file_contents`, `source_code`,
+`payload_body`, `environment_values`, `task_context` and `free_form_decision_reason` have no
+column to travel in.
+
+Three things are worth knowing before you turn it on:
+
+- **Project names travel in clear text.** They are how cost and activity are attributed. If a
+  repository name is commercially sensitive, it will be visible in the team dashboard.
+- **Destinations are HMACed by default.** A team-scoped hash, not a hostname. An owner or admin
+  can opt into clear labels; that applies from the moment it is switched on and starts a fresh
+  trend segment rather than back-filling old rows.
+- **It is aggregated, not anonymous.** The payload carries team, actor and device identity -
+  that is what makes per-developer cost and per-session drill-down work.
+
+## Daily archives <SinceTag version="0.3.1" />
+
+Once a UTC day closes, a paid plan uploads that day as one file - one row per operation, the same
+operand-free fields - to encrypted private storage under a key grith manages. Objects are
+content-addressed, so a retry re-uploads the same bytes to the same key.
+
+## Checking the archives <SinceTag version="0.3.1" />
+
+<Terminal command="grith analytics verify-archives --from 2026-08-01 --to 2026-08-07" />
+
+For each day in the range it downloads the archived object, checks it byte-for-byte against the
+recorded SHA-256, parses it, checks the row count, then replays every row through the same
+accumulator the device used and compares the result with what the server accepted. It names any
+day that disagrees and **exits non-zero**, so it works as a scheduled check.
+
+It reads through a read-only audit handle, so it runs happily while the daemon is up. With no
+range it checks the 30 days ending yesterday. On a machine that has never synced it says so and
+points at `grith analytics status`.
+
+## Rebuilding the projection
+
+If the local numbers look wrong, rebuild them from the audit database and its cold archives with
+`grith audit rebuild-analytics`. It needs exclusive write access, so stop the daemon first, and
+it refuses on a quarantined audit chain. Audit records are never touched - only the derived
+projection is rebuilt.
+
+## Cost
+
+Model spend is recorded with the price source and pricing version used to compute it, so a later
+price change cannot silently restate history. It is attributed by session, project, profile and
+supervised tool.
+
+## Retention
+
+| Data | Kept |
+| --- | --- |
+| Local analytics projection | 90 days |
+| Cloud rollups and security events | 90 days |
+| Cloud daily archives | 90 days (superseded revisions 7 days) |
+| Local audit database | 30 days, then archived to cold storage |
+
+## See also
+
+- [`grith analytics`](/docs/cli/analytics)
+- [Analytics API](/docs/api/analytics)
+- [Logging and audit retention](/docs/ops/logging-and-audit-retention)

@@ -1,0 +1,73 @@
+---
+title: '[audit]'
+description: 'How much of a session is recorded, how long it stays in the active database, and where the rest goes.'
+section: 'config'
+order: 2
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/audit.mdx'
+---
+
+Retention is on by default: rows older than 30 days are archived to `cold/` and deleted from
+the active database, once a day.
+
+None of these keys appear in the shipped `config.toml` - they are struct defaults. Add the
+section to set them, and use `grith config` to check the result.
+
+| Key                    | Default    | What it does                                                               |
+| ---------------------- | ---------- | -------------------------------------------------------------------------- |
+| `completeness`         | `"spawns"` | How much is recorded. See below.                                           |
+| `retain_full_days`     | `30`       | Days of rows kept in the active database. `0` disables retention entirely. |
+| `retain_compact_days`  | `7`        | Parsed, not independently enforced.                                        |
+| `cold_storage_enabled` | `true`     | Archive to `<audit_dir>/cold/` before deleting.                            |
+| `prune_interval_hours` | `24`       | How often the prune task runs. `0` means startup only.                     |
+
+<ConfigExample
+  title="Keep a year, archived"
+  code={`[audit]
+retain_full_days = 365
+cold_storage_enabled = true`}
+/>
+
+## `completeness`
+
+Four tiers, least to most data.
+
+| Value       | Records                                                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `decisions` | Only calls that reached the proxy pipeline. Anything short-circuited by the session allowlist or the noise filter leaves no trace. |
+| `spawns`    | Adds a compact row for every routine process spawn. Answers "what did the session actually execute?". **Default.**                 |
+| `io`        | Adds routine file reads and writes. Expect roughly 100-1000 times the database growth of `decisions`.                              |
+| `all`       | Adds noise-path events - `/proc/`, `/dev/null`, `/var/cache/` and similar.                                                         |
+
+`io` and `all` want retention tuned down to match.
+
+## How pruning works
+
+The audit log is a single hash chain, so grith can only prune a contiguous prefix - it
+removes the oldest rows and moves the chain checkpoint forward. That is why
+`retain_compact_days` has no independent effect: the compact cutoff is whatever
+`retain_full_days` is.
+
+Pruning runs on **age alone**. Earlier versions held rows back until a cloud sync had
+acknowledged them; that sync is retired and the guard is gone with it. With
+`cold_storage_enabled`, pruned rows are written to date-partitioned NDJSON.zst under
+`<audit_dir>/cold/` first, so nothing is lost - it just stops being queryable through
+`grith audit`.
+
+The analytics projection lives in the same database and is pruned on the same pass, but to its
+own 90-day window rather than to `retain_full_days`. Setting `retain_full_days = 0` stops the
+task altogether, so it stops pruning the projection too.
+
+<Callout type="info" title="Retention needs the daemon">
+  The prune task belongs to the daemon. On a machine that only ever runs `grith exec` with an
+  auto-started daemon that shuts down after 30 seconds idle, pruning happens at each startup rather
+  than on the interval.
+</Callout>
+
+## See also
+
+- [Logging and audit retention](/docs/ops/logging-and-audit-retention)
+- [`grith audit`](/docs/cli/audit)
+- [`[general]`](/docs/config/general)

@@ -1,36 +1,53 @@
 ---
-title: "grith setup"
-description: "Run the interactive first-run onboarding: welcome, provider, trial, and a short guide."
-section: "cli"
+title: 'grith setup'
+description: 'The interactive first-run wizard: pick how you will use grith, connect a provider, start a trial.'
+section: 'cli'
 order: 15
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-08-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/setup.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/setup.mdx'
 ---
 
 ```
 grith setup
 ```
 
-Run the interactive first-run onboarding flow: a welcome, connecting a model
-provider, an optional Pro trial, and a short guide to get you started. This is the
-same flow grith offers automatically the first time you run it.
+The first-run wizard. It is interactive only - there are no flags beyond the
+[global ones](/docs/cli/overview), and it needs a terminal on both stdin and stdout.
 
-`grith setup` and `grith onboarding` are the same command — use whichever reads
-better.
+`grith onboarding` is the same command.
 
-## Behaviour
+## The screens
 
-- Takes no arguments or flags beyond the [global flags](/docs/cli/overview#global-flags).
-- Interactive — walks you through each step in the terminal.
-- Safe to run again at any time to revisit the setup steps.
+1. **Welcome** - what grith does.
+2. **Mode** - how you intend to use it:
+   - **Exec** - supervise external tools. No built-in provider is configured.
+   - **Ollama** - local models.
+   - **Cloud** - Anthropic, OpenAI or OpenRouter.
+3. **Trial** - offer to start a [Pro trial](/docs/pro/license-lifecycle).
+4. **Guide** - a short orientation printed after the wizard exits.
 
-To skip onboarding when running other commands, pass `--skip-onboarding` (or set
-`GRITH_SKIP_ONBOARDING`).
+Cloud providers take their key from the environment - `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY` or `OPENROUTER_API_KEY`. The wizard does not ask you to paste a key into
+a config file.
+
+## When it runs on its own
+
+Only on a first interactive launch of bare `grith` or [`grith run`](/docs/cli/run), and
+only when `general.onboarded` is still `false` and both stdin and stdout are terminals.
+Set `--skip-onboarding` or `GRITH_SKIP_ONBOARDING=1` to suppress it.
+
+[`grith init`](/docs/cli/init) stamps `onboarded = true` as it writes the file, so a
+config you created deliberately does not get a wizard on top of it.
+
+<Callout type="info" title="grith exec never shows the wizard">
+The first time you run [`grith exec`](/docs/cli/exec) it prints a single line to stderr -
+that grith is now supervising the tool, and where the dashboard is - then launches the
+tool immediately. It never interrupts a supervised session with a wizard.
+</Callout>
 
 ## See also
 
-- [`grith init`](/docs/cli/init) — generate a default config file
-- [Connect a model](/docs/start/connect-a-model) — provider setup
-- [Quickstart](/docs/start/quickstart)
+- [Connect a model](/docs/start/connect-a-model) - what the Mode screen writes
+- [`grith init`](/docs/cli/init) - non-interactive config creation

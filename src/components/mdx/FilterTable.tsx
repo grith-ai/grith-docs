@@ -11,7 +11,7 @@ interface FilterEntry {
   module: string;
   name: string;
   phase: string;
-  score_range: [number, number];
+  score_range: number[];
   config_file?: string | null;
   summary: string;
   unmapped?: boolean;
@@ -43,10 +43,10 @@ const phaseLatency: Record<string, string> = {
   unknown: '-',
 };
 
-function formatScore([lo, hi]: [number, number]): string {
-  if (lo === 99 && hi === 99) return 'DENY';
+function formatScore(range: number[]): string {
+  const [lo, hi] = range;
+  if (lo === undefined || hi === undefined) return '-';
   if (lo === 0 && hi === 0) return '-';
-  if (hi === 99) return 'DENY';
   const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
   return lo === hi ? sign(lo) : `${sign(lo)} to ${sign(hi)}`;
 }
@@ -111,7 +111,7 @@ export default function FilterTable() {
           cmp = (phaseOrder[a.phase] ?? 99) - (phaseOrder[b.phase] ?? 99);
           break;
         case 'score':
-          cmp = a.score_range[1] - b.score_range[1];
+          cmp = (a.score_range[1] ?? 0) - (b.score_range[1] ?? 0);
           break;
       }
       return sortDir === 'asc' ? cmp : -cmp;

@@ -1,125 +1,79 @@
 ---
-title: "Encrypted key management"
-description: "Provider API keys, encrypted end-to-end between admin browser and team devices."
-section: "pro"
+title: 'Encrypted key management'
+description: 'Sharing provider API keys across a team, where they are encrypted, and exactly what that protects against.'
+section: 'pro'
 order: 7
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/encrypted-key-management.mdx"
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/encrypted-key-management.mdx'
 ---
 
 <PlanBadge tier="pro" />
 
-Pro teams share provider API keys without ever exposing plaintext to grith.ai.
-The encryption is end-to-end: admins encrypt keys in their browsers, team
-devices decrypt them locally, grith.ai stores ciphertext only.
+A team can hold its Anthropic, OpenAI and OpenRouter keys in the grith.ai dashboard and have
+every signed-in machine pull them, instead of pasting them into chat or committing them. The
+dashboard also accepts an Ollama entry, but grith talks to Ollama on a local endpoint and never
+sends it a key.
 
-## The crypto
+## The flow
 
-- **Team key** — 256-bit AES-GCM key generated client-side at team creation. The
-  team admin's browser holds the master copy.
-- **Device key** — Ed25519 keypair generated on each developer's device at first
-  Pro login. Public key uploaded to the dashboard; private key stays on device.
-- **Key envelope** — provider API keys are encrypted with the team key. The team
-  key is encrypted *to each device's public key* using libsodium sealed boxes.
-- **Recovery passphrase** — at team-key generation time, the admin must save
-  a 24-word recovery passphrase. The passphrase encrypts a copy of the team key
-  uploadable to the dashboard, so the team can recover access if all admin
-  browsers lose state.
+1. A team admin or the owner adds a key in the dashboard. The server encrypts it at rest with
+   AES-256-GCM and stores only a short prefix for display. Members can see that a key exists and
+   its prefix; they cannot read it back.
+2. `grith pro sync` pulls the current set. The daemon does the same on its own at most once every
+   24 hours.
+3. Each key is written to `~/.config/grith/provider-keys/` as an encrypted envelope, mode `0600`.
+   The first key for a provider is `<provider>.json`; extras are
+   `<provider>--<label>-<n>.json`.
+4. A key that has been revoked in the dashboard is deleted from the machine in the same pass.
 
-What's signed vs. encrypted:
+## The local envelope
 
-- Bundles (policies, profiles) are **signed** by the team key for integrity.
-- Secrets (API keys, channel secrets) are **encrypted** with the team key for
-  confidentiality.
+<CodeBlock
+  language="json"
+  title="~/.config/grith/provider-keys/anthropic.json"
+  code={`{
+  "version": 1,
+  "nonce": "<base64, 12 bytes>",
+  "ciphertext": "<base64>",
+  "provider": "anthropic"
+}`}
+/>
 
-## Adding a key
+AES-256-GCM with a fresh nonce per file. The key is derived from your account API key with
+HKDF-SHA256, so there is no passphrase to remember and no keyring dependency.
 
-In the dashboard:
+<Callout type="warning" title="At-rest protection, not end-to-end encryption">
+Keys arrive from grith.ai **decrypted over TLS** and are encrypted again locally. The service
+can read the plaintext - it has to, in order to serve it. Anyone holding your account API key
+can decrypt the local envelopes, and rotating that API key makes the existing envelopes
+undecryptable: run `grith pro sync` again after a rotation to rewrite them.
+</Callout>
 
-1. **Settings → Keys → Add key**.
-2. Pick provider (OpenAI / Anthropic / OpenRouter / custom).
-3. Paste the API key. The browser encrypts it with the team key and uploads
-   the ciphertext.
-4. The key is now in the team keystore.
+## How a key gets used
 
-## Pulling on a device
+At model-call time grith resolves a provider key in this order:
 
-```
-grith pro sync
-```
+1. `api_key` in the `[llm.<provider>]` section of your config,
+2. the provider's environment variable,
+3. the synced vault above.
 
-On first sync, the device:
+So a local key or an environment variable always wins over the team's. The key files are read
+each time grith builds a model client, so a rotated key lands on the next session rather than
+needing a daemon restart.
 
-1. Posts its public key to the dashboard.
-2. Receives the team key, encrypted to the device public key.
-3. Decrypts locally.
-4. Decrypts each provider key from the team keystore.
-5. Writes plaintext to `~/.config/grith/keys/<provider>.key` (perms `0600`).
+A synced key never appears in `grith config` output or in the logs - only its file path does.
 
-Subsequent syncs only pull updated ciphertext; the team key stays on disk.
+## What this protects, and what it does not
 
-## Rotation
-
-### Rotating one provider key
-
-```
-[dashboard] Settings → Keys → <provider> → Rotate
-```
-
-Enter the new key. The new ciphertext is uploaded. Every device picks up the
-new value on next sync. Old key is invalidated.
-
-### Rotating the team key
-
-```
-[dashboard] Settings → Team key → Rotate
-```
-
-Re-encrypts all team-keystore secrets under a new team key. Each device gets
-re-authorised on its next sync. A compromised device (lost laptop) loses
-access at the moment of rotation.
-
-The recovery passphrase is regenerated and must be saved fresh; the old
-passphrase becomes invalid.
-
-## Local key file
-
-```
-~/.config/grith/keys/anthropic.key
-~/.config/grith/keys/openai.key
-~/.config/grith/keys/openrouter.key
-```
-
-Perms `0600`. Owned by the user. Contents are raw API key strings.
-
-The grith provider modules read these files at session start. The key never
-appears in `grith config show` output or in logs.
-
-## Threat model
-
-What's protected:
-
-- **grith.ai compromise** — attacker gets ciphertext only. Without the team
-  key (which never leaves admin/device browsers), they can't recover plaintext.
-- **Network MITM** — TLS to grith.ai plus end-to-end encryption inside.
-
-What's not protected:
-
-- **Device compromise** — attacker on the developer's machine can read the
-  plaintext key in `~/.config/grith/keys/`. This is the standard "local
-  trusted device" model.
-- **Admin browser compromise** — attacker with the admin's browser session
-  can rotate or exfiltrate the team key. Mitigate with 2FA on the dashboard
-  account.
-
-For higher-assurance setups (hardware-backed keys, HSM integration),
-Enterprise plans add Yubikey / TPM support — see
-[SSO/SAML (planned)](/docs/enterprise/sso-saml).
+- **Protected:** the file on disk. A stray backup or a copied dotfile is useless without the
+  account API key. And a key revoked centrally disappears from every machine that syncs.
+- **Not protected:** a compromised machine. Whoever can read `credentials.json` can decrypt the
+  envelopes sitting next to it. This is trusted-device sharing, not hardware isolation.
 
 ## See also
 
-- [Encrypted team key sync (guide)](/docs/guides/encrypted-team-key-sync)
 - [Team sync](/docs/pro/team-sync)
 - [Authentication](/docs/pro/authentication)
+- [Connect a model](/docs/start/connect-a-model)

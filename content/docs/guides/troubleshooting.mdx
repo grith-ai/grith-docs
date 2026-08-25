@@ -1,185 +1,139 @@
 ---
-title: "Troubleshooting"
-description: "Common problems running grith — ptrace permissions, daemon binding, the digest, more."
-section: "guides"
-order: 22
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/troubleshooting.mdx"
+title: 'Troubleshooting'
+description: 'The errors grith actually produces, what each one means, and the fix.'
+section: 'guides'
+order: 8
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/troubleshooting.mdx'
 ---
 
-This is the page to consult when something goes wrong. Issues are grouped by
-the surface where they show up.
+grith fails closed. Most of what goes wrong shows up as a refusal to start a session rather than a
+session that silently runs unsupervised, so the errors below are mostly grith telling you it will
+not proceed.
 
-## `grith exec` issues
+## A session will not start
 
-### Ptrace permission denied
+### `daemon not ready (version_mismatch)`
 
-```
-$ grith exec -- bash
-Error: failed to attach ptrace: Operation not permitted (os error 1)
-```
+`grith exec` is a thin client. It will not supervise anything without a daemon of exactly its own
+version, and it has no in-process fallback - if the daemon is not right, your command is never
+started at all. After an upgrade the old daemon is usually still listening:
 
-Cause: `kernel.yama.ptrace_scope` is set higher than grith expects. Default
-distros use `1` (descendants only, what grith needs). Some hardened images
-(some EC2 AMIs, Ubuntu hardening guides) use `2` (admin only).
+<Terminal command="grith daemon restart" />
 
-Fix:
+The same refusal appears with other codes, each with its own remedy: `port_owned_by_foreign_process`
+(something else holds 3141), `token_rejected` and `not_ready` (restart), `audit_quarantined` and
+`audit_read_only` (below). Every one of them says `No supervised session was started` and then
+names the fix.
 
-```
-sudo sysctl kernel.yama.ptrace_scope=1
-```
+### `server.enabled is false in your configuration`
 
-Persist by adding to `/etc/sysctl.d/`. If your security policy forbids
-`ptrace_scope < 2`, you can either run grith as a user with CAP_SYS_PTRACE or
-use grith's setcap binary wrapper (`bin/grith-setcap`).
+Supervision needs the daemon for the session cap and the single audit writer, so with the server
+disabled `grith exec` refuses rather than supervising with weaker guarantees. Set
+`server.enabled = true` and retry.
 
-### Agent hangs forever after `grith exec`
+### The audit chain is quarantined
 
-The supervised agent is frozen waiting for a digest decision. Check:
+A session whose decisions cannot be verifiably recorded is not a supervised session, so the daemon
+admits none. Every existing record is preserved unmodified - nothing is rewritten at startup.
+Diagnose is read-only and is the one audit command that still works in this state:
 
-```
-grith digest list
-```
+<Terminal>
+  {`$ grith audit diagnose
+Chain status: writable
+\nFull verification: chain is empty.
+\nSegments: 1 (continuous history)
+\nDuplicate sequences: none.
+Sequence gaps: none.
+\nAssessment: no integrity problems detected.`}
+</Terminal>
 
-If items exist, review them:
+That is a healthy chain. A quarantined one names the reason instead, and reports forks, duplicate
+sequences and gaps.
 
-```
-grith digest review
-```
+### ptrace is not permitted
 
-If no items but the agent still hangs: the daemon may have crashed mid-call.
-`grith daemon status` to verify.
+grith needs `CAP_SYS_PTRACE` or Yama `ptrace_scope` set to 0 or 1. Ubuntu and Debian ship 1, which
+is fine; some hardened images use 2 or 3, which is not.
 
-### "grith: command not found" after install
+<Terminal command="cat /proc/sys/kernel/yama/ptrace_scope" />
 
-The installer puts the binary in `~/.local/bin`, which may not be on PATH.
-Add to your shell rc:
+If it reads 2 or higher, either lower it (`sudo sysctl kernel.yama.ptrace_scope=1`, persisted in
+`/etc/sysctl.d/`) or run grith as a user holding `CAP_SYS_PTRACE`.
 
-```
-export PATH="$HOME/.local/bin:$PATH"
-```
+### `aarch64 supervision requires PTRACE_GET_SYSCALL_INFO (Linux kernel 5.3 or newer)`
 
-Or move the binary to `/usr/local/bin`.
+On arm64 grith reads the kernel's own syscall record; there is no fallback for older kernels,
+because the pre-5.3 paths are x86-shaped and would misclassify rather than fail. x86_64 needs
+4.8 or newer.
 
-## Daemon issues
+## The daemon
 
-### "Address already in use" on `grith daemon start`
+### `Port 3141 is in use by a process that is not a Grith daemon`
 
-Something else is using port 3141. Either:
+grith will not evict a process it cannot identify as its own. Free the port, or move grith:
 
-```
-ss -tlnp | grep 3141       # find the culprit
-```
+<Terminal command="grith config set server.port 3142" />
 
-Or move grith to a different port:
+`grith daemon status` distinguishes the three cases honestly - a grith daemon (naming its
+version), a foreign process, or nothing at all.
 
-```
-grith config set server.port 3142
-grith daemon start
-```
+## Config
 
-### Dashboard returns 404 for all docs paths
+### Every command fails with `supervisor.default_profile must be set`
 
-The daemon serves the dashboard at `/` and the API at the same origin. There's
-no path conflict in normal use. If you see 404s for the dashboard SPA routes,
-likely the `dashboard_dir` config points at the wrong location — see
-[`[server]` config](/docs/config/server).
+A hand-written sparse `config.toml` is the usual cause. Config layers merge as whole structures,
+so a file that omits a key still contributes that key's built-in default and overwrites the
+shipped value - and the built-in default for `default_profile` is empty, which fails validation.
 
-### Daemon won't stop cleanly
+<Terminal>
+  {`$ grith --config config.toml config
+Error: configuration invalid:
+supervisor.default_profile must be set in TOML or via GRITH_SUPERVISOR_PROFILE`}
+</Terminal>
 
-```
-grith daemon stop --force
-```
+Start from what `grith init` writes, or use `grith config set`, which always writes a complete
+file. The same merge behaviour also silently raises `supervisor.max_concurrent_sessions` from 4 to
+64 and changes the default model names, so it is worth avoiding for more than this one error.
 
-Sends SIGKILL. Use only if `grith daemon stop` hangs for >30s.
+## Things that look broken and are not
 
-## Digest issues
+### The tool stopped and nothing is on screen
 
-### Digest items keep timing out (auto-denying)
+A permission prompt is waiting. In `grith exec` it is in the session window; if the session is
+headless there is no prompt and the call was denied instead. Note that only the calling thread is
+held - the rest of the tool keeps running, which is why a TUI carries on rendering while a
+decision is outstanding.
 
-`proxy.review_timeout_seconds` is 300s (5 minutes) by default. If you can't
-review that fast, raise it:
+### Everything that needed review was denied, with no prompt
 
-```
-grith config set proxy.review_timeout_seconds 1800
-```
+That is the headless fail-closed path. See [Running grith in CI](/docs/guides/running-in-ci).
 
-(Avoid disabling entirely — frozen processes accumulate.)
+### `grith canary add` prints a token, `grith canary list` shows nothing
 
-### "Item already resolved" when approving
+Working as built. The CLI mints into its own in-memory registry and exits. Durable registration
+means writing `config/filters/canary.toml` and restarting the daemon - see
+[Setting up canary tokens](/docs/guides/setting-up-canary-tokens).
 
-Another reviewer (or the timeout) got there first. Refresh `grith digest list`
-to see the current state.
+### DNS stopped working inside a `--workspace-only` session
 
-### Approve buttons in Slack do nothing
+The workspace boundary exempts **reads** of system runtime roots, including the resolver's runtime
+directories (`/run/systemd/resolve/`, `/run/resolvconf/`, `/run/NetworkManager/`, `/run/nscd/`).
+It deliberately does not exempt all of `/run`, because `/run/user/<uid>` holds the keyring, gnupg
+and ssh-agent sockets. A resolver reading from somewhere outside those will have those reads
+denied; the audit log names every path refused. Note also that the exemption is read-only - a
+write into a system path is still refused - and that the boundary covers the filesystem only, so
+network and process spawn are unaffected.
 
-The HMAC callback isn't reaching grith. Check:
+### `grith: command not found` after installing
 
-1. The webhook URL Slack is using points at your daemon's public address.
-2. The HMAC secret in the Slack channel config matches the daemon's expectation.
-3. The daemon log shows the callback hitting. If you see signature failures,
-   the secret's wrong.
-
-See [Notification security](/docs/security/notification-security).
-
-## Filter issues
-
-### Too much in the queue, too often
-
-Three things to try, in order:
-
-1. Tune `proxy.auto_allow_threshold` upward — see
-   [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds).
-2. Add routine entries to your profile — see
-   [Profile audit](/docs/profiles/profile-audit) to find what's chronically
-   escaping.
-3. Let reputation accumulate. After a week of approvals, similar calls
-   auto-allow. Especially with `learn` (the `l` key in the digest).
-
-### Calls auto-allowed that shouldn't be
-
-The opposite problem. Check:
-
-```
-grith audit | grep allow | head
-```
-
-Look for shapes that should have queued. Common causes:
-
-- A too-broad routine path in the profile. Tighten.
-- Stale reputation. `grith reputation reset --profile <name>`.
-- Threshold too high. Lower `proxy.auto_allow_threshold`.
-
-### A specific filter is firing wrong
-
-```
-grith proxy test '<the-call-json>'
-```
-
-Shows per-filter contributions. If filter X is contributing more than expected,
-check its config file (see [Filter config files](/docs/config/filter-config-files)).
-
-## Build / install issues
-
-### `cargo build` fails on macOS or Windows
-
-v0.2 builds only on Linux. Use the Docker option or a Linux VM for now; native
-macOS and Windows ship in v2.0. See the [roadmap](/docs/resources/roadmap).
-
-### `npm run gen:references` errors
-
-This script runs in the docs repo and shells out to the grith repo. Check:
-
-- `../grith/` exists and is a valid grith checkout.
-- `cargo` is on PATH.
+The installer puts the binary in `~/.local/bin` unless you passed `--global`. Add it to `PATH`.
 
 ## Getting help
 
-- [GitHub Discussions](https://github.com/grith-ai/grith/discussions) — for
-  questions and "is this a bug".
-- [GitHub Issues](https://github.com/grith-ai/grith/issues) — for confirmed
-  bugs and feature requests.
-- [Responsible disclosure](/docs/security/responsible-disclosure) — for
-  security issues, please use the disclosed contact, not public issues.
+- [GitHub Discussions](https://github.com/grith-ai/grith/discussions) for questions.
+- [GitHub Issues](https://github.com/grith-ai/grith/issues) for confirmed bugs.
+- [Responsible disclosure](/docs/security/responsible-disclosure) for anything security-sensitive.
+  Please do not open a public issue.

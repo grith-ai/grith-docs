@@ -1,121 +1,115 @@
 ---
-title: "Team setup"
-description: "Roll out grith across a team — single dashboard, shared policies, per-developer audit."
-section: "guides"
-order: 18
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/team-setup.mdx"
+title: 'Team setup'
+description: 'Getting a team onto grith: what each machine does for itself, what syncs, and what never leaves the developer.'
+section: 'guides'
+order: 6
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/team-setup.mdx'
 ---
 
 <PlanBadge tier="pro" />
 
-A team-wide grith deployment looks like this:
+Every developer runs their own grith on their own machine. There is no shared daemon and no
+central enforcement point - that would put the thing making security decisions somewhere other
+than where the code runs. What a team shares is the licence, policy, shared configs, provider
+keys, and an aggregated view of what happened.
 
-- Each developer runs grith on their own machine (no shared daemon — that would
-  defeat the local trust model).
-- A central **dashboard** at grith.ai/teams or self-hosted, used for policy
-  authoring, license management, and team-scope analytics.
-- **Centralised policies** distributed signed to every developer's machine.
-- **Notification channels** routed to team-shared destinations (Slack, PagerDuty).
+## 1. Install and sign in
 
-This guide walks through the onboarding flow for a new team.
+On each machine:
 
-## 1. Create a team
+<Terminal command="curl -fsSL https://grith.ai/install | sh" />
+<Terminal command="grith init" />
+<Terminal command="grith pro login" />
 
-In the dashboard at grith.ai/teams:
+`grith pro login` opens a browser and runs device authorisation - it prints a verification URL and
+a user code, then polls until you approve. `--api-key <key>` skips the browser if you already have
+a key. Check where a machine stands at any point:
 
-1. **Create team**. Pick a name.
-2. Pick a billing plan (annual recommended; saves ~17% over monthly).
-3. Invite teammates via email.
+<Terminal>
+  {`$ grith pro status
+Not logged in.
+  Run: grith pro login
+       or: grith pro login --api-key <key>`}
+</Terminal>
 
-Each invited teammate gets an email with a one-time link. They click → sign in →
-join the team. The dashboard provisions their seat.
+Once licensed it prints the plan, tier, team, seats, renewal date, when the licence was last
+validated and when it refreshes next.
 
-## 2. Each developer installs
+## 2. Pull the team's policy
 
-On every developer machine:
+<Terminal command="grith pro sync" />
 
-```
-curl -fsSL https://grith.ai/install | sh
-grith init
-grith pro login              # device auth, opens browser
-```
+Sync **pulls** team policies into `~/.config/grith/policies/`, shared configs into `configs/`,
+provider API keys into `provider-keys/` - deleting any key the team has since revoked - and the
+team's shared learned rules into a local cache. It **pushes** the machine's learned reputation
+table. It refuses on a community licence.
 
-`grith pro login` walks the developer through the device-auth flow, links the
-machine to their dashboard account, and pulls down the initial license.
+<Callout type="info" title="The help text is out of date">
+  `grith pro sync --help` still says "Upload audit records to cloud and pull team policies". The raw
+  audit-record upload was retired. Sync uploads no audit records, and there is no command that does.
+</Callout>
 
-## 3. Author shared policies
+Provider keys land encrypted at rest, sealed to your grith API key rather than a passphrase or the
+OS keyring. That means anyone holding the account's API key can decrypt them, and rotating the key
+makes the existing files unreadable. See
+[Encrypted key management](/docs/pro/encrypted-key-management).
 
-In the dashboard:
+## 3. Analytics
 
-1. **Policies → New policy**.
-2. Author a profile, threshold overrides, channel mappings.
-3. Publish.
+On a paid plan, a signed-in machine turns cloud analytics on by itself. Four things must all be
+true: a paid plan, a signed-in account, recorded consent, and `general.audit_sync` left on.
 
-The policy is signed and made available to team devices.
+<Terminal>
+  {`$ grith analytics status
+Cloud analytics sync
+  Consent:  not recorded yet — turns on automatically with a paid plan
+            (or run \`grith analytics enable\`)
+  Account:  not signed in — run \`grith pro login\`
+  Plan:     requires a Pro plan
+  Config:   audit sync on
+  Device:   not registered yet
+  Pending:  0 day(s) awaiting upload, 0 security event(s)`}
+</Terminal>
 
-## 4. Apply on devices
+Before consent is recorded, `grith analytics enable` prints exactly what will be sent and asks.
+What goes up is aggregate: counts of allowed, queued and denied operations by hour and day; filter
+activity and score distributions; session, project, profile and tool names; model usage and
+estimated cost; and summaries of what was blocked and why. Once a UTC day closes, that same day is
+also uploaded as one file to encrypted private storage and kept for 90 days.
 
-On every device:
+It never includes commands, file paths, file contents, prompts or model responses.
 
-```
-grith pro sync
-```
+`grith analytics disable` stops it on that machine. To check the archives agree with what the
+dashboard is showing:
 
-Pulls the published policies, applies signed profiles and filter configs to
-`~/.config/grith/`. Subsequent runs use the team policies automatically.
+<Terminal command="grith analytics verify-archives" />
 
-`grith pro sync --dry-run` previews changes before applying.
+It re-downloads each archived day, rebuilds the numbers, and exits non-zero if any day disagrees -
+which makes it something you can run on a schedule rather than read.
 
-## 5. Set up channels centrally
+## What moves between machines, and what does not
 
-In the dashboard:
+|                                       | Where                                                     | On a new machine                                                                                  |
+| ------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Your config                           | `~/.config/grith/config.toml`                             | Copy it, or run `grith init` and re-apply your changes                                            |
+| Licence and credentials               | `~/.config/grith/credentials.json`, `license.key`         | Never copy. Run `grith pro login`                                                                 |
+| Team policies, configs, provider keys | `~/.config/grith/policies/`, `configs/`, `provider-keys/` | Arrive with `grith pro sync`                                                                      |
+| Learned reputation                    | `~/.config/grith/reputation.toml`                         | Per machine. Pushed to the team on sync; a fresh machine starts with an empty table and re-learns |
+| Audit log                             | `~/.local/share/grith/audit/`                             | Stays. It is machine-local evidence with its own hash chain, not something to merge               |
 
-1. **Channels → Add channel**.
-2. Configure Slack / PagerDuty / Telegram / etc. once.
-3. Map severities (canary → critical, queue → warning).
+If you keep dotfiles in a repo, `config.toml` is the only one of those that belongs in it.
 
-Channel configs sync to every device. Each device delivers its own events to
-the shared channels — no central event aggregator in the v0.2 design.
+## What the team dashboard shows
 
-## 6. Verify
-
-On a device:
-
-```
-grith pro status
-```
-
-Should show the team, the latest sync, the active license.
-
-```
-grith notifications test slack
-```
-
-Should land a test message in the team channel.
-
-## 7. Onboard ongoing
-
-Adding new teammates later: invite from the dashboard, they install, they
-`grith pro login` and `grith pro sync`. They're in. No per-developer cert or
-key distribution to manage.
-
-## Boundaries
-
-- **Audit data stays local by default.** Setting `general.audit_sync = true`
-  opts in to sending summarised audit data to grith.ai for team analytics — even
-  then, raw audit records don't leave the developer's machine.
-- **Trust tables stay local.** Each developer accumulates their own
-  reputation. Pro can opt into shared reputation per profile; see
-  [Team sync](/docs/pro/team-sync).
-- **API keys stay local** unless explicitly shared via the encrypted keystore
-  ([Encrypted team key sync](/docs/guides/encrypted-team-key-sync)).
+Rollups and a Security events timeline - what was blocked, when, by which filter, and how it was
+resolved. It is not a copy of anyone's audit log. Audit records stay on the machine that produced
+them.
 
 ## See also
 
 - [What's in Pro](/docs/pro/whats-in-pro)
-- [Team sync](/docs/pro/team-sync)
+- [Analytics](/docs/pro/analytics)
 - [Centralised policies](/docs/pro/centralised-policies)
-- [Encrypted team key sync](/docs/guides/encrypted-team-key-sync)

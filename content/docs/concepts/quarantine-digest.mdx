@@ -1,146 +1,112 @@
 ---
-title: "The quarantine digest"
-description: "Why grith routes ambiguous calls to a human review queue instead of guessing."
-section: "concepts"
+title: 'The quarantine digest'
+description: 'What happens to a call that scores between 3.0 and 8.0, who answers it, and what happens if nobody does.'
+section: 'concepts'
 order: 5
-tier: "community"
-version: "0.1.0"
-lastUpdated: '2026-08-21'
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/quarantine-digest.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/quarantine-digest.mdx'
 ---
 
-The digest is grith's queue for calls that scored ambiguously. Auto-allow is for
-calls that are obviously fine. Auto-deny is for calls that are obviously not. The
-digest is for everything else — and "everything else" is where most of the actual
-security decisions get made.
+A call that scores above 3.0 but not above 8.0 is neither clearly safe nor clearly
+hostile, so grith does not guess. It holds the calling thread at its kernel stop, writes
+the call to the digest queue, and asks you.
 
-## The shape of the problem
+Resolution is **real-time and blocking**. There is no batching, no schedule, no delivery
+interval: the syscall is paused until somebody answers or the review times out.
 
-If you could write a function `is_this_safe(call) → bool` that was always right,
-grith wouldn't need a digest. You can't. Nobody can. Real agent workloads have:
+## What is held, and what is not
 
-- Calls that are obviously safe (`ls`, `cat README.md`, `git status`). The filters
-  handle these — auto-allow.
-- Calls that are obviously not (`curl | sh` from an unknown host, reading
-  `~/.aws/credentials` from a session that's about to network out, anything that
-  trips canary detection). Auto-deny.
-- Calls that *could* be fine in this context but suspicious in another (`cat
-  ~/.ssh/config` — fine if you asked the agent to fix a typo there, very not fine if
-  you asked it to summarise a README). The filters can't know which context applies.
+Only the thread that made the syscall. Its siblings keep running - a Node-based agent
+carries on rendering its UI while the prompt is on screen. grith does not stop the
+process tree.
 
-That last category is what the digest is for. Rather than guess, grith **freezes the
-calling process and asks**.
+That matters both ways. It keeps a supervised tool responsive, and it means a
+multi-threaded tool can do other work on other threads while a decision is pending.
 
-## Process freezing
+## Who does the asking
 
-When a call lands in the queue, the calling thread is already held at its
-ptrace/seccomp syscall-stop — grith simply does not resume it, so the syscall is
-never committed. The thread sits there, paused, with the syscall args staged in
-registers. It cannot proceed, but it also cannot fail — it's just held. (Only the
-calling thread is held; the rest of the process tree keeps running.)
+In an interactive `grith exec` session, the prompt is an overlay in the terminal:
 
-That matters because:
+| Key | Action |
+| --- | --- |
+| `a` | Allow this request; the exact target stays allowed for this session. |
+| `d` | Block it; identical retries are blocked without asking again for 60 seconds. |
+| `l` | Allow and save a permanent rule for this exact target. Sensitive targets are never saved. |
+| `s` | Allow a directory, for the operations you pick, this session only. |
+| `b` | Block a directory for the rest of the session - no more prompts for it. |
+| `t` | Deny and stop the supervised tool. |
+| `i` | Show the raw arguments and the request id. |
+| `esc` | Deny this request. |
 
-- The agent doesn't see a permission error and decide to retry the call a different
-  way. It just hangs.
-- The OS doesn't see a partial syscall and roll back state. The syscall has not
-  started yet.
-- A human (or webhook) can take as long as they want to decide. Up to
-  `proxy.review_timeout_seconds` (default 300s = 5min), after which grith
-  auto-denies.
+`s` and `b` are offered only when a scope makes sense for the call. A call that was
+denied outright - scored above 8.0 - is shown as a read-only record of what was blocked,
+with no actions on it.
 
-When a decision is made, the thread either runs the original syscall (approve) or
-returns it with EPERM / equivalent failure (deny).
+Nothing here outlives the session unless you saved it with `l`.
 
-## What the reviewer sees
+The dashboard at `http://127.0.0.1:3141` shows the same queue live, and
+[`grith digest review`](/docs/cli/digest) walks it from the terminal.
 
-A digest item carries every piece of context the filters had plus a few they didn't:
+If a prompt is still waiting after about 15 seconds, grith raises a desktop notification
+and the dashboard updates live.
 
-- **The call itself**: operation type, target, args, originating PID and command line.
-- **The composite score** and which threshold zone it crossed.
-- **Per-filter contributions**: each filter's emitted score and any annotations
-  (matched patterns, denied paths, taint sources).
-- **Session history**: the last N calls in the same session, for behavioural context.
-- **Reputation snapshot**: what the trust table says about the destination today.
-- **Profile**: which supervisor profile is active, and which entries got exercised.
+## When the answer never comes
 
-This is enough to make a yes/no decision in roughly the time it takes to read the
-filter list. If it isn't, something's off — usually that means the score is in the
-queue zone but the filters have nothing alarming to say. That's usually a threshold
-mis-tuning. See [Tuning scoring thresholds](/docs/guides/tuning-scoring-thresholds).
+The review timeout is **300 seconds** (`supervisor.freeze_timeout_seconds`). On expiry
+the queue does one final re-read - so an answer given elsewhere in the last moment is not
+stomped - and then records the item as denied with the action `auto_deny_timeout`.
 
-## The actions available
+A timeout is treated exactly like a deny: the held syscall returns `EPERM` and the thread
+resumes. The process is not killed unless you explicitly chose deny-and-terminate.
 
-The reviewer can:
+## Headless sessions fail closed
 
-- **Approve** — let this call run.
-- **Approve + learn** — let it run, and teach the [reputation
-  system](/docs/concepts/adaptive-reputation) that this shape is okay. Similar
-  future calls will auto-allow.
-- **Approve + unlock egress** — for network calls. Allows this destination for the
-  rest of the session.
-- **Scope a directory** — allow the operations you pick (read, write/create,
-  delete/rename) anywhere under a directory, for this session. One decision
-  instead of one per file.
-- **Block a directory** — the mirror image: refuse those operations under a
-  directory for the rest of the session. Later calls into it are denied without
-  asking again.
-- **Allow always** *(Pro)* — adds the call to a permanent allowlist. Sparingly.
-- **Deny** — block this call; the syscall returns EPERM.
-- **Deny + terminate** — block + kill the process tree. For confirmed exfil.
-- **Escalate** *(Pro)* — route to a teammate or channel for second opinion.
-- **Skip** — leave it queued. Useful for "I'll come back to this".
+With no terminal and no dashboard overlay there is nobody to answer, so grith does not
+wait 300 seconds to find out. A queued call in a non-interactive session is **denied
+immediately** and recorded as informational, with a log line telling you the three ways
+out: allowlist it in the profile, run with a terminal, or pass `--allow-queued`.
 
-Each decision is recorded in the audit log with the user who made it (in multi-user
-team setups) and the rationale annotations from the filters.
+`--allow-queued` flips that to allow-and-log - **except** for calls that were queued
+because of containment or taint. Those still fail closed.
 
-Scoping and blocking are session-only and are never written to your profile.
-Both are available from the in-session prompt — see
-[the in-session prompt](/docs/cli/digest#the-in-session-prompt) for the keys and
-the limits on which directories each direction will accept.
+<Callout type="warning" title="This is the usual CI surprise">
+  A pipeline step that legitimately runs `docker build` under `grith exec` will be denied,
+  because the delegating spawn escalates into the queue band and there is no reviewer. See
+  [running in CI](/docs/guides/running-in-ci).
+</Callout>
 
-## Why batching matters
+## Short-circuits that resolve a call without asking
 
-In a session of any length, multiple calls will land in the digest. Most agents do
-roughly the same kinds of things, which means the digest items cluster: "this agent
-is reading config files all over my home dir." Reviewing them one by one is
-exhausting.
+Four things can settle a queued call before a prompt is ever raised:
 
-The CLI and dashboard both let you batch-decide on related items:
+- **Deny replay.** An identical call denied within the last 60 seconds is denied again.
+- **Approve replay.** An identical call approved within the last 60 seconds is allowed
+  again - **disabled while [containment](/docs/concepts/session-containment) is active**,
+  and it earns no reputation credit, so a loop cannot launder trust.
+- **Control-socket replay.** An answer about a session D-Bus, X11 or tmux connection is
+  remembered for the session. This one is not disabled under containment.
+- **Scope drain.** If a grant you made on another prompt now covers this target, the call
+  resolves against it with none of the side effects of a manual approval.
 
-```
-grith digest list --filter session=abc12345
-grith digest approve --filter session=abc12345 --target '~/.config/grith/**'
-```
+## What is stored
 
-Or in the dashboard: select a group, click approve. The reputation system records
-this as a batch approval, which is stronger evidence than the same approvals one at a
-time.
+The queue is its own SQLite database next to the audit log. Each item holds the call
+type, an argument summary, the decision reason, the composite score, the full filter
+breakdown, and - once resolved - the action taken and who took it. Where a DLP filter
+matched, the argument summary is redacted before it is written.
 
-## Channels (Pro)
+Items are `Pending`, `Approved`, `Denied`, `Expired` or `Escalated`. Only pending and
+escalated items are actionable, and informational items never are.
 
-A Pro license unlocks notification channels. The digest item gets posted to Slack /
-Discord / Telegram / Teams / email / PagerDuty / Opsgenie / a webhook. The reviewer
-clicks an approve button (or replies in a thread), and the decision flows back via
-an HMAC-signed callback. See [Notification security model](/docs/security/notification-security)
-for the threat model around remote approvals.
-
-## When the queue is empty
-
-A grith deployment with the queue mostly empty is normal — that's the goal. Most
-calls auto-allow because the filters cleared them or because reputation absorbed
-them. A queue that's never empty after a few weeks of use means either:
-
-1. The agent is genuinely doing wild stuff, and you should look at it more closely.
-2. The scoring thresholds are too tight; relax them via
-   [`proxy.auto_allow_threshold`](/docs/config/proxy).
-
-A queue that's *too* empty under attack is the failure mode that matters more.
-That's what the canary and DLP filters guard against: they're hard gates, not
-contributors, so they will deny exfil regardless of whether anyone reads the digest.
+<Callout type="info" title="The `[digest]` config block does nothing">
+  `interval_active`, `interval_idle`, `delivery` and `max_queue_size` parse and are never
+  read. There is no scheduled or batched delivery to configure.
+</Callout>
 
 ## See also
 
-- [Reviewing the digest](/docs/start/reviewing-the-digest) — workflow walkthrough
-- [grith digest](/docs/cli/digest) — CLI reference
-- [Digest API](/docs/api/digest) — REST routes
+- [Composite scoring](/docs/concepts/composite-scoring)
+- [`grith digest`](/docs/cli/digest)
+- [Reviewing the digest](/docs/start/reviewing-the-digest)

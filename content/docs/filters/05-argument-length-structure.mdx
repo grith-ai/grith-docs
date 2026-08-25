@@ -1,62 +1,55 @@
 ---
-title: "5. Argument length & structure"
-description: "Flags suspiciously-shaped arguments — oversized payloads, encoded blobs, unusual metacharacters."
-section: "filters"
-order: 14
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/05-argument-length-structure.mdx"
+title: '5. Argument length & structure'
+description: 'Oversized arguments, shell metacharacters in a path, and deep traversal.'
+section: 'filters'
+order: 5
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/05-argument-length-structure.mdx'
 ---
 
 | | |
 | --- | --- |
-| **Phase** | Static |
-| **Score range** | 0 to +2 |
-| **Module** | `crates/grith-proxy/src/filters/argument.rs` |
+| **Phase** | 1, static |
+| **Score** | 1.0 or 2.0 |
+| **Source** | `crates/grith-proxy/src/filters/argument.rs` |
+| **Config** | none - the limits are compiled in |
 
-A small, low-confidence contribution: how weird does the argument look?
+A small, deliberately soft signal: does the argument look like an argument? It returns on the
+first thing it finds, so at most one rule contributes.
 
-## What it catches
+| Rule | Fires when | Score |
+| --- | --- | --- |
+| `path-injection` | a path contains a shell metacharacter: `` ` `` `$` `;` `&` `>` `<` or a pipe | 2.0 |
+| `path-traversal` | a path contains `../../../` or the Windows equivalent | 2.0 |
+| `path-too-long` | a path is longer than 4096 characters | 2.0 |
+| `command-too-long` | a reconstructed command line is longer than 8192 characters | 2.0 |
+| `url-too-long` | a URL is longer than 2048 characters | 1.0 |
 
-Argument shapes that don't typically appear in legitimate calls:
+Every path a call carries is checked. A rename checks the old path then the new one; a link
+checks the target first - the sensitive side - then the link path.
 
-- **Oversized** — a single argument longer than 4KB (e.g. an entire file's content
-  passed as an arg).
-- **Base64-shaped** — a long contiguous base64 alphabet run. Often a sign of
-  smuggled payloads.
-- **Hex-shaped** — same, with hex.
-- **Heavy escape sequences** — repeated `\x`, `\u`, or shell metachar runs in a place
-  they normally wouldn't be.
-- **Null bytes** — anywhere in a string argument.
-- **Unusual placement of metacharacters** — backticks, `$()`, `&&` in arguments that
-  shouldn't have them (e.g. a filename arg to `ls`).
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/projects/api/notes-$(cat /etc/shadow).txt"}'
 
-Each contributes a small score (+0.5 to +1.0), capped at +2.0 total. The filter is
-deliberately a soft signal — false positives are common, but it nudges the composite
-in the right direction when combined with other heuristics.
+  Score:       2.0
+  Decision:    ALLOW
 
-## Why it's useful despite being soft
+  Filter Breakdown:
+    + argument               2.0  [warning]  Path contains shell metacharacters`}
+</Terminal>
 
-Most prompt-injection attacks that try to use shell execution sneak the payload
-through an arg that doesn't look like a normal arg. A `git clone` argument is
-usually a URL. A `git clone` argument that's 2KB of base64 is, at minimum,
-interesting.
+2.0 on its own is under the queue line, and that is the intent. This filter is not built to
+decide anything alone - it nudges a call that other filters have already found interesting.
+A `git clone` argument is usually a URL; a `git clone` argument that is 2KB of base64 is at
+minimum worth combining with whatever else fires.
 
-## Tuning
-
-The thresholds are constants. If your agent legitimately passes large arguments
-(e.g. it's invoking a tool that takes inline content), you'll see this filter fire
-on legitimate calls. Either:
-
-- Route the large content through a temp file instead (better hygiene).
-- Adjust `proxy.auto_allow_threshold` upward slightly so a +1.5 base score doesn't
-  tip into queue.
-- Add a routine-command entry in the profile that absorbs the contribution.
+Nothing here inspects content. Encoded payloads inside an argument are the job of
+[secret-scan](/docs/filters/07-secret-credential-scanning) and
+[egress-policy](/docs/filters/10-egress-policy), which look for base64 runs and entropy bursts.
 
 ## See also
 
-- [Filter 8: Command structure analysis](/docs/filters/08-command-structure-analysis) —
-  parser-level companion
-- [Filter 7: Secret / credential scanning](/docs/filters/07-secret-credential-scanning) —
-  for credential-shaped content
+- [8. Command structure analysis](/docs/filters/08-command-structure-analysis)
+- [10. Egress policy](/docs/filters/10-egress-policy) - shape signals on outbound arguments

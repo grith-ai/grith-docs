@@ -1,0 +1,127 @@
+---
+title: 'The workspace boundary'
+description: 'Two subtractive controls - a session-wide filesystem fence and a per-directory block - that refuse without prompting.'
+section: 'concepts'
+order: 7
+tier: 'community'
+since: '0.3.1'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/concepts/workspace-boundary.mdx'
+---
+
+Everything else in grith answers the question "how risky is this call". These two
+controls answer a different one: "is this call in scope at all". They are **subtractive** -
+they only ever remove access, and neither of them prompts.
+
+- `grith exec --workspace-only` fences a whole session to the workspace.
+- `[b] Block dir` on a prompt refuses one subtree for the rest of the session.
+
+## They are checked first, and they cannot grant
+
+Both are evaluated **before** the noise fast path, before `ignore_read_only`, before the
+batch-read window, before the session allowlist and before reputation auto-allow. A
+refusal that only applied when nothing else claimed the call would not be a boundary at
+all, so these run ahead of everything.
+
+The other half of that is the part people get wrong: **neither control can allow
+anything**. A path inside the workspace is not thereby approved - it just goes on to the
+full pipeline like any other call. `/etc/shadow` is exempt from the boundary, because it
+lives under `/etc`, and the filters still score a read of it at 8.0 and put it in front of
+a human.
+
+A denial is a plain `EPERM` with no prompt. Suppressing the prompt is the point: the
+whole reason to switch this on is to stop being asked about a directory you have already
+decided about.
+
+## `--workspace-only`
+
+<SinceTag version="0.3.1" /> Restricts file access to the workspace: the directory
+`grith exec` was launched in, its linked git worktrees, and any configured
+`additional_project_roots`.
+
+**It fences the filesystem only.** Network connections, DNS and process spawns are
+untouched - they are still scored exactly as they would be without the flag. This is a
+data-locality control, not a sandbox.
+
+The workspace is resolved **once, at session start**, and never re-read. A supervised tool
+cannot widen its own boundary with a `git worktree add` halfway through.
+
+**The flag is one-way.** There is no `--no-workspace-only`. A flag that could loosen a
+configured boundary would let anything able to invent an argv undo the operator's posture,
+so the CLI can only turn the mode on. The config twin is
+`[supervisor.trust] restrict_to_workspace`, default `false`.
+
+<ConfigExample
+  title="Turning it on for every session on this machine"
+  code={`[supervisor.trust]
+restrict_to_workspace = true
+include_linked_worktrees = true
+additional_project_roots = []`}
+/>
+
+### What stays reachable
+
+Four exemptions, in the order they are checked. Each means "the boundary does not decide
+this one" - never "allow it".
+
+1. **Inside the workspace.**
+2. **Noise paths** - `/proc`, `/sys`, the tool's own PTY, CA certificate directories.
+3. **Reads, and only reads, of system runtime roots** - `/usr/`, `/lib*/`, `/bin/`,
+   `/sbin/`, `/opt/`, `/etc/`, `/var/lib/`, `/var/cache/`, `/nix/store/`, `/snap/`, plus
+   the resolver runtime directories `/run/systemd/resolve/`, `/run/resolvconf/`,
+   `/run/NetworkManager/` and `/run/nscd/`. A **write** into `/usr` is still refused.
+4. **Declared trust** - the profile's routine paths and anything you approved earlier in
+   the session, tested per path against a probe of the same operation class.
+
+<Callout type="info" title="Why the resolver directories are carved out">
+  `/etc/resolv.conf` is a symlink into `/run/systemd/resolve/` on most modern Linux, and
+  the resolver opens the target rather than the link. A boundary stopping at `/etc` takes
+  DNS out for the whole session - measured at 75 denied reads in one session, with the
+  supervised tool unable to reach its own API and no error naming the cause. Deliberately
+  not all of `/run`: `/run/user/<uid>` holds the keyring, gnupg and ssh-agent sockets.
+</Callout>
+
+### What it refuses
+
+Your other projects, the rest of `$HOME`, `/mnt`, `/media`, `/tmp` staging - including
+the read-only opens that `noise_reduction.ignore_read_only` waves through by default.
+
+Launching from `/` or `$HOME` keeps the mode on but logs
+`workspace_only_boundary_ineffective`, because nearly everything is then inside the
+boundary. If the working directory cannot be resolved at all the boundary is inert and
+decides nothing, rather than denying every file operation.
+
+The active roots are written to the `session_start` audit record.
+
+## Blocking a directory from a prompt
+
+<SinceTag version="0.3.1" /> `[b]` on a permission prompt opens the scope editor pointing
+the other way: pick a directory and the operations to refuse, and every later call into
+that subtree is denied for the rest of the session without asking again. `ctrl-b` flips an
+open editor between allowing and blocking.
+
+The rules live in their own session set under a `deny-` prefix - never in the allowlist,
+so a block can never be one missing exclusion away from reading as a grant. Three
+namespaces cover reads and listings, writes and directory creation, and deletes and
+renames. Both ends of a rename are tested.
+
+Matching is the same as for a grant: canonicalised, with a `/` boundary, so blocking
+`/repo/build/` does not sweep in `/repo/build-secrets/`.
+
+**Blocking is the safe direction, so it accepts what granting refuses** - `$HOME` and
+`~/.ssh` are both blockable. It refuses what granting never had to think about:
+`/proc`, `/sys`, `/dev`, `/etc`, `/lib*`, `/usr/lib*`, `/bin`, `/sbin`, `/usr/bin`,
+`/usr/sbin` and `/run`, matched by ancestry after canonicalisation so `/` and `/usr` are
+refused too. Blocking one of those does not protect anything; it just ends the session at
+the next library load, and the editor says so instead of letting you do it. A directory
+inside one - `/usr/lib/node_modules/...` - is still blockable.
+
+Notably absent from that refusal list: `$HOME`, `/home`, `/tmp`, `/var`, `/mnt`, `/media`
+and `/srv`. Blocking those is what the feature is for.
+
+## See also
+
+- [`grith exec`](/docs/cli/exec)
+- [The quarantine digest](/docs/concepts/quarantine-digest)
+- [`[supervisor]` configuration](/docs/config/supervisor)

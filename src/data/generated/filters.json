@@ -1,248 +1,188 @@
 {
+  "_note": "Hand-corrected against grith v0.3.1 (binary reports 18 active filters). The upstream generator reads crates/grith-docgen/data/filters.toml, which still carries pre-0.3.1 score ranges, stale summaries and two unregistered modules (semantic, outbound_binaries). Re-running `npm run gen:references` will revert this file until that TOML is fixed in the grith repo.",
   "filters": [
     {
       "config_file": null,
+      "id": "operation-risk",
       "module": "operation_risk",
       "name": "Operation risk scoring",
       "ordinal": 1,
       "phase": "static",
-      "score_range": [
-        1.0,
-        3.0
-      ],
-      "summary": "Assigns a baseline risk score based on the call's operation class (file_read, file_write, shell, network, etc)."
+      "score_range": [0.5, 5.0],
+      "summary": "The baseline every call starts from, priced by operation class: routine spawn 0.5, non-routine spawn 1.0, HTTP 0.5 without a body and 1.0 with one, category-2 syscalls and namespace primitives 5.0."
     },
     {
       "config_file": "config/filters/paths.toml",
+      "id": "path-match",
       "module": "path_match",
       "name": "Static path matching",
       "ordinal": 2,
       "phase": "static",
-      "score_range": [
-        2.0,
-        5.0
-      ],
-      "summary": "Aho-Corasick scan of paths against curated denylists and allowlists. Hot — runs against every fs operation."
+      "score_range": [3.0, 5.0],
+      "summary": "Fifteen anchored path rules from paths.toml, scoring 3.0, 4.0 or 5.0. SSH private keys are the 5.0 case; ~/.aws and ~/.gnupg are 4.0."
     },
     {
       "config_file": null,
+      "id": "sensitive-path-heuristic",
       "module": "sensitive_path",
       "name": "Sensitive path heuristic",
       "ordinal": 3,
       "phase": "static",
-      "score_range": [
-        1.0,
-        4.0
-      ],
-      "summary": "Detects access to known-sensitive files: .env*, id_rsa, id_ed25519, credentials.json, .aws/, .ssh/, .kube/, and similar."
+      "score_range": [0.5, 4.5],
+      "summary": "Prices credential-shaped paths that no static rule names, in bands of 0.5, 1.5, 3.0, 4.0 and 4.5. A system config read is the 0.5 case."
     },
     {
-      "config_file": null,
+      "config_file": "config/filters/allowlist.toml",
+      "id": "allowlist",
       "module": "allowlist",
       "name": "Allowlist / denylist",
       "ordinal": 4,
       "phase": "static",
-      "score_range": [
-        -1.0,
-        3.0
-      ],
-      "summary": "User-managed allow and deny rules. Approved entries lower the score; explicit denies raise it. Edited from the digest review UI."
+      "score_range": [-1.0, 3.0],
+      "summary": "Operator allow and deny rules, plus approvals persisted from digest review. A denylist hit adds 3.0; an allowlist hit subtracts 1.0 - one of only two filters that can lower the composite."
     },
     {
       "config_file": null,
+      "id": "argument",
       "module": "argument",
       "name": "Argument length & structure",
       "ordinal": 5,
       "phase": "static",
-      "score_range": [
-        0.0,
-        2.0
-      ],
-      "summary": "Flags suspicious argument shapes: encoded payloads, oversized strings, shell metacharacters in unexpected positions."
+      "score_range": [1.0, 2.0],
+      "summary": "Flags argument shapes rather than content: oversized strings, encoded payloads and shell metacharacters in unexpected positions."
     },
     {
       "config_file": "config/filters/capabilities.toml",
+      "id": "capability",
       "module": "capability",
       "name": "Capability enforcement",
       "ordinal": 6,
       "phase": "static",
-      "score_range": [
-        0.0,
-        99.0
-      ],
-      "summary": "Hard gate: enforces per-profile capability grants. Returns DENY when the active supervisor profile does not permit this operation class."
+      "score_range": [10.0, 10.0],
+      "summary": "Scores 10.0 on all three of its paths, well past the 8.0 deny line. Ships with an empty grants file, so it runs permissive until an operator writes one; an unreadable capabilities.toml stops the daemon starting."
     },
     {
       "config_file": "config/filters/secrets.toml",
+      "id": "secret-scan",
       "module": "secret_scan",
       "name": "Secret / credential scanning",
       "ordinal": 7,
       "phase": "pattern",
-      "score_range": [
-        3.0,
-        5.0
-      ],
-      "summary": "Scans content for embedded credentials. 1,620+ regex patterns covering provider API keys, tokens, private keys, and bespoke credential formats."
+      "score_range": [1.0, 5.0],
+      "summary": "1618 patterns for provider keys, tokens and private-key material, scoring 3.0 to 5.0. A low-signal generic match scores 1.0. The single largest cost in registry startup."
     },
     {
       "config_file": "config/filters/commands.toml",
+      "id": "command",
       "module": "command",
       "name": "Command structure analysis",
       "ordinal": 8,
       "phase": "pattern",
-      "score_range": [
-        2.0,
-        4.0
-      ],
-      "summary": "Parses shell commands. Catches dangerous patterns: piped curl-to-sh, sudo with arbitrary scripts, fork-bombs, base64-encoded payloads in subshells."
+      "score_range": [2.0, 4.0],
+      "summary": "Twelve rules from commands.toml scoring 2.0 to 4.0: piped curl-to-shell, sudo running arbitrary scripts, base64 payloads in subshells, fork bombs."
     },
     {
       "config_file": null,
+      "id": "destructive-action",
       "module": "destructive_action",
-      "name": "Destructive action coverage",
+      "name": "Destructive action",
       "ordinal": 9,
       "phase": "pattern",
-      "score_range": [
-        3.5,
-        99.0
-      ],
-      "summary": "Hard-denies catastrophic, irreversible host/storage destruction (filesystem format, raw block-device overwrite, recursive removal of a system root or database data directory) and escalates destructive operations directed at production (managed-DB endpoints, prod/live-tagged resources) to deny; other destructive operations queue for review. Also scores docker/podman run host-escalation."
+      "score_range": [3.5, 9.0],
+      "summary": "Hard-denies irreversible host or storage destruction at 9.0 - filesystem format, raw block-device overwrite, recursive delete of a system root or a database data directory. Backups and data mounts land in the 3.5 to 5.0 queue band instead."
     },
     {
       "config_file": "config/filters/egress.toml",
+      "id": "egress-policy",
       "module": "egress_policy",
       "name": "Egress policy",
       "ordinal": 10,
       "phase": "pattern",
-      "score_range": [
-        -1.0,
-        5.0
-      ],
-      "summary": "Network destination policy. Allowlisted hosts lower the score; denylisted or unknown hosts raise it. Plays with the reputation filter for adaptive trust."
+      "score_range": [0.5, 6.5],
+      "summary": "Destination policy, banded by mode. The shipped mode is review, so a deny-band destination scores 6.5 and a review-band one 3.5. An unknown DNS name is a soft 0.5; a data-bearing DNS qtype adds 2.0."
     },
     {
       "config_file": "config/filters/dlp.toml",
+      "id": "dlp-gate",
       "module": "dlp_gate",
       "name": "DLP gate",
       "ordinal": 11,
       "phase": "pattern",
-      "score_range": [
-        3.0,
-        5.0
-      ],
-      "summary": "Scans outbound network payloads for sensitive data leaving the box: credentials, PII, large file contents bundled into POST bodies."
+      "score_range": [1.0, 9.0],
+      "summary": "Scores secrets found in outbound arguments, banded by policy: redact-and-allow 1.0, queue-for-review 5.0, deny 9.0. The shipped policy is queue-for-review."
     },
     {
       "config_file": "config/filters/canary.toml",
+      "id": "canary",
       "module": "canary",
-      "name": "Canary secret detection",
+      "name": "Canary detection",
       "ordinal": 12,
       "phase": "pattern",
-      "score_range": [
-        99.0,
-        99.0
-      ],
-      "summary": "Hard DENY. Detects registered canary tokens (fake secrets seeded in your repo) reaching any outbound sink — definitive proof of exfiltration."
+      "score_range": [9.5, 9.5],
+      "summary": "Scores 9.5, deliberately above the deny line, when a registered canary token reaches an outbound sink. Checks HttpRequest, NetConnect, ShellExec, ProcessSpawn and FileWrite/FileAppend paths - reading a canary file is not a detection."
     },
     {
       "config_file": "config/filters/domains.toml",
+      "id": "reputation",
       "module": "reputation",
       "name": "Destination reputation",
       "ordinal": 13,
       "phase": "context",
-      "score_range": [
-        -1.0,
-        4.0
-      ],
-      "summary": "Per-destination trust accumulated over time. Established trusted hosts get a discount; suspicious or unfamiliar ones get a markup."
+      "score_range": [-1.0, 4.0],
+      "summary": "Static domain lists only, not the learned trust table: known-malicious 4.0, raw IP 3.0, suspicious TLD 2.0, known-safe -1.0, anything unknown 0.0."
     },
     {
       "config_file": null,
+      "id": "behavioural",
       "module": "behavioural",
       "name": "Behavioural anomaly",
       "ordinal": 14,
       "phase": "context",
-      "score_range": [
-        1.0,
-        3.0
-      ],
-      "summary": "Compares the current call against the session's historical baseline (default 200-call minimum). Sudden bursts, unusual destinations, or out-of-pattern operations contribute score."
+      "score_range": [1.0, 3.0],
+      "summary": "Compares the call against the session baseline once 200 calls exist. A mild deviation scores 1.0 and a significant one 3.0; all three numbers are operator-tunable."
     },
     {
       "config_file": null,
+      "id": "taint",
       "module": "taint",
       "name": "Taint tracking",
       "ordinal": 15,
       "phase": "context",
-      "score_range": [
-        0.0,
-        5.0
-      ],
-      "summary": "Tracks data flow from sensitive sources (e.g. a .env read) through subsequent operations. Network calls or shell execs that reference tainted data inherit taint."
+      "score_range": [1.5, 5.0],
+      "summary": "Scores an operation that follows a read of tainted data at 3.0, 4.0 or 5.0 by taint level. Spawn data-flow variants score 1.5. The registry entry expires after an hour."
     },
     {
       "config_file": "config/filters/containment.toml",
+      "id": "session-containment",
       "module": "session_containment",
       "name": "Session containment",
       "ordinal": 16,
       "phase": "context",
-      "score_range": [
-        0.0,
-        5.0
-      ],
-      "summary": "Enforces per-session isolation zones. A session bound to project A cannot reach project B's files or network without explicit cross-zone approval."
+      "score_range": [2.0, 4.5],
+      "summary": "The 600-second scoring window opened by a containment signal: network 4.5, process spawn 4.0, shell 3.5, reduced to 2.0 for control-class unix sockets. The sticky session-lifetime lock is a separate mechanism."
     },
     {
       "config_file": null,
+      "id": "rate-limit",
       "module": "rate_limit",
       "name": "Rate limiting",
       "ordinal": 17,
       "phase": "context",
-      "score_range": [
-        0.0,
-        99.0
-      ],
-      "summary": "Per-minute caps on file writes (default 30), shell execs (20), and network requests (60). Bursts trigger queue; sustained violations trigger DENY. Volume penalties are risk-gated by default."
+      "score_range": [1.0, 3.0],
+      "summary": "Per-operation-type volume caps scoring 1.0, 2.0 or 3.0. Burst penalties are risk-gated by default, so routine high-volume work does not accumulate score on its own."
     },
     {
       "config_file": null,
+      "id": "egress-rate",
       "module": "egress_rate",
-      "name": "Egress rate / burst detection",
+      "name": "Egress rate",
       "ordinal": 18,
       "phase": "context",
-      "score_range": [
-        1.0,
-        3.0
-      ],
-      "summary": "Per-destination outbound rate and burst detection. Flags rapid bursts of network egress to the same or many destinations — a beaconing or exfil shape that single-call filters miss."
-    },
-    {
-      "config_file": null,
-      "module": "outbound_binaries",
-      "name": "Outbound Binaries",
-      "ordinal": 0,
-      "phase": "unknown",
-      "score_range": [
-        0.0,
-        0.0
-      ],
-      "summary": "(no metadata entry for module `outbound_binaries`)",
-      "unmapped": true
-    },
-    {
-      "config_file": null,
-      "module": "semantic",
-      "name": "Semantic",
-      "ordinal": 0,
-      "phase": "unknown",
-      "score_range": [
-        0.0,
-        0.0
-      ],
-      "summary": "(no metadata entry for module `semantic`)",
-      "unmapped": true
+      "score_range": [1.5, 5.0],
+      "summary": "Per-destination outbound rate and burst detection, 1.5 to 5.0 - the beaconing and fan-out shapes a single call cannot show. Gated by proxy.filters.egress.enabled, not by an egress_rate key."
     }
   ],
   "schema_version": 1,
-  "source": "crates/grith-proxy/src/filters/ + crates/grith-docgen/data/filters.toml"
+  "source": "crates/grith-proxy/src/filters/ + crates/grith-core/src/daemon/filter_registry.rs (hand-corrected for v0.3.1)",
+  "verified_against": "grith 0.3.1"
 }

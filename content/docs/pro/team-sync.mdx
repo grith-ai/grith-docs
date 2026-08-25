@@ -1,109 +1,62 @@
 ---
-title: "Team sync"
-description: "Centrally-managed policies pulled to every device on schedule."
-section: "pro"
+title: 'Team sync'
+description: 'What grith pro sync pulls down, what it pushes up, and what stays on the machine no matter what.'
+section: 'pro'
 order: 4
-tier: "pro"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/team-sync.mdx"
+tier: 'pro'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/pro/team-sync.mdx'
 ---
 
 <PlanBadge tier="pro" />
 
-Team sync distributes a single set of policies, profiles, and channel configs
-to every team device. Author once in the dashboard, sync everywhere.
+`grith pro sync` is an on-demand pull of team-shared state, plus one push. It runs when you run
+it - there is no sync interval to configure.
 
-## What gets synced
+<Terminal command="grith pro sync" />
 
-- **Supervisor profiles** — including team-specific custom profiles.
-- **Filter configs** — paths, egress, secrets, dlp, containment, capability,
-  commands, domains.
-- **Threshold overrides** — `proxy.auto_allow_threshold`, etc.
-- **Notification channels** — webhook URLs, severity maps (channel secrets
-  are encrypted; see below).
-- **Canary registry** — team-shared canary tokens.
-- **Encrypted API keys** — provider keys for shared usage.
+Without credentials it stops with `Not logged in. Run: grith pro login`; on a Community licence
+it stops with `Sync requires an active Pro license. Run: grith pro activate`.
 
-What's **not** synced (stays per-device):
+## What moves
 
-- Reputation tables (per-device by default; can opt in).
-- Audit log (always local).
-- Personal profile extensions in `~/.config/grith/profiles/`.
+| What | Direction | Lands at | Used by |
+| --- | --- | --- | --- |
+| Team policy | pull | `~/.config/grith/policies/<name>.json` | The policy views - see [Centralised policies](/docs/pro/centralised-policies). |
+| Shared configs | pull | `~/.config/grith/configs/*.json` | Merged into `team-config.toml` when you apply them from the dashboard. |
+| Provider keys | pull | `~/.config/grith/provider-keys/<provider>.json` | Model calls from `grith run` and the REPL. Encrypted at rest - see [Encrypted key management](/docs/pro/encrypted-key-management). |
+| Team learned rules | pull | `~/.config/grith/team_learned_rules.json` | Merged into every new session's allowlist for the matching profile. |
+| Reputation | push | grith.ai | The team reputation view. Only entries with three or more observations, in batches of 400. |
 
-## Sync schedule
+Each pulled provider key that no longer exists on the team is deleted locally in the same pass,
+so revoking a key in the dashboard removes it from every machine that syncs afterwards.
 
-The daemon syncs every 30 minutes by default. Tunable:
+Reputation is push-only. Nothing overwrites your local learned table.
 
-```toml
-[general]
-sync_interval_minutes = 15
-```
+## What happens without running the command
 
-Force a sync immediately:
+- **Provider keys** refresh from the daemon at most once every 24 hours.
+- **Team learned rules** refresh at the start of every supervised session, so a rule an admin
+  adds is live on the next `grith exec` rather than the next manual sync.
+- **Analytics** sync themselves from the daemon every 30 seconds. That is a separate worker with
+  a separate consent gate - see [Analytics](/docs/pro/analytics).
 
-```
-grith pro sync
-```
+## What never syncs
 
-`--dry-run` shows what would change without applying.
+Audit records. The raw audit log stays on the machine that wrote it, full stop. Nothing uploads
+it, and the team dashboard has no view of it - what the team sees is a security-event timeline
+built from the analytics projection, which carries counts and summaries rather than records.
 
-## Signed bundles
+<Callout type="warning" title="A stale help string">
+`grith pro sync --help` still reads "Upload audit records to cloud and pull team policies". The
+upload half was retired; the command only pulls team state and pushes reputation.
+</Callout>
 
-Sync bundles are signed by the dashboard with a per-team Ed25519 key. The
-device verifies the signature before applying any changes; a tampered bundle
-is rejected and logged.
-
-The team key is generated when the team is created. If the team admin needs
-to rotate (laptop lost, admin departure):
-
-1. Generate a new team key in the dashboard.
-2. The dashboard re-signs all current bundles with the new key.
-3. Every device gets the new public key on next sync and trust pivots
-   atomically.
-
-## Encrypted secrets in sync
-
-API keys and channel webhook URLs are sensitive. They're stored encrypted in
-the dashboard:
-
-- **At rest on grith.ai** — encrypted with a team-held key.
-- **In transit** — TLS.
-- **At rest on device** — perms `0600`, in the user config dir.
-
-The team-held key never leaves admin browsers and (in encrypted form, decryptable
-only by the developer's device key) developer machines. grith.ai never has access
-to plaintext.
-
-See [Encrypted key management](/docs/pro/encrypted-key-management) for the
-full crypto.
-
-## Conflict resolution
-
-A device that's been edited locally before a sync:
-
-- Local non-conflicting changes are preserved (e.g. adding a personal profile
-  in `~/.config/grith/profiles/` doesn't get overwritten).
-- Locally-edited team files (the synced versions in
-  `~/.config/grith/team-managed/`) are overwritten on sync. Don't edit those.
-
-## Inspecting state
-
-```
-grith pro status
-```
-
-Shows the last successful sync. For details:
-
-```
-grith pro sync --dry-run --verbose
-```
-
-Lists every synced artifact and its checksum.
+The digest queue, the local learned-rules file and your `config.toml` are also local-only.
 
 ## See also
 
-- [Team setup](/docs/guides/team-setup)
 - [Centralised policies](/docs/pro/centralised-policies)
-- [Encrypted key management](/docs/pro/encrypted-key-management)
-- [`grith pro sync`](/docs/cli/pro)
+- [Team setup](/docs/guides/team-setup)
+- [`grith pro`](/docs/cli/pro)

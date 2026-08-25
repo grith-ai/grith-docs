@@ -1,100 +1,92 @@
 ---
-title: "6. Capability enforcement"
-description: "Hard gate. Profile capabilities determine what an agent is allowed to do at all."
-section: "filters"
-order: 15
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/06-capability-enforcement.mdx"
+title: '6. Capability enforcement'
+description: 'Grant a caller a set of operation classes, and everything outside them scores 10.0.'
+section: 'filters'
+order: 6
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/06-capability-enforcement.mdx'
 ---
 
 | | |
 | --- | --- |
-| **Phase** | Static |
-| **Score range** | 0 or **DENY** |
-| **Module** | `crates/grith-proxy/src/filters/capability.rs` |
-| **Config file** | `config/filters/capabilities.toml` |
+| **Phase** | 1, static |
+| **Score** | 10.0, on all three failure paths |
+| **Source** | `crates/grith-proxy/src/filters/capability.rs` |
+| **Config** | `config/filters/capabilities.toml` |
 
-A hard gate. The active supervisor profile declares which capability classes it
-holds; calls that need a missing capability are denied outright. No score, no
-queue — DENY.
+The strictest filter grith ships, and the only one that is inert out of the box.
 
-## Capability classes
+<Callout type="info" title="It ships permissive">
+`config/filters/capabilities.toml` contains no grants, only commented examples. With no grants
+defined the filter scores nothing on every call. It switches to enforcement the moment you add
+your first `[[grants]]` entry - and from then on any caller without a grant is denied.
+</Callout>
 
-| Capability | Scope |
+## Capability strings
+
+Each call maps to exactly one capability string.
+
+| Capability | Covers |
 | --- | --- |
-| `read_project` | File reads inside `${PROJECT_DIR}` |
-| `write_project` | File writes inside `${PROJECT_DIR}` |
-| `read_home` | File reads inside `${HOME}` outside project |
-| `write_home` | File writes inside `${HOME}` outside project |
-| `read_system` | File reads in `/etc`, `/usr`, `/opt`, etc. |
-| `write_system` | File writes in system paths (rare; usually denied) |
-| `shell` | Spawning shell processes (`sh`, `bash`, `zsh`, ...) |
-| `network` | Outbound network sockets |
-| `bind` | Listening sockets |
-| `exec` | Spawning arbitrary processes |
-| `signal` | Sending signals to processes |
+| `fs:read` | `FileRead` |
+| `fs:write` | `FileWrite`, `FileAppend`, `FileRename`, `FileLink`, `FileChmod`, `DirCreate` |
+| `fs:delete` | `FileDelete` |
+| `fs:list` | `DirList` |
+| `fs:ownership` | `OwnershipChange` |
+| `fs:mount` | `FilesystemMutation` |
+| `shell:exec` | `ShellExec`, `ProcessSpawn` |
+| `net:http` | `HttpRequest` |
+| `net:connect` | `NetConnect`, `DnsQuery` |
+| `net:listen` | `NetListen` |
+| `process:ptrace` | `CrossProcessAccess` |
+| `process:namespace` | `NamespaceOp` |
+| `ipc:dbus` | `DbusMethodCall` |
+| `*` | everything |
 
-## Where capabilities are declared
+## Configuring it
 
-```toml
-# config/supervisor/profiles.toml
-[profiles.minimal]
-extends = "generic"
-capabilities = ["read_project", "write_project"]
-```
+<ConfigExample title="config/filters/capabilities.toml" code={`[[grants]]
+plugin = "claude-code"
+capabilities = ["fs:read", "fs:list", "fs:write", "shell:exec", "net:http"]
+`} />
 
-A profile with no `capabilities` key inherits from `extends`, which defaults via the
-`generic` baseline to `["read_project", "write_project"]` — read-write inside the
-project, nothing else.
+`plugin` is the caller identity on the call. Repeated entries for the same plugin are merged.
 
-The built-in `claude-code` profile, by contrast, declares:
+Once grants exist, an ungranted operation scores 10.0 - past the deny line on its own, before
+any other filter has contributed:
 
-```toml
-capabilities = [
-    "read_project", "write_project",
-    "read_home", "write_home",
-    "read_system",
-    "shell", "network", "exec",
-]
-```
+<Terminal>
+{`$ grith proxy test '{"type":"ShellExec","command":"ls","args":["-la"]}'
 
-— because Claude Code legitimately needs all of those.
+  Score:       11.0
+  Decision:    DENY
+  Reason:      Shell execution: ls -la; Plugin 'cli-test' has no capability grants
 
-## Why DENY and not score
+  Filter Breakdown:
+    + operation-risk         1.0  [notice]  Shell execution: ls -la
+    + capability            10.0  [critical]  Plugin 'cli-test' has no capability grants
 
-The composite scoring system is for ambiguous cases. Capability denial is not
-ambiguous: the profile said "this agent doesn't do network", and now the agent
-opened a socket. There is no score that makes that OK.
+  Exit code:   2 (deny)`}
+</Terminal>
 
-Returning DENY also bypasses every later filter, every reputation discount, and the
-auto-allow threshold. This is intentional. Capability denial is the strongest
-guarantee grith makes.
+That call came from `cli-test`, which the file above never mentions - and once any grant
+exists, a caller with no entry is denied outright. A caller that *does* have an entry but not
+the right capability is denied identically, at the same 10.0, with `Plugin '<id>' lacks
+capability '<capability>'`. Enforcement is all-or-nothing: once one grant exists, every caller
+needs one.
 
-## When a capability deny fires
+## A broken file turns enforcement off, quietly
 
-The audit log gets a `decision: deny, reason: capability` record. The originating
-process gets `EPERM` on the syscall. If notifications are configured, the
-capability deny is one of the events that escapes default rate-limiting (canaries
-are the other).
-
-## Tuning
-
-The two knobs:
-
-1. **Edit the profile.** Grant a capability that's missing. Be deliberate — adding
-   `network` to a profile that didn't have it should be a considered choice, not a
-   reflex to silence a deny.
-2. **Use a different profile.** Switch to one that already declares the capability.
-
-For one-off overrides ("just this once, let it network out"), the digest's "approve
-+ unlock-egress" action is the right tool — it bypasses the capability check for
-that single call without changing the profile.
+<Callout type="warning" title="Check your file parses">
+If your `capabilities.toml` does not parse, grith falls back to the grant-free copy embedded
+in the binary. The daemon starts, the filter registers, and it scores nothing - so enforcement
+is silently off. There is no error at the default log level. After editing the file, run one
+call you expect to be denied and confirm it is.
+</Callout>
 
 ## See also
 
-- [Supervisor profiles](/docs/concepts/supervisor-profiles)
-- [`config/filters/capabilities.toml`](/docs/config/filter-config-files)
-- [Profile audit](/docs/profiles/profile-audit) — find which capabilities a session
-  actually uses
+- [Supervisor profiles](/docs/profiles/how-profiles-work) - the per-session control most people want
+- [Filter config files](/docs/config/filter-config-files)

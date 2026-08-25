@@ -1,0 +1,72 @@
+---
+title: '14. Behavioural anomaly'
+description: 'How unusual an authority-changing call is against the baseline this session has built.'
+section: 'filters'
+order: 14
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/14-behavioural-anomaly.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 3, context |
+| **Score** | 1.0, 2.0 or 3.0 |
+| **Source** | `crates/grith-proxy/src/filters/behavioural.rs` |
+| **Config** | `[proxy.filters.behavioural]` - the only filter with real tunables |
+
+Each session builds its own distribution of call categories. Once there are enough calls to
+compare against, a call whose category is rare in that distribution scores.
+
+| Rule | Fires when the category is | Score |
+| --- | --- | --- |
+| `unseen-call-type` | absent from the baseline entirely | **3.0** |
+| `rare-call-type` | under 2% of the baseline | 2.0 |
+| `uncommon-call-type` | under 5% of the baseline | **1.0** |
+
+<ConfigExample title="config.toml" code={`[proxy.filters.behavioural]
+enabled                    = true
+min_calls_for_baseline     = 200
+mild_deviation_score       = 1.0
+significant_deviation_score = 3.0
+`} />
+
+`mild_deviation_score` is the `uncommon-call-type` score and `significant_deviation_score` is
+the `unseen-call-type` score. `rare-call-type` is a fixed 2.0 midpoint and is not tunable.
+
+## It only scores five categories
+
+<Callout type="warning" title="Ordinary calls are recorded but never scored here">
+Only `ownership_change`, `filesystem_mutation`, `cross_process_access`, `namespace_op` and
+`dbus_method_call` can produce an anomaly score. Reads, writes, spawns, links and network
+calls contribute to the baseline every anomaly is measured against, but this filter never
+scores them.
+</Callout>
+
+That is an allowlist, and it is inverted from an earlier denylist on purpose. The denylist
+had to name every ordinary operation by hand, and `file_link` was never added - so the first
+symlink of a session scored 3.0 as an unseen call type. Every `npm install` ends in a burst
+of `node_modules/.bin/*` symlinks and every incremental rustc build makes hardlinks, so the
+omission spent modal prompts on the observation "this tool has not made a symlink before".
+
+Nothing an attacker was constrained by was lost. The rule scored the *novelty* of an
+operation, not the operation: it fires on the first one and decays to silence by about the
+seventh, so an attacker only had to make theirs the eighth. What actually prices a link is
+what it exposes - the target and the link path are both evaluated by `path-match`,
+`sensitive-path-heuristic` and `allowlist`, and the worst wins.
+
+## Cold start, and the window
+
+Below `min_calls_for_baseline` the filter returns nothing at all - a fresh session cannot be
+anomalous against a baseline it has not built. The history is a sliding window capped at 1000
+records, so the baseline stays recent rather than degrading over a long session.
+
+State is keyed per supervised session and dropped when the session ends. Unlike
+[taint](/docs/filters/15-taint-tracking), it does not follow a conversation across sessions:
+a behavioural baseline is per-process-lifetime, so a new session correctly cold-starts.
+
+## See also
+
+- [17. Rate limiting](/docs/filters/17-rate-limiting) - volume rather than novelty
+- [Composite scoring](/docs/concepts/composite-scoring)

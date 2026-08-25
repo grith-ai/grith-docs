@@ -1,134 +1,134 @@
 ---
 title: 'Installation'
-description: 'Install grith v0.2 on Linux x86_64 and aarch64 — install script, manual download, or build from source.'
+description: 'One line to install grith on Linux, what the installer verifies before it writes anything, and where the files land.'
 section: 'start'
 order: 1
 tier: 'community'
-version: '0.1.0'
-lastUpdated: '2026-05-14'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
 editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/start/installation.mdx'
 ---
 
-<Callout type="warning" title="Linux only for v0.2">
-  The v0.2 release ships for Linux — both x86_64 and aarch64 (kernel 5.3+ on aarch64). The
-  supervisor uses ptrace + seccomp, which need OS-specific backends, so macOS (Endpoint Security
-  framework) and Windows (ETW / minifilter) are in active development. See the
-  [roadmap](/docs/resources/roadmap).
-</Callout>
+<Terminal command="curl -fsSL https://grith.ai/install | sh" />
 
-## One-line install
+That resolves the latest release, downloads the tarball for your architecture, verifies
+it, and puts `grith` in `~/.local/bin`. Do not pin a version.
 
-```
-curl -fsSL https://grith.ai/install | sh
-```
+If you would rather read the script before running it, `https://grith.ai/install` serves
+`scripts/install.sh` from the repository verbatim - fetch it, read it, then run it.
 
-The installer:
+## What the installer does
 
-1. Detects your distro and architecture.
-2. Downloads the signed binary tarball and its SHA-256 checksum.
-3. Verifies the checksum.
-4. Places `grith` in `~/.local/bin` (or `/usr/local/bin` if writable).
-5. Creates `~/.config/grith/` with default config.
-6. Prints next steps.
+1. Detects your platform. Anything that is not Linux x86_64 or Linux aarch64 is a hard
+   error, not a degraded install.
+2. Resolves the newest release tag from the GitHub API.
+3. Downloads the tarball and its `.sha256`, and verifies the checksum. **A mismatch
+   aborts the install.**
+4. If `cosign` is on your PATH, downloads the sigstore bundle and verifies the signature
+   against the release workflow's identity. **A present-but-invalid signature aborts the
+   install.** No cosign means the step is skipped with a note, and the checksum still had
+   to pass.
+5. Stages the binary inside the destination directory and renames it into place, so a
+   running `grith` can replace itself.
+6. Tells you if the destination is not on your `PATH`, with the line to add for your
+   shell.
 
-If you'd rather see what runs before it runs, fetch the script and read it:
+The installer writes nothing else. There is no config file, no service registration and
+no directory created under `~/.config` - it finishes by pointing you at `grith init`,
+which is what writes the config.
 
-```
-curl -fsSL https://grith.ai/install -o install.sh
-less install.sh
-sh install.sh
-```
+Two flags, passed through the pipe:
+
+<Terminal command="curl -fsSL https://grith.ai/install | sh -s -- --global" />
+
+| Flag              | Effect                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `--global`        | Install to `/usr/local/bin` instead of `~/.local/bin`, using `sudo` if the directory is not writable. |
+| `--version <ver>` | Install a specific release rather than the latest. Useful for rolling back.                           |
+
+## Requirements
+
+- Linux x86_64 (kernel 4.8 or newer) or Linux aarch64 (kernel 5.3 or newer). aarch64
+  supervision needs `PTRACE_GET_SYSCALL_INFO`, which is where the higher floor comes
+  from; grith probes for it at session start and refuses rather than silently degrading.
+- `CAP_SYS_PTRACE`, or `/proc/sys/kernel/yama/ptrace_scope` set to 0 or 1. Ubuntu and
+  Debian default to 1, which is fine - grith is the parent of the tool it supervises. At
+  2 or above, supervision cannot start.
+- Nothing else. The release binaries are statically linked against musl: no glibc pin, no
+  shared libraries, no runtime dependencies.
 
 ## Manual download
 
-Pre-built binaries are published to GitHub Releases.
+One tarball per architecture, containing a single file. The filenames carry the **bare**
+version, with no leading `v`.
 
-```
-# Replace VERSION with the latest tag — see
-# https://github.com/grith-ai/grith/releases/latest for the current
-# version (v0.1.4 as of May 2026).
-VERSION=v0.1.4
-# Set ARCH to your machine's architecture: x86_64 or aarch64.
-ARCH=x86_64
-curl -L -o grith.tar.gz \
-  https://github.com/grith-ai/grith/releases/download/${VERSION}/grith-${VERSION}-${ARCH}-unknown-linux-musl.tar.gz
-curl -L -o grith.sha256 \
-  https://github.com/grith-ai/grith/releases/download/${VERSION}/grith-${VERSION}-${ARCH}-unknown-linux-musl.tar.gz.sha256
-sha256sum -c grith.sha256
-tar -xzf grith.tar.gz
-sudo mv grith /usr/local/bin/
-```
+<CodeBlock
+  language="bash"
+  title="manual install"
+  code={`# Check https://github.com/grith-ai/grith/releases/latest for the current tag.
+VERSION=0.3.1
+ARCH=x86_64        # or aarch64
+ARCHIVE=grith-\${VERSION}-\${ARCH}-unknown-linux-musl.tar.gz
+curl -fsSLO https://github.com/grith-ai/grith/releases/download/v\${VERSION}/\${ARCHIVE}
+curl -fsSLO https://github.com/grith-ai/grith/releases/download/v\${VERSION}/\${ARCHIVE}.sha256
+sha256sum --check \${ARCHIVE}.sha256
+tar -xzf \${ARCHIVE}
+install -m 755 grith ~/.local/bin/grith`}
+/>
 
-The binary is a single statically-linked musl executable. No runtime dependencies, no
-glibc version pinning, no shared libraries to worry about.
+Every release also ships a CycloneDX SBOM, a cosign bundle for the tarball and the SBOM,
+and an SLSA build-provenance attestation. Signatures are `.cosign.bundle` files. See
+[Verifying releases](/docs/ops/verifying-releases) for the commands.
 
 ## Build from source
 
-You need Rust 1.88 or newer.
-
-```
-git clone https://github.com/grith-ai/grith.git
+<CodeBlock
+  language="bash"
+  code={`git clone https://github.com/grith-ai/grith.git
 cd grith
-cargo build --release
-./target/release/grith --version
-```
+make dist`}
+/>
 
-The release build takes ~3–5 minutes on a modern laptop. Debug builds are about half
-that.
+Rust 1.88 or newer and Node 22. Use `make dist`, not a bare `cargo build --release`: the
+dashboard is a separate front-end bundle, and a cargo-only build produces a binary whose
+dashboard is a placeholder page.
 
-## Verify the install
+<Callout type="info" title="Source builds do not upgrade in place">
+  grith only replaces itself when the binary sits in `~/.local/bin` or `/usr/local/bin`. Anywhere
+  else - a source build, a hand-placed copy - it prints instructions rather than installing a second
+  binary somewhere on your `PATH`.
+</Callout>
 
-```
-grith --version
-grith --help
-```
-
-Expected output:
+## Verify
 
 <Terminal>
-{`$ grith --version
-grith 0.1.0
-$ grith --help
-Zero Trust for AI Agents
-
-Usage: grith [OPTIONS] [COMMAND]
-...`}
-
+  {`$ grith --version
+grith 0.3.1`}
 </Terminal>
 
-## What got placed where
+## Where things live
 
-| Path                                           | What                                                                                             |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `~/.local/bin/grith` or `/usr/local/bin/grith` | The binary.                                                                                      |
-| `~/.config/grith/config.toml`                  | User-level config overrides. Edit freely.                                                        |
-| `~/.local/share/grith/audit/`                  | SQLite audit log. Grows over time; see [audit retention](/docs/ops/logging-and-audit-retention). |
-| `~/.cache/grith/`                              | Reputation table, profile updates, transient state. Safe to delete.                              |
-| `~/.config/grith/licenses/`                    | Pro license cache (only if you log in to Pro).                                                   |
-
-The CLI itself never writes to anywhere outside `~/.local/share/grith/` and
-`~/.cache/grith/` without an explicit config setting.
-
-## Permissions
-
-Running `grith exec` uses ptrace to attach to and supervise child processes. This works
-without root on most Linux distros via the default `kernel.yama.ptrace_scope = 1`. If
-your distro hardened ptrace (some EC2 AMIs set `ptrace_scope = 2`), you'll see a
-permission error when supervising. The fix is documented in
-[Troubleshooting](/docs/guides/troubleshooting#ptrace-permission-denied) (slug: `ptrace-permission-denied`).
-
-## Next
-
-- [Quickstart](/docs/start/quickstart) — five-minute hands-on walkthrough.
-- [Choose your agent](/docs/start/choose-your-agent) — pick the right supervisor profile.
-- [Connect a model](/docs/start/connect-a-model) — BYOK setup for OpenAI, Anthropic, Ollama, OpenRouter.
+| Path                                  | What                                                        |
+| ------------------------------------- | ----------------------------------------------------------- |
+| `~/.local/bin/grith`                  | The binary. `/usr/local/bin/grith` with `--global`.         |
+| `~/.config/grith/config.toml`         | Your config. Written by `grith init`, not by the installer. |
+| `~/.config/grith/update-check.json`   | Cached version notice.                                      |
+| `~/.local/share/grith/audit/`         | The audit database, with cold storage under `cold/`.        |
+| `~/.local/share/grith/supervisor.log` | Supervisor log.                                             |
+| `~/.cache/grith/`                     | Transient state. Safe to delete.                            |
 
 ## Uninstall
 
-```
-rm "$(command -v grith)"
-rm -rf ~/.config/grith ~/.local/share/grith ~/.cache/grith
-```
+<CodeBlock
+  language="bash"
+  code={`rm "$(command -v grith)"
+rm -rf ~/.config/grith ~/.local/share/grith ~/.cache/grith`}
+/>
 
-The binary is self-contained — there are no service registrations, kernel modules,
-or system-wide files to clean up.
+There are no service registrations, kernel modules or system-wide files to clean up.
+
+## Next
+
+- [Quickstart](/docs/start/quickstart) - `grith init`, then supervise something.
+- [Troubleshooting](/docs/guides/troubleshooting) - if ptrace or the daemon refuses.
+- [Updating grith](/docs/ops/updating-grith) - how the version notice and upgrade work.

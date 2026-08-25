@@ -1,88 +1,116 @@
 ---
-title: "Digest"
-description: "REST endpoints for the quarantine queue — list, inspect, decide."
-section: "api"
-order: 3
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/digest.mdx"
+title: 'Digest'
+description: 'Read the quarantine queue and resolve items over REST, including the nonce-authenticated review callback.'
+section: 'api'
+order: 4
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/digest.mdx'
 ---
 
-The quarantine queue over REST.
+The [quarantine digest](/docs/concepts/quarantine-digest) over HTTP. The dashboard's review
+buttons are these routes; so is [`grith digest`](/docs/cli/digest).
 
-<ApiRouteTable group="Digest" showHeadings={false} />
+| Method | Path                              | Auth             |
+| ------ | --------------------------------- | ---------------- |
+| GET    | `/api/digest`                     | Dashboard token  |
+| POST   | `/api/digest/{id}/approve`        | `x-grith-csrf`   |
+| POST   | `/api/digest/{id}/deny`           | `x-grith-csrf`   |
+| POST   | `/api/digest/{id}/learn`          | `x-grith-csrf`   |
+| POST   | `/api/digest/{id}/escalate`       | `x-grith-csrf`   |
+| POST   | `/api/digest/{id}/unlock-egress`  | `x-grith-csrf`   |
+| POST   | `/api/digest/{id}/deny-terminate` | `x-grith-csrf`   |
+| POST   | `/api/digest/{id}/allow-always`   | `x-grith-csrf`   |
+| POST   | `/api/digest/clear-all`           | `x-grith-csrf`   |
+| POST   | `/api/digest/{id}/webhook-review` | Single-use nonce |
 
-## `GET /digest`
+Full forensics on one item is a daemon route, `GET /api/ipc/digest/items/{id}` - see
+[Daemon IPC](/docs/api/ipc).
 
-List pending items.
+## GET /api/digest
 
-```json
-{
-  "items": [
-    {
-      "id": "7d1f-...",
-      "ts": "2026-05-14T09:14:23Z",
-      "session": "abc12345-...",
-      "operation": "file_read",
-      "target": "/home/you/.ssh/config",
-      "composite_score": 4.2,
-      "filters_fired": [...]
-    }
-  ]
-}
-```
+Everything still open - `pending` and `escalated` - highest `composite_score` first.
+`limit` defaults to 20 and is capped at 100; `offset` defaults to 0. Informational rows are
+in here too: when a session resolves its own queue decisions - logged and allowed, or
+auto-denied because there is no terminal to prompt - the record is still filed as `pending`
+with `informational_only: true`. Filter on that field if you only want items a human can
+still act on.
 
-## `GET /ipc/digest/items/{id}`
+<CodeBlock
+  language="json"
+  title="GET /api/digest?limit=1"
+  code={`{
+  "items": [ { "id": "7d1f...", "created_at": "2026-08-24T09:14:23Z", "session_id": "abc1...",
+    "tool_call_type": "FileRead", "arguments_summary": "/home/u/.ssh/config",
+    "decision_reason": "Score 4.2 in escalation zone", "composite_score": 4.2,
+    "severity": "medium", "filter_breakdown": [], "task_context": null,
+    "plugin_id": "supervisor:claude-code", "status": "pending",
+    "reviewed_at": null, "review_action": null, "reviewer_notes": null,
+    "informational_only": false, "escalated_at": null, "escalated_by": null } ],
+  "total": 1,
+  "pending_count": 1,
+  "escalated_count": 0,
+  "limit": 1,
+  "offset": 0
+}`}
+/>
 
-Full forensics on a single item (IPC-only). Includes the session's recent history
-and reputation context — useful for the dashboard.
+`total` is the actionable count, which is `pending_count` plus `escalated_count`.
 
-## Decision endpoints
+## Resolving an item
 
-All decision endpoints are `POST` with an optional JSON body for annotations:
+Every decision route takes an optional body of `{"notes": "..."}` and answers with a small
+status object rather than `204`. The `status` it echoes names the route, not always the
+state it stored - `learn` answers `"learned"` while recording the item as approved:
 
-```
-POST /digest/{id}/approve
-POST /digest/{id}/deny
-POST /digest/{id}/learn
-POST /digest/{id}/escalate           (Pro)
-POST /digest/{id}/unlock-egress
-POST /digest/{id}/deny-terminate
-POST /digest/{id}/allow-always       (Pro)
-POST /digest/{id}/webhook-review
-```
+<CodeBlock
+  language="json"
+  title="POST /api/digest/{id}/approve"
+  code={`{ "status": "approved", "id": "7d1f..." }`}
+/>
 
-Body shape (optional):
+Each route records a different `review_action` on the item, and the supervisor that is
+waiting on the call reads it back:
 
-```json
-{
-  "annotations": "user-provided note",
-  "annotation_tags": ["false-positive", "legitimate-ssh-fix"]
-}
-```
+| Route            | Status recorded                                        | `review_action`      |
+| ---------------- | ------------------------------------------------------ | -------------------- |
+| `approve`        | approved                                               | `approve`            |
+| `deny`           | denied                                                 | `deny`               |
+| `learn`          | approved                                               | `learn`              |
+| `escalate`       | escalated - the item stays in the queue                | -                    |
+| `unlock-egress`  | approved, and the session is released from containment | `unlock_egress`      |
+| `deny-terminate` | denied, and the supervised tool is stopped             | `deny_and_terminate` |
+| `allow-always`   | approved                                               | `allow_always`       |
 
-Response: `204 No Content` on success.
+`unlock-egress` adds `containment_released` to its response. An unknown id is
+`404 NOT_FOUND`. `escalate`, `unlock-egress`, `deny-terminate` and `allow-always` return
+`409` with a route-specific code when the item is in the wrong state - already reviewed,
+for instance.
 
-## `POST /digest/{id}/webhook-review`
+`POST /api/digest/clear-all` marks every pending and escalated item `expired` in one
+statement and returns `{"status": "cleared", "cleared": <n>}`. The rows stay in the
+database with `review_action: "clear"`; they simply leave the queue. Nothing is approved and
+nothing runs.
 
-For asynchronous review flows — a notification channel delivered the item, the
-reviewer clicked an approve link, and the receiving webhook now POSTs the decision
-back. Body:
+## `POST /api/digest/{id}/webhook-review`
 
-```json
-{
-  "decision": "approve | deny | learn",
-  "signature": "hmac-sha256-...",
-  "ts": "..."
-}
-```
+The one write with no CSRF layer, because it carries its own proof. The body must include
+the single-use `nonce` that was issued with the review link:
 
-The signature is verified against the channel's shared secret; mismatched signatures
-return `403 SIGNATURE_INVALID`.
+<CodeBlock
+  language="json"
+  title="POST /api/digest/{id}/webhook-review"
+  code={`{ "action": "approve", "nonce": "<single-use nonce>", "reviewer": "alice", "notes": "expected" }`}
+/>
+
+`action` is `approve`, `deny` or `escalate`; anything else is `400 INVALID_ACTION`. A
+nonce that is wrong or already spent is `403`; an item that cannot take the action is
+`409`. Success is `{"status": "reviewed", "action": "..."}`, or `{"status": "no_action"}`
+when the callback resolved to nothing.
 
 ## See also
 
 - [The quarantine digest](/docs/concepts/quarantine-digest)
 - [`grith digest`](/docs/cli/digest)
-- [Notification security model](/docs/security/notification-security)
+- [WebSocket](/docs/api/websocket) - live `digest_queued` and `digest_reviewed` frames

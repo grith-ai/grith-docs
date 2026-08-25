@@ -1,86 +1,167 @@
 ---
-title: "Trust boundaries"
-description: "Where the trust boundary sits between grith, the agent, the model, and untrusted input."
-section: "security"
+title: 'Trust boundaries'
+description: 'What grith trusts, what it treats as hostile, and which crossing each control sits on.'
+section: 'security'
 order: 2
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/trust-boundaries.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/security/trust-boundaries.mdx'
 ---
 
-```
-┌───────────────────────────────────────────────────────────┐
-│ trusted:                                                  │
-│   ─ the kernel                                            │
-│   ─ the grith binary itself                               │
-│   ─ the supervisor and filter pipeline                    │
-│   ─ the local user (== same as kernel-trust)              │
-└───────────────────────────────────────────────────────────┘
-              ▲ enforced via process / file perms
-              │
-┌───────────────────────────────────────────────────────────┐
-│ untrusted:                                                │
-│   ─ the supervised agent and its libraries                │
-│   ─ the model running inside the agent                    │
-│   ─ the agent's plugins / MCP servers / tool integrations │
-└───────────────────────────────────────────────────────────┘
-              ▲ enforced via syscall interception + filters
-              │
-┌───────────────────────────────────────────────────────────┐
-│ very untrusted:                                           │
-│   ─ files the agent reads (READMEs, search results, ...)  │
-│   ─ provider API responses                                │
-│   ─ stdin / network bytes flowing in                      │
-└───────────────────────────────────────────────────────────┘
-```
+grith has one enforcement boundary: the syscall boundary of the supervised process tree. This
+page is about what sits on each side of it, and about the smaller boundaries inside grith itself.
 
-## Why these three layers
+## Three levels
 
-**Trusted** is everything that, if compromised, ends the game. The kernel and
-the grith binary are at this layer. We accept that we cannot defend ourselves
-against ourselves; we rely on the local OS process model and signed binaries
-to keep this layer intact.
+| Level | What is in it | Why |
+| --- | --- | --- |
+| Trusted | The kernel, the grith binary, the daemon, the 18 filters, the built-in profiles | If any of these is compromised the game is over. grith cannot defend itself against itself. |
+| Untrusted | The supervised tool, its libraries, the model driving it, its MCP servers and plugins | It may be malicious, or merely mistaken. Either way its own judgement about safety is not load-bearing. |
+| Hostile | Everything the tool reads - files, search results, provider responses, bytes off the network | Prompt injection lives here. This is what [taint tracking](/docs/concepts/taint-tracking) exists for. |
 
-**Untrusted** is the agent. The agent might be malicious (compromised by
-input or supply chain) or merely mistaken; either way, its decisions about
-safety are not load-bearing. grith's job is to make sure the *outcomes* of
-the agent's actions are safe regardless of the agent's intent.
+The 11 built-in profiles are compiled into the binary. There is no profile file for an agent to
+rewrite, and no user-authored profile to review.
 
-**Very untrusted** is the data flowing into the agent. Prompt injection lives
-here. The agent reads bytes; those bytes might instruct it to do bad things.
-grith treats anything originating from this layer as suspect — that's the
-basis of [taint tracking](/docs/concepts/taint-tracking).
+## The crossing that is enforced
 
-## Crossings
+Every syscall the supervised tree makes crosses from untrusted to trusted, and that is where the
+filters run. The tree is the tool plus its `fork`, `clone` and `exec` descendants;
+`PTRACE_O_EXITKILL` is always set, so a supervised process cannot outlive its supervisor by
+killing it.
 
-Each boundary crossing is where filtering happens:
+The read that brings hostile data *into* the tool is not itself a barrier - it is scored like any
+other file operation, and what it changes is the taint state that later network and spawn calls
+are judged against.
 
-- **Very untrusted → Untrusted**: the agent reads. No enforcement here (the
-  read is allowed if path filters pass); the data is tagged as tainted for
-  later.
-- **Untrusted → Trusted**: every syscall the agent makes. This is where the
-  18 filters live. Sycall is allowed, queued, or denied.
-- **Trusted → Trusted**: internal grith operations. No filtering — these are
-  inside the trust boundary.
+Some actions never make the privileged syscall themselves. A supervised tool can ask a peer that
+already holds the authority - the docker daemon, an attached tmux pane, `systemd-run` on the
+session bus - and the real work then runs outside the tree, where nothing is intercepted. grith
+mitigates the known vectors rather than claiming closure: those spawns and control-socket connects
+escalate for review, and the D-Bus case is decided per method call rather than per connection.
+See [Limitations](/docs/security/limitations) for the residuals.
 
-## What lives where
+## D-Bus: the decision moved off the connect
 
-- **grith binary** — Trusted. Signed at build. ~25MB statically-linked
-  musl executable.
-- **Daemon (running grith process)** — Trusted. Per-user.
-- **Audit DB** — Trusted-data, untrusted-write-from-agent. Filesystem perms
-  keep the agent from writing to it. Cryptographic integrity (digest signing)
-  is on the roadmap.
-- **Reputation file** — Trusted-data. Read by the daemon; the agent never
-  reads or writes it.
-- **Profile files** — Built-in profiles are signed. User-defined profiles are
-  in the user's home dir; tampering by the agent means the user is
-  compromised, in which case all bets are off.
-- **License file** — Signed by grith.ai release key. Tamper-evident.
+At `connect(2)` a socket path is all there is to judge, and "read the keyring" and "ask systemd to
+run this command outside supervision" are byte-identical syscalls. So a connect to a bus endpoint
+arms message inspection instead of escalating, and each outgoing method call is checked against an
+allowlist of (destination, interface, member) triples.
+
+It is an allowlist, and it fails toward the older behaviour: an undecodable stream, an unreadable
+payload, or a method that is not listed all escalate the connection - exactly what connect-time
+enforcement did on its own. A decoder bug costs you a prompt, never a silent allow.
+
+## Inside grith: the daemon owns everything
+
+`grith exec` is a thin client. The daemon is the single owner of the audit database (as its
+exclusive `flock` writer), the digest queue, the proxy and its filters, the session registry, the
+canary registry and the reputation table. The supervisor talks to it over loopback HTTP with a
+bearer token read from `~/.config/grith/daemon.token`, which is mode `0600` and rotated on every
+daemon start.
+
+There is no in-process fallback. If the daemon is unreachable, the wrong version, or refuses the
+token, `grith exec` fails and the target is never spawned. Capacity is reserved before the target
+starts, so a session-limit rejection can never arrive after code has already run.
+
+## The dashboard
+
+The daemon serves the local dashboard on `127.0.0.1:3141` over plain HTTP - TLS is off by default,
+and loopback is the reason that is acceptable. Point `[server] host` at a routable address and the
+bind still succeeds, with a plaintext warning in the log, but the loopback guard answers every
+non-loopback peer `403 LOCALHOST_ONLY` regardless. Three tiers of access:
+
+- **Open reads** - health, tier, licence status, proxy status. No token.
+- **Sensitive reads** - digest, audit, config, analytics, canaries, inventory. The dashboard token,
+  sent in an `x-grith-csrf` header and compared in constant time.
+- **Browser writes** - the same token, checked again by a method-aware CSRF guard, with CORS locked
+  to the dashboard's own origin, so another page cannot make the browser send it.
+
+The browser gets that token through a single-use pair code carried in the URL fragment. A fragment
+is never sent with the page request, so the code stays out of server logs and referrers, and the
+page trades it for the token exactly once - which makes a later screenshot of the URL inert. The
+`/ws/live` WebSocket checks Origin against Host and compares its token in constant time.
+
+## What leaves the machine
+
+No user data, by default or at community tier. A default install makes two unauthenticated GETs -
+the release check against GitHub, and the supervisor-profile overlay manifest from `api.grith.ai` -
+and neither carries anything beyond the version in a User-Agent. `GRITH_NO_UPDATE_CHECK` and
+`[general] profile_update_check = false` switch them off.
+
+**No audit records are uploaded, on any plan** - that sync was retired. `grith pro sync` pulls team
+policies, shared configs and provider keys, and pushes the reputation table.
+
+Four things have to be true before any of your data leaves: a paid plan, signed in, `[general]
+audit_sync` on, and recorded consent - which defaults on for an entitled, signed-in account, so
+`grith analytics disable` is the switch if you do not want it. What then goes is the analytics
+projection: counts and rollups with the operands stripped out, uploaded roughly every 30 seconds,
+plus one archive per sealed UTC day - written to private storage, encrypted under a KMS key grith
+manages, and kept 90 days.
+
+**Uploaded.** Account, team, device and actor ids; session UUID; project label; profile and config
+hashes; supervised tool name; verdict, score and the filter ids that contributed; provider, model,
+token counts and cost; destination kind with a team-scoped HMAC; security event type and resolution.
+
+**Never uploaded**, as a normative exclusion list in the frozen contract: `command`, `arguments`,
+`arguments_summary`, `raw_path`, `raw_url`, `prompt`, `model_response`, `file_contents`,
+`source_code`, `payload_body`, `environment_values`, `task_context`, and free-form decision reasons.
+
+Two caveats worth having before you turn it on: project names travel in clear text and may
+themselves be commercially sensitive, and destinations are HMACed by default - clear destination
+labels are an owner or admin opt-in. [Analytics](/docs/pro/analytics) has the full picture.
+
+## Files, and who can write them
+
+| Path | What | Protection |
+| --- | --- | --- |
+| `~/.config/grith/daemon.token` | IPC bearer for supervisor sessions | `0600`, rotated on every daemon start |
+| `~/.config/grith/dashboard.token` | Browser token | `0600`, stable across restarts; delete it to rotate |
+| `~/.config/grith/license.key` | Signed licence | Ed25519, public key compiled into the binary, verified locally with no network |
+| `~/.config/grith/provider-keys/` | Synced provider keys | AES-256-GCM at rest, key derived from your grith API key |
+| `~/.local/share/grith/audit/audit.db` | Audit log | SHA-256 hash chain per row; a single writer holds an `flock` |
+
+Provider keys are sealed to the API key rather than to a passphrase or an OS keyring. Anyone
+holding the account's API key can decrypt them, and rotating the API key makes existing envelopes
+undecryptable. It is at-rest protection, not end-to-end encryption.
+
+The audit chain is what makes tampering loud rather than impossible. Records hash into three
+frozen canonical forms, dispatched per row, so a database written across versions still verifies
+end to end. A break quarantines the chain: writes are refused and the daemon admits no new
+sessions, while `grith audit diagnose` keeps working so you can see what happened.
+
+<Callout type="warning" title="Permissions are not the control">
+Every file above is owned by your user, and the supervised tool runs as your user. Filesystem
+permissions do not separate them - the filters do. A read of grith's own state directory is scored
+like any other file read.
+</Callout>
+
+<Terminal>
+{`$ grith proxy test '{"type":"FileRead","path":"/home/u/.config/grith/license.key"}'
+
+Proxy Test Result
+==================================================
+  Tool call:   FileRead(/home/u/.config/grith/license.key)
+  Score:       8.5
+  Decision:    DENY
+  Reason:      Access to private key file; read access to grith's own state directory
+  Eval time:   0.03ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active
+
+  Filter Breakdown:
+    . operation-risk         0.0
+    + path-match             4.0  [error]  Access to private key file
+    + sensitive-path-heuristic   4.5  [error]  read access to grith's own state directory
+    . allowlist              0.0
+    . argument               0.0
+    . capability             0.0
+
+  Exit code:   2 (deny)`}
+</Terminal>
 
 ## See also
 
-- [Threat model](/docs/security/threat-model)
-- [Supervisor-only assessment](/docs/security/supervisor-only-assessment)
-- [Notification security](/docs/security/notification-security)
+- [Limitations](/docs/security/limitations) - where the boundary does not hold.
+- [Threat model](/docs/concepts/threat-model) - who you are defending against.
+- [The daemon and sessions](/docs/concepts/daemon-and-sessions) - the thin-client split in detail.

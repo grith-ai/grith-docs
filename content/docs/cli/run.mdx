@@ -1,80 +1,101 @@
 ---
-title: "grith run"
-description: "Execute a single non-interactive task using the configured LLM provider."
-section: "cli"
+title: 'grith run'
+description: 'Run one task through the built-in agent, or drop into the REPL by running grith with no arguments.'
+section: 'cli'
 order: 1
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/run.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/run.mdx'
 ---
 
 ```
 grith run <TASK>
 ```
 
-Run a single task through grith's built-in REPL non-interactively. The configured
-provider (Ollama / OpenAI / Anthropic / OpenRouter) is invoked with the task as a
-prompt; tool calls the model makes go through the filter pipeline before executing.
+Run one task through grith's own agent, non-interactively, using the provider set in
+[`[llm]`](/docs/config/llm). Every tool call the agent makes goes through the
+[filter pipeline](/docs/concepts/three-phase-pipeline) first.
 
-## Synopsis
+There are no command-specific flags - only the [global ones](/docs/cli/overview).
+
+## What it prints
+
+The run ends with a session summary, whether the task succeeded or not.
+
+<Terminal>
+{`$ grith run "say hi"
+
+● ● ●  SESSION SUMMARY
+
+Project:  grith-docs    Session:  fba2d5d3
+
+Session complete - 0 actions | $0.00 | 100% allowed
+
+Tool calls:    0              Cost:      $0.00
+├ file_read       0           Provider:  Ollama
+├ file_write      0           Model:     llama3.1:8b
+├ shell_exec      0           Duration:  0s
+└ net_request     0
+
+Security:
+├ Allowed       0 (100%)
+├ Quarantined   0
+└ Denied        0
+Error: LLM request failed: provider error: ollama: HTTP 404 Not Found: {"error":"model 'llama3.1:8b' not found"}`}
+</Terminal>
+
+That capture is from a machine with no Ollama model pulled, so the task itself failed and
+the exit code was `1`. A provider error always surfaces on the last line like that. See
+[Connect a model](/docs/start/connect-a-model).
+
+`grith run` opens the dashboard in your browser on start, because
+`server.auto_open_dashboard` defaults to `true`. It and the REPL are also the only two
+places that will *prompt* you to upgrade when a newer grith exists;
+[`grith exec`](/docs/cli/exec) checks too but prints one line and gets on with launching
+the tool. `GRITH_NO_UPDATE_CHECK` silences both.
+
+<Callout type="info" title="This is not the supervisor">
+`grith run` supervises grith's own agent loop. To supervise a separate tool - Claude Code,
+Codex, aider - use [`grith exec`](/docs/cli/exec), which intercepts syscalls rather than
+tool calls.
+</Callout>
+
+## Bare `grith` - the REPL
+
+Running `grith` with no subcommand starts an interactive prompt. It opens with
 
 ```
-grith run [GLOBAL OPTIONS] <TASK>
+grith v0.3.1 | model: <model> | filters: <n>
+Type /help for commands, or enter a prompt.
 ```
 
-## Arguments
+Anything that does not start with `/` is sent to the model as a prompt. With no terminal
+attached it blocks on stdin, so do not use it in scripts - use `grith run`.
 
-| Argument | Required | What it is |
+### Slash commands
+
+| Command | Aliases | What it does |
 | --- | --- | --- |
-| `<TASK>` | yes | The natural-language instruction. Quote it if it contains spaces. |
+| `/help` | `/h`, `/?` | Print this table |
+| `/quit` | `/q`, `/exit` | Exit |
+| `/digest` | `/d` | Open the [digest review UI](/docs/cli/digest) |
+| `/audit [n]` | | Last `n` audit entries, default 10 |
+| `/config` | | Session, model, filter count, turns, messages |
+| `/model <name>` | | See the warning below |
+| `/proxy status` | `/proxy` | `Proxy: <n> filters active` |
+| `/proxy test <call>` | | Dry-run a call through the proxy |
+| `/clear` | | Clear the screen |
+| `/context` | | Session, turn and message history |
 
-## Behaviour
+An unrecognised `/command` prints the help table rather than an error.
 
-- Uses the configured `[llm] default_provider`.
-- Runs the model to completion or until tool-call budget is exhausted.
-- Every file/shell/network call the model issues is supervised exactly like
-  [`grith exec`](/docs/cli/exec).
-- Exits when the task is complete. Exit code `0` on success.
-
-## Examples
-
-A trivial completion:
-
-<Terminal>
-{`$ grith run "what's the capital of New Zealand"
-Wellington.`}
-</Terminal>
-
-A task that requires a tool call:
-
-<Terminal>
-{`$ grith run "summarise package.json"
-[grith] file_read package.json → score 0.4 → allow
-This project is "my-app", version 1.2.0, with dependencies on next, react...`}
-</Terminal>
-
-A task that quarantines:
-
-<Terminal>
-{`$ grith run "what's in my .ssh/config"
-[grith] file_read ~/.ssh/config → score 4.2 → quarantine
-
-[grith] Pending review. Approve in another terminal with:
-        grith digest review`}
-</Terminal>
-
-The CLI hangs until the digest item resolves, then continues with the model's
-response (or with the failure if denied).
-
-## When to use this vs `grith exec`
-
-- **`grith run`** — single one-shot prompt, you want grith's built-in REPL plumbing.
-- **`grith exec`** — wrapping an external agent (Claude Code, Codex, etc.) with
-  grith's supervision. Almost always what you want for real work.
+<Callout type="warning" title="/model only renames the session">
+`/model <name>` changes the display name and nothing else. The router is not rebuilt at
+runtime. To change the model that actually answers, edit `[llm]` and restart.
+</Callout>
 
 ## See also
 
-- [`grith exec`](/docs/cli/exec) — supervise an external agent
-- [Connect a model](/docs/start/connect-a-model) — BYOK setup
-- [`[llm]` config](/docs/config/llm)
+- [`grith exec`](/docs/cli/exec) - supervise an external tool instead
+- [Connect a model](/docs/start/connect-a-model) - provider setup

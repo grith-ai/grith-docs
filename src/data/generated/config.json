@@ -1,84 +1,108 @@
 {
+  "_note": "Built from `grith config` on the v0.3.1 binary - the effective, fully merged configuration, so every key here is one the binary actually reads and every default is the real one. The upstream generator parses config/default.toml instead, which publishes keys nothing reads (a whole [proxy.filters.semantic] section, the [digest] block, five dead reputation-filter scores, three taint list keys, five rate-limit tunables) and misses most of what the binary reads. Re-running `npm run gen:references` will revert this file until the generator emits from the serde structs. [server.tls] is appended by hand because Option<TlsConfig> serialises away when unset.",
+  "omitted": {
+    "digest": "Serialised by the binary, but nothing reads config.digest. All four keys are dead.",
+    "llm.routing": "Serialised by the binary, but unwired - no code path routes on it.",
+    "notifications": "Visible in `grith config` output. Notifications are not configurable on v0.3.1, so these keys are not published as settings."
+  },
   "schema_version": 1,
   "sections": [
     {
-      "description": null,
+      "description": "The hash-chained audit log: how much is recorded, and how long it is kept.",
       "keys": [
         {
+          "default": true,
+          "description": "Archive pruned records to date-partitioned NDJSON.zst under the cold/ directory instead of discarding them.",
+          "name": "cold_storage_enabled",
+          "type": "boolean"
+        },
+        {
           "default": "spawns",
-          "description": "Completeness tier for the audit log. Higher tiers add forensic / analytics value at the cost of DB growth and supervisor-thread overhead.  decisions = only proxy-evaluated events (today's historical behaviour). spawns    = + a compact row for every routine ProcessSpawn short- circuit (find, grep, ls, base64, …). Answers \"what binaries did this session execute?\" with modest write volume. Default. io        = + compact rows for routine file reads / writes. Forensic- ish; ~+100 MB/day under typical dev workloads. all       = + compact rows for noise-path events (/proc/, /dev/null, /var/cache/, CA cert dirs, …). Best for compliance / SIEM exports; requires retention tuning (~+500 MB/day).  Compact rows omit filter_results / filter_scores / composite_score and carry only the call type, supervised pid + tool, and a short argument summary. The dashboard hides them by default; toggle \"Show routine activity\" on the audit page to reveal them.",
+          "description": "Completeness tier for the audit log. Higher tiers add forensic / analytics value at the cost of DB growth and supervisor-thread overhead.  decisions = only proxy-evaluated events (today's historical behaviour). spawns    = + a compact row for every routine ProcessSpawn short- circuit (find, grep, ls, base64, \u2026). Answers \"what binaries did this session execute?\" with modest write volume. Default. io        = + compact rows for routine file reads / writes. Forensic- ish; ~+100 MB/day under typical dev workloads. all       = + compact rows for noise-path events (/proc/, /dev/null, /var/cache/, CA cert dirs, \u2026). Best for compliance / SIEM exports; requires retention tuning (~+500 MB/day).  Compact rows omit filter_results / filter_scores / composite_score and carry only the call type, supervised pid + tool, and a short argument summary. The dashboard hides them by default; toggle \"Show routine activity\" on the audit page to reveal them.",
           "name": "completeness",
           "type": "string"
+        },
+        {
+          "default": 24,
+          "description": "How often the retention pass runs.",
+          "name": "prune_interval_hours",
+          "type": "integer"
+        },
+        {
+          "default": 7,
+          "description": "Intended retention for compact rows. Parsed, but not independently enforced: compact rows are pruned with the rest of the chain prefix under retain_full_days.",
+          "name": "retain_compact_days",
+          "type": "integer"
+        },
+        {
+          "default": 30,
+          "description": "Prune full records older than this many days. 0 disables pruning. Retention prunes on age alone - it does not wait for any cloud acknowledgement.",
+          "name": "retain_full_days",
+          "type": "integer"
         }
       ],
       "path": "audit"
     },
     {
-      "description": null,
-      "keys": [
-        {
-          "default": "cli",
-          "description": null,
-          "name": "delivery",
-          "type": "string"
-        },
-        {
-          "default": "30m",
-          "description": null,
-          "name": "interval_active",
-          "type": "string"
-        },
-        {
-          "default": "24h",
-          "description": null,
-          "name": "interval_idle",
-          "type": "string"
-        },
-        {
-          "default": 100,
-          "description": null,
-          "name": "max_queue_size",
-          "type": "integer"
-        }
-      ],
-      "path": "digest"
-    },
-    {
-      "description": null,
+      "description": "Top-level runtime settings.",
       "keys": [
         {
           "default": "~/.local/share/grith/audit",
-          "description": null,
+          "description": "Where the audit database, the digest queue, the writer lock and the cold archives live.",
           "name": "audit_dir",
           "type": "string"
         },
         {
           "default": true,
-          "description": "set to false to keep audit records local-only; license checks still use grith.ai",
+          "description": "Gate on cloud analytics sync. Set false to keep everything local; licence checks still reach grith.ai. No raw audit records are uploaded either way.",
           "name": "audit_sync",
           "type": "boolean"
         },
         {
+          "default": false,
+          "description": "Set once grith exec has printed its one-line first-run notice.",
+          "name": "exec_notice_seen",
+          "type": "boolean"
+        },
+        {
           "default": "info",
-          "description": null,
+          "description": "Default log level. The --log-level flag overrides it and is the only CLI flag that acts as a config layer.",
           "name": "log_level",
           "type": "string"
         },
         {
+          "default": false,
+          "description": "Set once the first-run setup has completed. Not meant to be edited by hand.",
+          "name": "onboarded",
+          "type": "boolean"
+        },
+        {
           "default": "community",
-          "description": "\"community\", \"pro\", or \"enterprise\"",
+          "description": "Licence-derived. The daemon overwrites this at start from the verified licence, so editing it by hand grants nothing.",
           "name": "plan_tier",
           "type": "string"
+        },
+        {
+          "default": true,
+          "description": "Fetch supervisor-profile overlays on start. The client is wired and on, but the server route it calls does not exist and the overlay baseline is empty, so every refresh is a no-op.",
+          "name": "profile_update_check",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Check grith.ai for a newer release. Drives an interactive prompt in the REPL and grith run, and a one-line notice on grith exec. GRITH_NO_UPDATE_CHECK disables both - the variable only has to be present.",
+          "name": "update_check",
+          "type": "boolean"
         }
       ],
       "path": "general"
     },
     {
-      "description": null,
+      "description": "Model providers for grith run and the REPL. None of this affects grith exec.",
       "keys": [
         {
           "default": "ollama",
-          "description": null,
+          "description": "Provider used by grith run and the REPL. It has no effect on grith exec, which supervises a tool you already have.",
           "name": "default_provider",
           "type": "string"
         }
@@ -89,8 +113,14 @@
       "description": null,
       "keys": [
         {
+          "default": "ANTHROPIC_API_KEY",
+          "description": "Environment variable read for the Anthropic key.",
+          "name": "api_key_env",
+          "type": "string"
+        },
+        {
           "default": "claude-sonnet-4-5-20250514",
-          "description": null,
+          "description": "Anthropic model.",
           "name": "model",
           "type": "string"
         }
@@ -102,13 +132,13 @@
       "keys": [
         {
           "default": "http://localhost:11434",
-          "description": null,
+          "description": "Ollama endpoint.",
           "name": "base_url",
           "type": "string"
         },
         {
           "default": "llama3.1:8b",
-          "description": null,
+          "description": "Ollama model.",
           "name": "model",
           "type": "string"
         }
@@ -119,8 +149,14 @@
       "description": null,
       "keys": [
         {
+          "default": "OPENAI_API_KEY",
+          "description": "Environment variable read for the OpenAI key.",
+          "name": "api_key_env",
+          "type": "string"
+        },
+        {
           "default": "gpt-4o-mini",
-          "description": null,
+          "description": "OpenAI model.",
           "name": "model",
           "type": "string"
         }
@@ -131,8 +167,14 @@
       "description": null,
       "keys": [
         {
+          "default": "OPENROUTER_API_KEY",
+          "description": "Environment variable read for the OpenRouter key.",
+          "name": "api_key_env",
+          "type": "string"
+        },
+        {
           "default": "anthropic/claude-sonnet-4-5-20250514",
-          "description": null,
+          "description": "OpenRouter model.",
           "name": "model",
           "type": "string"
         }
@@ -140,23 +182,23 @@
       "path": "llm.openrouter"
     },
     {
-      "description": null,
+      "description": "Scoring thresholds and the filter pipeline.",
       "keys": [
         {
           "default": 3.0,
-          "description": null,
+          "description": "Scores at or below this allow. The comparison is strict greater-than, so exactly 3.0 allows.",
           "name": "auto_allow_threshold",
           "type": "float"
         },
         {
           "default": 8.0,
-          "description": null,
+          "description": "Scores strictly above this deny. Exactly 8.0 does not deny - it queues. Validation rejects allow >= deny, or either value outside 0.0-10.0. Changes apply on daemon restart.",
           "name": "auto_deny_threshold",
           "type": "float"
         },
         {
           "default": 300,
-          "description": "auto-deny queued calls after 5 minutes",
+          "description": "How long a held call waits for a reviewer before it is auto-denied.",
           "name": "review_timeout_seconds",
           "type": "integer"
         }
@@ -168,7 +210,7 @@
       "keys": [
         {
           "default": true,
-          "description": "Work item 68: destructive-action coverage. Hard-denies catastrophic host/storage destruction (mkfs, dd-to-device, wipefs, rm --no-preserve-root, recursive removal of a system root or database data directory) and escalates destructive operations directed at production (prod DB endpoints, or prod/production/live-tagged resources) from QUEUE to DENY. Non-production destructive ops QUEUE; scoped dev operations (rm -rf of project dirs, single-object staging deletes, read-only queries) are not flagged. ON by default — this is the coverage behind grith's \"blocks the destructive step\" claim. Set false to disable the whole filter.",
+          "description": "Work item 68: destructive-action coverage. Hard-denies catastrophic host/storage destruction (mkfs, dd-to-device, wipefs, rm --no-preserve-root, recursive removal of a system root or database data directory) and escalates destructive operations directed at production (prod DB endpoints, or prod/production/live-tagged resources) from QUEUE to DENY. Non-production destructive ops QUEUE; scoped dev operations (rm -rf of project dirs, single-object staging deletes, read-only queries) are not flagged. ON by default \u2014 this is the coverage behind grith's \"blocks the destructive step\" claim. Set false to disable the whole filter.",
           "name": "enabled",
           "type": "boolean"
         }
@@ -176,7 +218,7 @@
       "path": "proxy.destructive_action"
     },
     {
-      "description": null,
+      "description": "Per-filter off switches. Every filter is registered and running on a default install, so each key here turns something off, never on.",
       "keys": [],
       "path": "proxy.filters"
     },
@@ -185,25 +227,25 @@
       "keys": [
         {
           "default": true,
-          "description": null,
+          "description": "Off switch for the behavioural-anomaly filter (phase 3, filter 14).",
           "name": "enabled",
           "type": "boolean"
         },
         {
           "default": 1.0,
-          "description": null,
+          "description": "Score added for a mild deviation from the session baseline.",
           "name": "mild_deviation_score",
           "type": "float"
         },
         {
           "default": 200,
-          "description": null,
+          "description": "Calls a session must make before the filter has a baseline to deviate from.",
           "name": "min_calls_for_baseline",
           "type": "integer"
         },
         {
           "default": 3.0,
-          "description": null,
+          "description": "Score added for a significant deviation from the session baseline.",
           "name": "significant_deviation_score",
           "type": "float"
         }
@@ -214,14 +256,8 @@
       "description": null,
       "keys": [
         {
-          "default": "config/filters/egress.toml",
-          "description": null,
-          "name": "config_file",
-          "type": "string"
-        },
-        {
           "default": true,
-          "description": null,
+          "description": "Off switch for the egress-rate filter (phase 3, filter 18). Note the name: this key does not gate the egress-policy filter, which is controlled by [egress] enabled in config/filters/egress.toml.",
           "name": "enabled",
           "type": "boolean"
         }
@@ -232,40 +268,10 @@
       "description": null,
       "keys": [
         {
-          "default": 3.0,
-          "description": null,
-          "name": "burst_multiplier",
-          "type": "float"
-        },
-        {
-          "default": 30,
-          "description": null,
-          "name": "cooldown_seconds",
-          "type": "integer"
-        },
-        {
           "default": true,
-          "description": null,
+          "description": "Off switch for the rate-limit filter (phase 3, filter 17). The per-operation limits are code constants, not config.",
           "name": "enabled",
           "type": "boolean"
-        },
-        {
-          "default": 30,
-          "description": null,
-          "name": "file_writes_per_minute",
-          "type": "integer"
-        },
-        {
-          "default": 60,
-          "description": null,
-          "name": "network_requests_per_minute",
-          "type": "integer"
-        },
-        {
-          "default": 20,
-          "description": null,
-          "name": "shell_execs_per_minute",
-          "type": "integer"
         }
       ],
       "path": "proxy.filters.rate_limit"
@@ -274,40 +280,10 @@
       "description": null,
       "keys": [
         {
-          "default": "config/filters/domains.toml",
-          "description": null,
-          "name": "domains_file",
-          "type": "string"
-        },
-        {
           "default": true,
-          "description": null,
+          "description": "Off switch for the destination-reputation filter (phase 3, filter 13). Its domain lists live in config/filters/domains.toml; the scores are code constants, not config.",
           "name": "enabled",
           "type": "boolean"
-        },
-        {
-          "default": 2.0,
-          "description": null,
-          "name": "ip_address_score",
-          "type": "float"
-        },
-        {
-          "default": 4.0,
-          "description": null,
-          "name": "malicious_domain_score",
-          "type": "float"
-        },
-        {
-          "default": -1.0,
-          "description": null,
-          "name": "safe_domain_score",
-          "type": "float"
-        },
-        {
-          "default": 1.0,
-          "description": null,
-          "name": "unknown_domain_score",
-          "type": "float"
         }
       ],
       "path": "proxy.filters.reputation"
@@ -316,32 +292,8 @@
       "description": null,
       "keys": [
         {
-          "default": false,
-          "description": "Stub in v1.5, requires local embedding model",
-          "name": "enabled",
-          "type": "boolean"
-        },
-        {
-          "default": "all-MiniLM-L6-v2",
-          "description": null,
-          "name": "model",
-          "type": "string"
-        }
-      ],
-      "path": "proxy.filters.semantic"
-    },
-    {
-      "description": null,
-      "keys": [
-        {
-          "default": "config/filters/containment.toml",
-          "description": null,
-          "name": "config_file",
-          "type": "string"
-        },
-        {
           "default": true,
-          "description": null,
+          "description": "Off switch for the session-containment filter (phase 3, filter 16). It must be true here AND [containment] enabled must be true in config/filters/containment.toml for the filter to register.",
           "name": "enabled",
           "type": "boolean"
         }
@@ -353,39 +305,9 @@
       "keys": [
         {
           "default": true,
-          "description": null,
+          "description": "Off switch for the taint filter (phase 3, filter 15). Sources, levels and sink scores are code constants, not config.",
           "name": "enabled",
           "type": "boolean"
-        },
-        {
-          "default": [
-            "network",
-            "shell"
-          ],
-          "description": null,
-          "name": "high_risk_sinks",
-          "type": "array"
-        },
-        {
-          "default": [
-            "file_write"
-          ],
-          "description": null,
-          "name": "medium_risk_sinks",
-          "type": "array"
-        },
-        {
-          "default": [
-            ".env",
-            ".env.local",
-            "credentials.json",
-            "secrets.yaml",
-            "id_rsa",
-            "id_ed25519"
-          ],
-          "description": null,
-          "name": "sensitive_paths",
-          "type": "array"
         }
       ],
       "path": "proxy.filters.taint"
@@ -395,7 +317,7 @@
       "keys": [
         {
           "default": true,
-          "description": "Gate the rate-limit filter's volume penalties (burst/per-minute/approaching) on per-op risk, so a burst of untainted routine file churn (~/.cache, .git/ internals, build outputs) never escalates. The supervisor's target-aware mass-destruction signal backfills the one case this drops (an untainted destructive spree). See work/futurework/rate-limit-burst-redesign.md.  ON by default (rollout step 4). Setting this false restores the legacy frequency-blind burst counter and also forfeits the scratch/~/.cache/.git exemptions (retired in favour of this gate) — expect routine-churn prompts.",
+          "description": "Gate the rate-limit filter's volume penalties (burst/per-minute/approaching) on per-op risk, so a burst of untainted routine file churn (~/.cache, .git/ internals, build outputs) never escalates. The supervisor's target-aware mass-destruction signal backfills the one case this drops (an untainted destructive spree). See work/futurework/rate-limit-burst-redesign.md.  ON by default (rollout step 4). Setting this false restores the legacy frequency-blind burst counter and also forfeits the scratch/~/.cache/.git exemptions (retired in favour of this gate) \u2014 expect routine-churn prompts.",
           "name": "risk_gated_burst",
           "type": "boolean"
         }
@@ -413,13 +335,13 @@
         },
         {
           "default": true,
-          "description": "Data-flow taint-on-spawn (PR 2). Default ON (FP research §5.2): the legacy \"any session taint → +3.0 on every spawn/connect\" flagged read-credential-then-use-credential (~/.npmrc → npm, ~/.kube/config → kubectl). The data-flow rule still catches genuine exfil.",
+          "description": "Data-flow taint-on-spawn (PR 2). Default ON (FP research \u00a75.2): the legacy \"any session taint \u2192 +3.0 on every spawn/connect\" flagged read-credential-then-use-credential (~/.npmrc \u2192 npm, ~/.kube/config \u2192 kubectl). The data-flow rule still catches genuine exfil.",
           "name": "taint_data_flow_only",
           "type": "boolean"
         },
         {
           "default": true,
-          "description": "Narrow condition 4 of the data-flow taint rule (FP §5.2). When true, an outbound-capable binary under taint (`git push`, `aws s3 ls`, `npm publish`) only fires when the spawn actually references the tainted data (argv path/env, pipe/redirect, shell-pattern) — not merely because a credential was read earlier and the tool is outbound-capable. Genuine exfil still fires via conditions 1–3/5, and outbound-to-untrusted-destination is scored by egress. Set false to restore the standalone outbound-binary fire.",
+          "description": "Narrow condition 4 of the data-flow taint rule (FP \u00a75.2). When true, an outbound-capable binary under taint (`git push`, `aws s3 ls`, `npm publish`) only fires when the spawn actually references the tainted data (argv path/env, pipe/redirect, shell-pattern) \u2014 not merely because a credential was read earlier and the tool is outbound-capable. Genuine exfil still fires via conditions 1\u20133/5, and outbound-to-untrusted-destination is scored by egress. Set false to restore the standalone outbound-binary fire.",
           "name": "taint_outbound_requires_data_flow",
           "type": "boolean"
         }
@@ -427,59 +349,59 @@
       "path": "proxy.spawn"
     },
     {
-      "description": null,
+      "description": "The learned Beta trust table, applied in the daemon after the pipeline and only on a QUEUE. Not the destination-reputation filter.",
       "keys": [
         {
           "default": 8,
-          "description": null,
+          "description": "Observations an entry needs before lookup will return it at all. Below this the table behaves as if it were switched off.",
           "name": "auto_allow_min_observations",
           "type": "integer"
         },
         {
           "default": 0.92,
-          "description": null,
+          "description": "Trust an entry must reach before a QUEUE can be flipped to an allow.",
           "name": "auto_allow_trust",
           "type": "float"
         },
         {
           "default": 5.0,
-          "description": null,
+          "description": "Safety ceiling. If any single filter scored at or above this, auto-allow is refused outright - as it is when secret-scan matched at all, or on a write to a sensitive directory.",
           "name": "ceiling_filter_threshold",
           "type": "float"
         },
         {
           "default": 0.98,
-          "description": null,
+          "description": "Per-day decay applied to stored observations - roughly 61 per cent of the weight survives 24 hours.",
           "name": "decay_lambda",
           "type": "float"
         },
         {
           "default": 3.0,
-          "description": null,
+          "description": "How much more a deny observation counts than an approval.",
           "name": "deny_weight",
           "type": "float"
         },
         {
           "default": true,
-          "description": null,
+          "description": "Off switch for the learned Beta trust table. This is not the destination-reputation filter: the table is applied in the daemon after the pipeline, and only when the pipeline returned QUEUE.",
           "name": "enabled",
           "type": "boolean"
         },
         {
           "default": 7.0,
-          "description": null,
+          "description": "Raw composite above which auto-allow is refused regardless of trust.",
           "name": "max_auto_allow_raw_score",
           "type": "float"
         },
         {
           "default": 4.0,
-          "description": null,
+          "description": "Upper bound on the partial score reduction the table can compute. The daemon call site acts only on a full auto-allow, so this bounds the internal calculation rather than any decision.",
           "name": "max_score_reduction",
           "type": "float"
         },
         {
           "default": 300,
-          "description": null,
+          "description": "How often the table is flushed to ~/.config/grith/reputation.toml.",
           "name": "save_interval_seconds",
           "type": "integer"
         }
@@ -487,7 +409,7 @@
       "path": "reputation"
     },
     {
-      "description": null,
+      "description": "The daemon HTTP server: dashboard, REST, WebSocket and IPC, all on one loopback port.",
       "keys": [
         {
           "default": true,
@@ -497,25 +419,31 @@
         },
         {
           "default": "dashboard/dist",
-          "description": null,
+          "description": "Where to serve the dashboard SPA from on disk. Falls back to the bundle embedded in the binary.",
           "name": "dashboard_dir",
           "type": "string"
         },
         {
           "default": true,
-          "description": null,
+          "description": "Run the daemon HTTP server. grith exec refuses to start a session when this is false.",
           "name": "enabled",
           "type": "boolean"
         },
         {
           "default": "127.0.0.1",
-          "description": null,
+          "description": "Bind address. The localhost guard rejects non-loopback peers, and the daemon refuses to start with a non-loopback bind and no API key.",
           "name": "host",
           "type": "string"
         },
         {
+          "default": 30,
+          "description": "Shut an auto-started daemon down after this long with no sessions. Disabled for a daemon started explicitly with grith daemon start.",
+          "name": "idle_shutdown_seconds",
+          "type": "integer"
+        },
+        {
           "default": 3141,
-          "description": null,
+          "description": "Bind port. Everything - dashboard, REST, WebSocket and IPC - is served here.",
           "name": "port",
           "type": "integer"
         }
@@ -527,25 +455,31 @@
       "keys": [
         {
           "default": true,
-          "description": null,
+          "description": "Off switch for the per-bucket rate limiter. Over-limit responses are 429 with Retry-After.",
           "name": "enabled",
           "type": "boolean"
         },
         {
           "default": 100,
-          "description": null,
+          "description": "Requests per second for open reads, sensitive reads and supervisor GETs.",
           "name": "general_rps",
           "type": "integer"
         },
         {
+          "default": 10000,
+          "description": "Requests per second for the daemon-bearer IPC routes.",
+          "name": "ipc_rps",
+          "type": "integer"
+        },
+        {
           "default": 20,
-          "description": null,
+          "description": "Requests per second for POST /api/proxy/test, which has its own bucket.",
           "name": "proxy_test_rps",
           "type": "integer"
         },
         {
           "default": 10,
-          "description": null,
+          "description": "Requests per second for dashboard writes and supervisor mutations.",
           "name": "write_rps",
           "type": "integer"
         }
@@ -553,77 +487,108 @@
       "path": "server.rate_limit"
     },
     {
-      "description": null,
+      "description": "Native TLS. Optional as a whole: it is absent from a default config, and setting one of the two keys without the other fails to parse.",
       "keys": [
         {
+          "default": null,
+          "description": "PEM certificate chain. Required together with key_path.",
+          "name": "cert_path",
+          "type": "string"
+        },
+        {
+          "default": null,
+          "description": "PEM private key. Required together with cert_path.",
+          "name": "key_path",
+          "type": "string"
+        }
+      ],
+      "optional": true,
+      "path": "server.tls"
+    },
+    {
+      "description": "Syscall supervision: sessions, profiles, enforcement flags and review timeouts.",
+      "keys": [
+        {
+          "default": 60,
+          "description": "How long an approval is replayed to identical repeat calls without asking again. Disabled while the session is under containment.",
+          "name": "approve_replay_seconds",
+          "type": "integer"
+        },
+        {
           "default": "traceme",
-          "description": "Linux attach mechanism: \"traceme\" (shipped) | \"seize\" (work in progress — selecting it currently aborts with a clear error). See work/futurework/ptrace-seize-migration.md.",
+          "description": "Linux attach mechanism. \"traceme\" is the only value that works; selecting \"seize\" aborts with an error.",
           "name": "attach_mode",
           "type": "string"
         },
         {
           "default": 0,
-          "description": "Seconds to keep running after the daemon stops accounting for this session (it answered a heartbeat with \"I am not tracking you\" — usually because it restarted while at its session cap). 0 = never terminate: the session keeps running with a loud warning and you decide. Terminating by default would destroy in-progress agent work over a daemon-side event you did not cause. Set a positive value in CI, where nobody is watching the warning.",
+          "description": "Seconds to keep running after the daemon stops accounting for this session. 0 means never terminate: the session continues with a loud warning and you decide. Set a positive value in CI, where nobody is reading the warning.",
           "name": "authority_lost_terminate_after_seconds",
           "type": "integer"
         },
         {
           "default": true,
-          "description": "Decide D-Bus control-socket access per *method call* instead of per connection. At `connect(2)` there is nothing to judge but a socket path — \"read the keyring\" and \"ask systemd to run this command outside supervision\" are byte-identical syscalls — so enforcing there charges a prompt for every credential-helper lookup. With this on (the default), a connect to a D-Bus endpoint instead arms message inspection: grith decodes the calls the tool writes to that socket and escalates only the ones a curated allowlist does not vouch for. `gh auth token`'s keyring read stops prompting; `org.freedesktop.systemd1.Manager.StartTransientUnit` still QUEUEs, and now says so by name.  Fails toward the old behaviour: an unreadable payload, an undecodable stream or an unlisted method escalates the connection exactly as enforce_control_socket_connect alone would. Only D-Bus is affected — X11, tmux and screen carry no per-message destination and keep connect-time enforcement. Has no effect when enforce_control_socket_connect is false. Emergency override: GRITH_DBUS_MESSAGE_INSPECTION=0 (or =1 to force on).",
+          "description": "Decide D-Bus control-socket access per *method call* instead of per connection. At `connect(2)` there is nothing to judge but a socket path \u2014 \"read the keyring\" and \"ask systemd to run this command outside supervision\" are byte-identical syscalls \u2014 so enforcing there charges a prompt for every credential-helper lookup. With this on (the default), a connect to a D-Bus endpoint instead arms message inspection: grith decodes the calls the tool writes to that socket and escalates only the ones a curated allowlist does not vouch for. `gh auth token`'s keyring read stops prompting; `org.freedesktop.systemd1.Manager.StartTransientUnit` still QUEUEs, and now says so by name.  Fails toward the old behaviour: an unreadable payload, an undecodable stream or an unlisted method escalates the connection exactly as enforce_control_socket_connect alone would. Only D-Bus is affected \u2014 X11, tmux and screen carry no per-message destination and keep connect-time enforcement. Has no effect when enforce_control_socket_connect is false. Emergency override: GRITH_DBUS_MESSAGE_INSPECTION=0 (or =1 to force on).",
           "name": "dbus_message_inspection",
           "type": "boolean"
         },
         {
           "default": "generic",
-          "description": null,
+          "description": "Profile used when auto-detection does not match a known tool basename. Must be a non-empty name of a built-in profile - an empty value is a fatal validation error, which is how a hand-written sparse config file bricks the CLI.",
           "name": "default_profile",
           "type": "string"
         },
         {
+          "default": 60,
+          "description": "How long a denial is replayed to identical repeat calls without asking again.",
+          "name": "deny_replay_seconds",
+          "type": "integer"
+        },
+        {
           "default": true,
-          "description": null,
+          "description": "Off switch for the whole supervisor subsystem.",
           "name": "enabled",
           "type": "boolean"
         },
         {
           "default": true,
-          "description": "Enforce the authority-delegating-binary-spawn detection. When false, spawning systemd-run / at / docker / systemctl / dbus-send / … is detected and forensically logged but still allowed (audit-only). When true (the default since v0.2.5), such a spawn is escalated Allow→QUEUE for review unless the profile's permit_authority_delegating list names the binary — closing the `systemd-run --user … -- <cmd>` supervision escape (the command's effect runs in a peer OUTSIDE the supervised tree, where nothing it does is intercepted). Escalation is QUEUE, not deny, so you can approve legitimate use once (the approval sticks for the session, and read-only subcommands like `docker ps` never prompt); a non-interactive session fails safe (denies) — set this false or use the profile permit list for unattended/CI sessions that legitimately delegate. Emergency override: GRITH_ENFORCE_AUTHORITY_DELEGATING_SPAWN=1 (or =0 to force off).",
+          "description": "Enforce the authority-delegating-binary-spawn detection. When false, spawning systemd-run / at / docker / systemctl / dbus-send / \u2026 is detected and forensically logged but still allowed (audit-only). When true (the default since v0.2.5), such a spawn is escalated Allow\u2192QUEUE for review unless the profile's permit_authority_delegating list names the binary \u2014 closing the `systemd-run --user \u2026 -- <cmd>` supervision escape (the command's effect runs in a peer OUTSIDE the supervised tree, where nothing it does is intercepted). Escalation is QUEUE, not deny, so you can approve legitimate use once (the approval sticks for the session, and read-only subcommands like `docker ps` never prompt); a non-interactive session fails safe (denies) \u2014 set this false or use the profile permit list for unattended/CI sessions that legitimately delegate. Emergency override: GRITH_ENFORCE_AUTHORITY_DELEGATING_SPAWN=1 (or =0 to force off).",
           "name": "enforce_authority_delegating_spawn",
           "type": "boolean"
         },
         {
           "default": true,
-          "description": "Enforce the control-injection-IPC-socket-connect detection (session D-Bus, tmux, screen, X11). When false such a connect is audit-only (auto-allowed as local IPC). When true (the default since v0.2.5) it is routed to the proxy and escalated Allow→QUEUE unless the profile's permit_control_sockets list authorises it. Independent knob — desktop tooling touches the session bus routinely, so this has a higher false-positive surface than the spawn flag. Abstract-namespace sockets (the kind X11 clients try first) ARE matched — they render as `unix:@<name>` and classify like any other path. Emergency override: GRITH_ENFORCE_CONTROL_SOCKET_CONNECT=1 (or =0 to force off).",
+          "description": "Enforce the control-injection-IPC-socket-connect detection (session D-Bus, tmux, screen, X11). When false such a connect is audit-only (auto-allowed as local IPC). When true (the default since v0.2.5) it is routed to the proxy and escalated Allow\u2192QUEUE unless the profile's permit_control_sockets list authorises it. Independent knob \u2014 desktop tooling touches the session bus routinely, so this has a higher false-positive surface than the spawn flag. Abstract-namespace sockets (the kind X11 clients try first) ARE matched \u2014 they render as `unix:@<name>` and classify like any other path. Emergency override: GRITH_ENFORCE_CONTROL_SOCKET_CONNECT=1 (or =0 to force off).",
           "name": "enforce_control_socket_connect",
           "type": "boolean"
         },
         {
           "default": 300,
-          "description": null,
+          "description": "How long a held call waits for a review answer. This is a review timeout, not a freeze duration: only the calling thread is held, and its siblings keep running.",
           "name": "freeze_timeout_seconds",
           "type": "integer"
         },
         {
           "default": 4,
-          "description": null,
+          "description": "Concurrent supervised sessions. The licence ceiling wins when it is lower - Community caps at 2, a paid plan at 64 - so a paid install still caps at this value until you raise it.",
           "name": "max_concurrent_sessions",
           "type": "integer"
         },
         {
           "default": true,
-          "description": null,
+          "description": "Forward the supervised tool a PTY so interactive tools behave normally.",
           "name": "pty_forwarding",
           "type": "boolean"
         },
         {
           "default": false,
-          "description": "H2 Option 1 (IPC-delegated authority): enforce PTY ownership. When false (default), writes to a /dev/pts/N that is NOT the supervised tool's own controlling terminal are detected and forensically logged (event = \"foreign_pts_write\") but still allowed — audit-only, to measure the false-positive budget. Set true to DENY them (the `echo cmd > /dev/pts/<other pane>` IPC-injection vector). See work/futurework/ipc-delegated-authority-escape.md.",
+          "description": "H2 Option 1 (IPC-delegated authority): enforce PTY ownership. When false (default), writes to a /dev/pts/N that is NOT the supervised tool's own controlling terminal are detected and forensically logged (event = \"foreign_pts_write\") but still allowed \u2014 audit-only, to measure the false-positive budget. Set true to DENY them (the `echo cmd > /dev/pts/<other pane>` IPC-injection vector). See work/futurework/ipc-delegated-authority-escape.md.",
           "name": "pty_ownership_enforce",
           "type": "boolean"
         },
         {
           "default": false,
-          "description": null,
+          "description": "Refuse to supervise a tool that cannot be sandboxed.",
           "name": "require_sandbox",
           "type": "boolean"
         }
@@ -631,7 +596,55 @@
       "path": "supervisor"
     },
     {
-      "description": null,
+      "description": "Which syscall categories are enforced rather than observed. Two categories are off by default.",
+      "keys": [
+        {
+          "default": true,
+          "description": "Enforce category 1: the syscalls that are never legitimate for a supervised tool.",
+          "name": "category1_hard_deny",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Enforce cross-process category 2 operations.",
+          "name": "category2_crossprocess",
+          "type": "boolean"
+        },
+        {
+          "default": false,
+          "description": "Route category 2 (ownership and mount operations - chown, mount) through the proxy. Off by default, so at stock settings chown and mount are not enforced.",
+          "name": "category2_proxy",
+          "type": "boolean"
+        },
+        {
+          "default": false,
+          "description": "Enforce category 3, the namespace primitives (unshare, setns). Off by default, so at stock settings they are not enforced.",
+          "name": "category3_namespace",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Enforce category 4, architecture-privileged operations.",
+          "name": "category4_arch_priv",
+          "type": "boolean"
+        },
+        {
+          "default": true,
+          "description": "Deny a supervised tool installing its own seccomp user-notification filter.",
+          "name": "deny_self_seccomp_notify",
+          "type": "boolean"
+        },
+        {
+          "default": false,
+          "description": "Record, without enforcing, a supervised tool installing its own seccomp filter.",
+          "name": "observe_self_seccomp_filter",
+          "type": "boolean"
+        }
+      ],
+      "path": "supervisor.coverage"
+    },
+    {
+      "description": "In-line DNS inspection on Linux.",
       "keys": [
         {
           "default": false,
@@ -647,7 +660,7 @@
         },
         {
           "default": false,
-          "description": "Canary path for connected UDP/53 sockets whose query/response use plain write()/read() and are therefore invisible to in-line inspection. Off until the Phase 0 resolver, namespace, race, lifecycle, and performance gates pass.",
+          "description": "Off. The connected-UDP proxy path is not enabled on shipped builds; connected UDP/53 sockets whose traffic rides read() and write() are not content-inspected.",
           "name": "connected_udp_proxy",
           "type": "boolean"
         },
@@ -665,7 +678,7 @@
         },
         {
           "default": 256,
-          "description": null,
+          "description": "Bounded channel capacity for proxy control messages.",
           "name": "proxy_control_capacity",
           "type": "integer"
         },
@@ -677,19 +690,19 @@
         },
         {
           "default": 128,
-          "description": null,
+          "description": "Bounded channel capacity for proxy policy messages.",
           "name": "proxy_policy_capacity",
           "type": "integer"
         },
         {
           "default": 1000,
-          "description": null,
+          "description": "How long a proxy policy decision may take before the lookup fails.",
           "name": "proxy_policy_timeout_ms",
           "type": "integer"
         },
         {
           "default": 1024,
-          "description": null,
+          "description": "Bounded channel capacity for in-flight proxy queries.",
           "name": "proxy_query_capacity",
           "type": "integer"
         },
@@ -701,7 +714,7 @@
         },
         {
           "default": 256,
-          "description": null,
+          "description": "Bounded channel capacity for proxy routes.",
           "name": "proxy_route_capacity",
           "type": "integer"
         },
@@ -713,7 +726,7 @@
         },
         {
           "default": 5000,
-          "description": null,
+          "description": "How long the proxy waits on the upstream resolver.",
           "name": "proxy_upstream_timeout_ms",
           "type": "integer"
         }
@@ -721,23 +734,23 @@
       "path": "supervisor.dns_inspection"
     },
     {
-      "description": null,
+      "description": "Suppressions that keep routine file activity from reaching the proxy.",
       "keys": [
         {
           "default": true,
-          "description": null,
+          "description": "Collapse bursts of reads of the same path into one decision.",
           "name": "batch_rapid_reads",
           "type": "boolean"
         },
         {
           "default": 50,
-          "description": null,
+          "description": "Window over which rapid reads are collapsed.",
           "name": "batch_window_ms",
           "type": "integer"
         },
         {
           "default": true,
-          "description": null,
+          "description": "Skip the proxy for read-only opens of paths with no security interest. --workspace-only is checked first, so a read outside the workspace is still denied.",
           "name": "ignore_read_only",
           "type": "boolean"
         }
@@ -745,23 +758,23 @@
       "path": "supervisor.noise_reduction"
     },
     {
-      "description": null,
+      "description": "Platform mechanism selection. grith ships Linux only.",
       "keys": [
         {
           "default": "ptrace",
-          "description": null,
+          "description": "The Linux interception mechanism. ptrace is the shipped value.",
           "name": "linux_mechanism",
           "type": "string"
         },
         {
           "default": "endpoint-security",
-          "description": null,
+          "description": "Inert. grith ships Linux x86_64 and aarch64 binaries only, and the installer refuses other platforms.",
           "name": "macos_mechanism",
           "type": "string"
         },
         {
           "default": false,
-          "description": null,
+          "description": "Inert - a leftover knob from an earlier design. The seccomp-BPF pre-filter is installed unconditionally on every supervised child; this key does not control it.",
           "name": "seccomp_pre_filter",
           "type": "boolean"
         }
@@ -769,23 +782,23 @@
       "path": "supervisor.platform"
     },
     {
-      "description": null,
+      "description": "How far a session\u2019s project trust reaches, and whether the workspace is a wall.",
       "keys": [
         {
           "default": [],
-          "description": "Extra project roots to trust, for layouts git cannot infer — a worktree of a DIFFERENT repository parked alongside this one, or a non-git sibling checkout. `${HOME}`, `${PROJECT_DIR}` and `~` expand as in routine_paths. Every root is canonicalised, and `/`, your home directory and any ancestor of it are refused. At most 32 roots are trusted per session.  Trust here is project-derived, never literal: credential stores (~/.ssh, ~/.aws, .npmrc, …) inside a trusted root still go to the security proxy.",
+          "description": "Extra project roots to trust, for layouts git cannot infer \u2014 a worktree of a DIFFERENT repository parked alongside this one, or a non-git sibling checkout. `${HOME}`, `${PROJECT_DIR}` and `~` expand as in routine_paths. Every root is canonicalised, and `/`, your home directory and any ancestor of it are refused. At most 32 roots are trusted per session.  Trust here is project-derived, never literal: credential stores (~/.ssh, ~/.aws, .npmrc, \u2026) inside a trusted root still go to the security proxy.",
           "name": "additional_project_roots",
           "type": "array"
         },
         {
           "default": true,
-          "description": "How far this session's project trust reaches. `${PROJECT_DIR}` in a profile's routine_paths expands to the LAUNCH DIRECTORY only, so in a multi-worktree layout the sibling worktrees of the repository you are working on get no trust at all — measured 24.9% of calls prompting there against 0.32% under the launch directory, and one `git worktree remove` producing 692 bulk-delete prompts.  Trust every git worktree of the launch repository. `git worktree list` reports the main worktree too, so launching from a subdirectory also trusts the repository root (a tool working in `repo/frontend/` stops prompting on every read of `../package.json`). Resolved once, at session start, and never re-read: a re-read would let the supervised tool widen its own trust with `git worktree add`.  git's worktree list is built from files inside the repository, which the supervised tool can write, so a reported worktree is only trusted when it also sits inside the directory the repository itself lives in, carries git's own back-pointer to this repository, and is not a credential or personal-data directory. A repository checked out directly into your home directory gets no linked-worktree trust at all (its \"enclosing directory\" would be all of $HOME) — declare additional_project_roots for that layout. Set this to false if you want project trust to reach nothing but the launch directory.",
+          "description": "How far this session's project trust reaches. `${PROJECT_DIR}` in a profile's routine_paths expands to the LAUNCH DIRECTORY only, so in a multi-worktree layout the sibling worktrees of the repository you are working on get no trust at all \u2014 measured 24.9% of calls prompting there against 0.32% under the launch directory, and one `git worktree remove` producing 692 bulk-delete prompts.  Trust every git worktree of the launch repository. `git worktree list` reports the main worktree too, so launching from a subdirectory also trusts the repository root (a tool working in `repo/frontend/` stops prompting on every read of `../package.json`). Resolved once, at session start, and never re-read: a re-read would let the supervised tool widen its own trust with `git worktree add`.  git's worktree list is built from files inside the repository, which the supervised tool can write, so a reported worktree is only trusted when it also sits inside the directory the repository itself lives in, carries git's own back-pointer to this repository, and is not a credential or personal-data directory. A repository checked out directly into your home directory gets no linked-worktree trust at all (its \"enclosing directory\" would be all of $HOME) \u2014 declare additional_project_roots for that layout. Set this to false if you want project trust to reach nothing but the launch directory.",
           "name": "include_linked_worktrees",
           "type": "boolean"
         },
         {
           "default": false,
-          "description": "Make the workspace a wall instead of a trusted island. With this on, a file read or write whose target is outside the workspace (the launch directory, its linked git worktrees, and additional_project_roots above) is DENIED rather than scored — including the read-only opens that noise_reduction.ignore_read_only waves through today. Your other projects, the rest of your home directory, mounted media: none of them are readable.  What stays reachable, because the tool cannot run otherwise: system runtime paths for READS only (/usr, /lib, /bin, /etc, …), grith's noise paths (/proc, /sys, the terminal), and the paths the tool's own profile declares as routine (~/.claude, ~/.nvm/versions/**, /tmp/<tool>-*, …).  This only ever removes access. It cannot allow anything the proxy would otherwise block — a read of /etc/shadow is still denied by the filters. Filesystem only: network and process spawn are unaffected.  Per session: `grith exec --workspace-only -- <tool>`.",
+          "description": "Make the workspace a wall instead of a trusted island. With this on, a file read or write whose target is outside the workspace (the launch directory, its linked git worktrees, and additional_project_roots above) is DENIED rather than scored \u2014 including the read-only opens that noise_reduction.ignore_read_only waves through today. Your other projects, the rest of your home directory, mounted media: none of them are readable.  What stays reachable, because the tool cannot run otherwise: system runtime paths for READS only (/usr, /lib, /bin, /etc, \u2026), grith's noise paths (/proc, /sys, the terminal), and the paths the tool's own profile declares as routine (~/.claude, ~/.nvm/versions/**, /tmp/<tool>-*, \u2026).  This only ever removes access. It cannot allow anything the proxy would otherwise block \u2014 a read of /etc/shadow is still denied by the filters. Filesystem only: network and process spawn are unaffected.  Per session: `grith exec --workspace-only -- <tool>`.",
           "name": "restrict_to_workspace",
           "type": "boolean"
         }
@@ -793,5 +806,6 @@
       "path": "supervisor.trust"
     }
   ],
-  "source": "config/default.toml"
+  "source": "`grith config` on grith 0.3.1 (effective merged config)",
+  "verified_against": "grith 0.3.1"
 }

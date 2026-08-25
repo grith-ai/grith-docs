@@ -1,57 +1,103 @@
 ---
-title: "Health & tier"
-description: "Liveness checks, plan tier reporting, license status, config read/write."
-section: "api"
-order: 1
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/health-and-tier.mdx"
+title: 'Health and tier'
+description: 'Liveness, plan tier, licence refresh state and the narrow config read/write the dashboard uses.'
+section: 'api'
+order: 2
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/api/health-and-tier.mdx'
 ---
 
-Basic daemon liveness and configuration endpoints.
+| Method | Path                     | Auth                            |
+| ------ | ------------------------ | ------------------------------- |
+| GET    | `/api/health`            | Open                            |
+| GET    | `/api/tier`              | Open                            |
+| GET    | `/api/license/status`    | Open                            |
+| GET    | `/api/onboarding/status` | Open                            |
+| GET    | `/api/config`            | Dashboard token                 |
+| PUT    | `/api/config`            | Dashboard token, `x-grith-csrf` |
 
-<ApiRouteTable group="Health & tier" showHeadings={false} />
+## GET /api/health
 
-## `GET /health`
+`status` is `healthy` when every subsystem reports `ok`, `degraded` if any is degraded, and
+`unhealthy` if any errored. The four subsystems are `audit`, `digest`, `proxy` and
+`supervisor`.
 
-```
-curl http://127.0.0.1:3141/health
-{"status":"ok","version":"0.1.0","uptime_seconds":1283}
-```
+The body carries `status`, `version`, `uptime_seconds`, a `subsystems` map of
+`{status, message?, latency_ms?}`, `instance_id` and `protocol_version`.
 
-Use for: load balancer health checks, monitoring probes.
+Two optional fields matter more than the rest. `audit_quarantined` and `audit_read_only`
+appear only when set, and they are on the unauthenticated payload deliberately: the CLI
+reads them before starting a supervised session, so a daemon that cannot durably record
+decisions is caught before a tool is spawned. `instance_id` is regenerated on every start,
+which lets a client tell "the daemon that admitted me" from "the daemon that replaced it" -
+something a PID cannot express.
 
-## `GET /tier`
+## GET /api/tier
 
-```json
-{
-  "tier": "pro",
-  "expires_at": "2026-12-12T00:00:00Z",
-  "seats_used": 24,
-  "seats_total": 25
-}
-```
+`tier`, `seats`, `max_sessions`, `renewal_date`, `billing_portal_url`, `refresh`,
+`session_limit_rejections` and `session_limit_rejection_window_days`, plus `features`.
 
-For community installs, `expires_at` is null and seat fields are absent.
+`max_sessions` is the licence ceiling - 2 on Community, 64 on a paid plan - not the value
+of `supervisor.max_concurrent_sessions`. The lower of the two wins at session registration.
 
-## `GET /license/status`
+`features` is a flat map of 13 booleans. It is a JSON object, so read it by key - the
+serialised order is not stable:
 
-Detailed license validity and refresh state. Used by the dashboard to surface
-"license expiring soon" warnings.
+<CodeBlock
+  language="json"
+  title="features, on Community"
+  code={`{
+  "proxy": true, "audit": true, "digest": true, "supervisor": true,
+  "filters": true, "cli": true, "dashboard": true,
+  "notification_channels": false, "usage_analytics": false,
+  "cloud_sync": false, "policy_editor": false,
+  "pagerduty": false, "opsgenie": false
+}`}
+/>
 
-## `GET /config` / `PUT /config`
+The first seven are true on every tier. The next four are what a Pro licence turns on.
+`pagerduty` and `opsgenie` are always false.
 
-Read/modify the running config. Most config keys apply on the next call; some
-(server port, supervisor mechanism) require a daemon restart.
+## GET /api/license/status
 
-```
-curl -X PUT http://127.0.0.1:3141/config \
-  -H 'Content-Type: application/json' \
-  -d '{"proxy":{"auto_allow_threshold":3.5}}'
-```
+The refresh-health view, kept separate from `/api/tier` so a caller that only needs
+"is my licence still fresh" does not pull the feature list: `tier`, `seats`,
+`renewal_date`, `billing_portal_url`, `air_gapped`, `hours_since_refresh` and the same
+`refresh` block. This is what [`grith pro status`](/docs/cli/pro) reads.
+
+## GET /api/config
+
+Three fields: `config_scope` (the two scope names, `local` and `team` - not paths),
+`proxy` (the effective `auto_allow_threshold` and `auto_deny_threshold`), and `filters` -
+one entry per filter with `id`, `name`, `phase` and `enabled`. Both the thresholds and each
+`enabled` are the effective values: the running defaults, then `team-config.toml`, then
+`config.toml` on top.
+
+## PUT /api/config
+
+Not a general config writer. It accepts four things and nothing else: a `scope` of `local`
+or `team`, a `filters` array of `{id, enabled}`, `proxy.auto_allow_threshold` and
+`proxy.auto_deny_threshold`, and `server.auto_open_dashboard`.
+
+<CodeBlock
+  language="json"
+  title="PUT /api/config"
+  code={`{
+  "scope": "local",
+  "proxy": { "auto_allow_threshold": 3.5 },
+  "filters": [ { "id": "behavioural", "enabled": false } ]
+}`}
+/>
+
+An unknown filter id is `400 UNKNOWN_FILTERS`. Thresholds outside `0.0`-`10.0`, or an allow
+threshold at or above the deny threshold, are `400 INVALID_PROXY_THRESHOLD`. Success is
+`{status, scope, filters_updated, proxy_updated, server_updated, message}`. The write lands
+in `config.toml`, or `team-config.toml` when `scope` is `team`; the running proxy keeps its
+current thresholds until the daemon restarts.
 
 ## See also
 
-- [`grith config`](/docs/cli/config) — CLI equivalent
-- [`grith pro status`](/docs/cli/pro)
+- [`grith config`](/docs/cli/config)
+- [Server config](/docs/config/server)

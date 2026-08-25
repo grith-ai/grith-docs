@@ -1,0 +1,122 @@
+---
+title: 'Running grith in CI'
+description: 'Headless sessions fail closed - what gets auto-denied, what --allow-queued changes, and how to unblock a pipeline.'
+section: 'guides'
+order: 2
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/guides/running-in-ci.mdx'
+---
+
+In a headless session grith denies anything it would otherwise have asked about. There is no
+reviewer, so the queue has nowhere to go, and a permission decision nobody can answer is treated
+as a refusal. This is the single most likely reason a pipeline that works locally fails under
+`grith exec`.
+
+## What counts as headless
+
+grith checks two things when a session starts: whether both stdin and stdout are terminals, and
+whether a dashboard overlay is attached. With neither, the queue action becomes deny. A CI runner
+and any invocation whose input or output is piped or redirected both qualify.
+
+Each auto-denied call is refused - normally with `EPERM` - recorded in the audit log, and added to
+the digest marked informational so you can read it afterwards. The daemon logs:
+
+```
+QUEUE auto-denied (non-interactive session, no reviewer) — allowlist it in the profile, run with a terminal, or pass --allow-queued
+```
+
+Allows and denies are unaffected. Only the queue band - above 3.0 and up to 8.0 - changes
+behaviour.
+
+## The case that surprises people
+
+`docker build` is not a risky call by score. The proxy rates the spawn at 1.0 and allows it.
+
+<Terminal>
+  {`$ grith proxy test '{"type":"ProcessSpawn","command":"docker","args":["build","-t","app","."]}'
+Proxy Test Result
+==================================================
+  Tool call:   ProcessSpawn(docker build -t app .)
+  Score:       1.0
+  Decision:    ALLOW
+  Reason:      Score 1.0 below allow threshold
+  Eval time:   2.60ms
+  Thresholds:  allow < 3, deny > 8
+  Filters:     18 active`}
+</Terminal>
+
+What stops it is the layer after scoring. `docker`, `kubectl`, `systemd-run`, `tmux`, `flatpak`
+and a handful of others delegate work to a peer process outside grith's supervision tree, where
+nothing is intercepted. grith escalates such a spawn from allow to queue after the pipeline has
+run, precisely so a human sees it once. Headless, that escalation becomes a denial - and because
+the spawn is caught after the new program image has loaded, there is no syscall left to fail, so
+the denial is a `SIGKILL` rather than an `EPERM`.
+
+## `--allow-queued`
+
+<Terminal command="grith exec --allow-queued -- ./scripts/build.sh" />
+
+Queued calls are allowed and logged instead of denied. It has no effect in an interactive
+session, where the dialog is shown either way.
+
+It deliberately does not cover everything. A call that reached the queue band because the session
+is under [containment](/docs/concepts/session-containment) or is carrying
+[tainted data](/docs/concepts/taint-tracking) still fails closed. Those two signals mean the
+session has already touched something sensitive, which is exactly when a throughput concession is
+wrong.
+
+## Unblocking a pipeline
+
+Four options, most targeted first.
+
+**Turn off the one enforcement that is firing.** If the noise is delegating spawns, set
+`enforce_authority_delegating_spawn = false`; if it is connects to the session D-Bus, tmux or X11
+socket, set `enforce_control_socket_connect = false`. Both stay scored and audited - only the
+escalation stops.
+
+<ConfigExample
+  title="~/.config/grith/config.toml"
+  code={`[supervisor]
+enforce_authority_delegating_spawn = false
+enforce_control_socket_connect = true`}
+/>
+
+**Or set it per run**, without touching config. Any value other than `0`, `false` or `no` forces
+the flag on; those three force it off.
+
+<Terminal command="GRITH_ENFORCE_AUTHORITY_DELEGATING_SPAWN=0 grith exec -- ./scripts/build.sh" />
+
+**Give the session a terminal.** If the job can allocate a PTY, the normal prompt flow works and
+nothing is auto-denied.
+
+**Reach for `--allow-queued`** last. It is the blunt instrument, with the containment and taint
+carve-out above.
+
+## Other settings worth having in CI
+
+| Setting                                               | Why                                                                                                                                                                                          |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GRITH_NO_UPDATE_CHECK=1`                             | Skips the binary update check, so a build never waits on grith.ai. The profile-overlay refresh is separate: `GRITH_NO_PROFILE_UPDATE=1`.                                                     |
+| `[supervisor] authority_lost_terminate_after_seconds` | Defaults to `0`, meaning a session whose daemon stopped accounting for it keeps running with a warning. Set a positive value in CI so an unsupervised session cannot outlive its supervisor. |
+| `--syscall-log <path>`                                | Writes every request and decision to a file you can attach to the job artefacts.                                                                                                             |
+| `--trace-syscalls-jsonl <path>`                       | Raw pre-filter forensics records, and the input `grith profile audit` consumes.                                                                                                              |
+
+A community licence caps at two concurrent supervised sessions. Paid plans allow up to 64, but a
+stock install still caps at four because `supervisor.max_concurrent_sessions = 4`. Parallel jobs
+on one runner share that budget, and capacity is reserved before the target is spawned, so a
+limit rejection always arrives before any of your code has run.
+
+<Callout type="warning" title="Retrying resets the session">
+  A wrapper that re-runs `grith exec` after a failure starts a fresh session. Sticky containment,
+  session approvals and the session allowlist all go with the old one. That is a deliberate
+  consequence of session lifetime being user-initiated, and it is worth knowing before you add a
+  retry loop around a supervised step.
+</Callout>
+
+## See also
+
+- [`grith exec`](/docs/cli/exec)
+- [Session containment](/docs/concepts/session-containment)
+- [Environment variables](/docs/config/environment-variables)

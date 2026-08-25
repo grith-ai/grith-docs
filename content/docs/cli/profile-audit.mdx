@@ -1,102 +1,76 @@
 ---
-title: "grith profile audit"
-description: "Post-session forensics: audit a recorded syscall trace against a profile."
-section: "cli"
+title: 'grith profile audit'
+description: 'Replay a recorded syscall trace against a profile to see what it missed and what it never used.'
+section: 'cli'
 order: 10
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/profile-audit.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/profile-audit.mdx'
 ---
 
 ```
 grith profile audit --profile <NAME> --trace <FILE>
 ```
 
-Replay a recorded syscall trace against a supervisor profile and report:
+A maintainer tool. It takes a forensics trace from a real session and reports what a
+profile would need in order to stop prompting for the things that session did. Both flags
+are required, and `audit` is the only subcommand `grith profile` has.
 
-- Which routine entries the session exercised (kept).
-- Which routine entries the session never touched (candidates for trimming).
-- Which calls escaped the routine set and went through full scoring (candidates for
-  promoting to routine).
-- Which calls landed in queue / deny zones and why.
+## Record a trace first
 
-This is the workhorse command for tightening a profile after live use, and for
-forensically reviewing a past session.
+<Terminal command="grith exec --trace-syscalls-jsonl ~/trace.jsonl -- claude" />
 
-## Recording a trace
+That writes raw, pre-filter records as JSONL for the whole session. Run the tool through
+its normal work, quit, then audit the file.
 
-The trace is generated during a `grith exec` session with `--trace-syscalls-jsonl`:
+## What it prints
 
-```
-grith exec \
-    --profile claude-code \
-    --trace-syscalls-jsonl ~/.cache/grith/last.jsonl \
-    -- claude
-```
+<Terminal>
+{`$ grith profile audit --profile claude-code --trace ~/trace.jsonl
+Profile Audit: claude-code
+Trace: /home/u/trace.jsonl
 
-The JSONL file accumulates one record per intercepted syscall. Roughly 200KB per
-minute of busy agent activity — manageable for short audits, larger files for full-
-day sessions.
+Events analyzed: 4
+  Approved: 0  Denied: 1  Other: 3
 
-## Auditing
+Remote Overlay Candidates (2):
+  readonly_paths:
+    + /home/u/.ssh/id_rsa
+  routine_destinations:
+    + example-telemetry.io
 
-```
-grith profile audit \
-    --profile claude-code \
-    --trace ~/.cache/grith/last.jsonl
-```
+Bundled-Profile Changes Required (2):
+  new exec root required for: /usr/bin/rsync
+  listener policy: 0.0.0.0:8080`}
+</Terminal>
 
-Sample output:
+A fourth section, `Unused Existing Entries (observed 0 times)`, lists every profile entry
+the trace never exercised. On a short trace that is most of the profile, so read it as
+"nothing here fired", not "delete these".
 
-```
-Profile audit: claude-code
-Trace:         ~/.cache/grith/last.jsonl (4823 calls)
+## Reading the three buckets
 
-routine_paths (8 of 12 entries used):
-  ✓ ${PROJECT_DIR}/**              3210 hits
-  ✓ ${HOME}/.cache/claude/**        481 hits
-  ✓ ${HOME}/.config/claude/**       102 hits
-  ✓ /tmp/claude-**                  37  hits
-  ✗ ${HOME}/.local/share/claude     0 hits (candidate to drop)
-  ✗ /opt/claude                     0 hits (candidate to drop)
-  ...
+- **Remote overlay candidates** - additions that could ship as a profile overlay:
+  read-only paths and routine destinations.
+- **Bundled-profile changes required** - things that cannot be added by overlay, such as a
+  new exec root or a listener policy. These need a change to the compiled profile.
+- **Unused existing entries** - profile entries this trace did not touch.
 
-routine_destinations (5 of 8 used):
-  ✓ api.anthropic.com               412 hits
-  ✓ github.com                      89 hits
-  ✓ registry.npmjs.org              23 hits
-  ...
+Note the first bucket in the example above: a trace containing an SSH private key read
+surfaces `/home/u/.ssh/id_rsa` as a candidate. The tool reports what the session did; it
+does not judge whether you should grant it.
 
-escapees (calls that exited routine and were fully scored):
-  31 calls in 4 patterns:
-    file_read /etc/hosts                          12 hits  (consider readonly_paths)
-    file_read /usr/share/zoneinfo/**              8 hits   (consider readonly_paths)
-    network   api.anthropic-internal.com           7 hits  (consider routine_destinations)
-    shell     /usr/bin/which                       4 hits  (already in generic-cli baseline?)
+## It changes nothing
 
-queue zone:  12 (8 ssh-related, 4 misc)
-deny zone:   2  (both canary fires — see audit)
-```
+`profile audit` is read-only. It does not modify the profile, and grith has no path for a
+user to author or edit one - [profiles are compiled into the binary](/docs/profiles/how-profiles-work).
+The output is evidence for a change request, not a patch.
 
-The output is a profile tightening worklist. Add the escapees you trust, remove the
-unused entries, re-audit.
-
-## What it doesn't do
-
-`profile audit` doesn't make changes for you. It produces a diff against the current
-profile; applying the diff is a human edit of the profile TOML. This is intentional —
-profile changes ship signed, and an automated mutation pipeline would weaken that
-guarantee.
-
-## Pro: drift detection
-
-On the Pro plan, profile drift can be monitored continuously: the daemon periodically
-audits live sessions against the active profile and flags drift in the dashboard.
-See [Profile drift](/docs/profiles/profile-drift) (planned for v0.1.x).
+A missing trace file fails plainly: `Error: No such file or directory (os error 2)`, exit
+`1`.
 
 ## See also
 
-- [Supervisor profiles](/docs/concepts/supervisor-profiles) — what a profile is
-- [Built-in profiles](/docs/profiles/built-in-profiles)
-- [Writing a custom profile](/docs/profiles/writing-a-custom-profile)
+- [How profiles work](/docs/profiles/how-profiles-work) - the merge order and what is fixed
+- [`grith exec`](/docs/cli/exec) - the `--trace-syscalls-jsonl` flag

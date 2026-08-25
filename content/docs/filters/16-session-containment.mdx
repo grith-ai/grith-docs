@@ -1,0 +1,79 @@
+---
+title: '16. Session containment'
+description: 'A 600-second window after a sensitive read, during which anything outbound costs more.'
+section: 'filters'
+order: 16
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/filters/16-session-containment.mdx'
+---
+
+| | |
+| --- | --- |
+| **Phase** | 3, context |
+| **Score** | 2.0 - 4.5 |
+| **Source** | `crates/grith-proxy/src/filters/session_containment.rs` |
+| **Config** | `config/filters/containment.toml`, and `proxy.filters.session_containment.enabled` - both default `true` |
+
+Reading something sensitive arms a 600-second window on the session. While it is active,
+outbound calls carry an extra charge - not a block, a weighting, so a normal workflow
+continues and an exfiltration attempt has to clear a higher bar.
+
+The read itself scores nothing here. It only arms the window.
+
+## What arms it
+
+A `FileRead` whose path matches one of the configured sensitive sources: `.env`, `.ssh`,
+`.aws`, `.gnupg`, `.kube/config`, `id_rsa`, `id_ed25519`, `credentials`, `secrets`, `passwd`,
+`shadow`, `keychain`, `sam`. Any call arriving with taint already attached arms it too.
+
+Matching is stem- and segment-aware, so `secrets.yaml`, `credentials.json` and a `k8s/secrets/`
+directory all arm it, while `secret_scan.rs`, `credentials_helper.rs` and
+`docs/secrets-design.md` do not.
+
+## What it costs while active
+
+| Call | Score |
+| --- | --- |
+| `HttpRequest`, `NetConnect` | **4.5** |
+| An outbound-capable `ProcessSpawn` | **4.0** |
+| A `ShellExec` containing an outbound token | **3.5** |
+| A control-class unix socket connect | **2.0** |
+| Anything else | 0.0 |
+
+Outbound tokens are `curl`, `wget`, `nc`, `netcat`, `scp`, `ftp`, `sftp`, `nslookup` and `dig`.
+
+A spawn is outbound-capable when the supervisor's provenance says so; without provenance the
+same token heuristic is used. A routine local spawn - a compiler, a linker, a test binary -
+scores nothing even under containment. It cannot exfiltrate, and penalising it flooded
+operators with prompts whenever a contained session ran a build.
+
+The message carries the remaining seconds, so a prompt tells you how long the window has left.
+
+<Callout type="info" title="Two mechanisms share this name">
+This filter is the **windowed** one: a 600-second timer, arming on a configurable source list,
+adding score. There is also a **sticky** containment armed by a *high* taint registration - it
+has no timer, clears only when the session ends, and while it is active the session allowlist
+is not consulted at all. See [Session containment](/docs/concepts/session-containment).
+</Callout>
+
+## Tuning it
+
+<ConfigExample title="config/filters/containment.toml" code={`[containment]
+enabled = true
+containment_window_seconds = 600
+
+network_score = 4.5
+process_score = 4.0
+shell_score   = 3.5
+`} />
+
+`sensitive_sources` and `outbound_command_tokens` are arrays in the same file. Both defaults
+and the shipped file must agree with each other - defining either array replaces it rather
+than adding to it.
+
+## See also
+
+- [15. Taint tracking](/docs/filters/15-taint-tracking) - the other thing a sensitive read arms
+- [Session containment](/docs/concepts/session-containment) - sticky versus windowed

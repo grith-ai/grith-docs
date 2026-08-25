@@ -1,136 +1,136 @@
 ---
-title: "Performance & tuning"
-description: "Measuring grith overhead and squeezing latency out of the pipeline."
-section: "ops"
+title: 'Performance and tuning'
+description: 'What grith actually costs at startup and per syscall, and the handful of settings that change it.'
+section: 'ops'
 order: 2
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/performance-tuning.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/ops/performance-tuning.mdx'
 ---
 
-grith is designed for low overhead — a typical call exits the pipeline in
-8–12ms wall-clock. This page covers measuring that and the knobs you can turn
-when it matters.
+grith's cost is per syscall, not per second. An idle agent pays nothing. A busy
+one pays in proportion to how many interesting syscalls it makes - and most of
+its syscalls are not interesting.
 
-## Targets
+## Startup
 
-| Metric | Target |
-| --- | --- |
-| Per-call pipeline latency (median) | 8–12ms |
-| Per-call pipeline latency (p99) | 15ms |
-| Supervisor overhead per syscall (intercepted) | ~50–100µs |
-| Supervisor overhead per syscall (uninteresting, seccomp-fast-path) | under 1µs |
-| Daemon idle RSS | ~30MB |
-| Daemon busy RSS | 80–150MB |
+The measurements below were taken on 2026-03-10, on a development build from
+before the 0.1.0 release, on Linux 6.17 x86_64: each tool spawned in a PTY,
+timed from `execvp()` to its banner appearing, three runs averaged.
 
-## Measuring
+| Tool        | Direct  | Via `grith exec` | Overhead      |
+| ----------- | ------- | ---------------- | ------------- |
+| Claude Code | 702ms   | 901ms            | +199ms (+28%) |
+| Codex       | 6,083ms | 6,275ms          | +192ms (+3%)  |
 
-Built-in: `GET /proxy/status/full` (IPC) returns per-filter timing histograms.
+A synthetic `sh -c 'printf ...'` isolates grith's own startup with no tool
+startup in the way: 3ms direct, about 122ms under `grith exec`. That ~119ms is
+the floor for the current design - PTY allocation, ptrace attach, seccomp
+install, first TUI frame and session registration - and it is largely kernel
+work.
 
-For p99 over time:
+These are the only startup numbers grith has published, and they are old enough
+that you should treat them as an order of magnitude rather than a specification.
+Measure your own tool if it matters.
 
-```
-grith audit export --since 1d --format json |
-  jq '[.[] | .filter_timing_ms] | sort_by(.) | .[length*99/100]'
-```
+## Per syscall, in steady state
 
-For per-filter breakdown, the trace-mode export captures filter timing per
-call:
+Costs from the same baseline, per intercepted syscall once a session is running:
 
-```
-grith exec --trace-syscalls-jsonl /tmp/trace.jsonl -- claude
-# ... use the agent ...
-grith profile audit --trace /tmp/trace.jsonl --report-timing
-```
+| Component                              | Cost    |
+| -------------------------------------- | ------- |
+| seccomp-BPF filter (kernel)            | ~0.5µs  |
+| SIGCHLD wakeup and waitpid             | 1-5µs   |
+| ptrace register read                   | ~1µs    |
+| Syscall classification (average)       | 15-40µs |
+| Session allowlist check                | ~1µs    |
+| Full proxy evaluation, when it happens | 2-10ms  |
 
-## Common bottlenecks
+grith treats 87 syscall identities as security-relevant; the seccomp filter
+returns ALLOW for everything else, so the vast majority of syscalls never stop
+the process at all. Of the ones that do, most are answered by the session
+allowlist or the noise filters without the proxy being invoked. Typical
+per-syscall overhead lands under 50µs.
 
-### 1. Secret scanner on large payloads
+`grith proxy test` reports the pipeline half of that directly, as an
+`Eval time:` line. On the machine these docs were written on, a full 18-filter
+pass took about 2ms for a file read and about 3ms for an HTTPS request, run to
+run.
 
-Symptom: p99 latency exceeds 20ms on calls with large content.
+## The settings that actually move the needle
 
-The scanner compiles all patterns into a single automaton, so cost is linear in
-payload size, not pattern count - and there is no scan-length cap: large outbound
-payloads are scanned in full. If a workload routinely pushes multi-MB payloads
-through supervised network sends, expect scan time proportional to size. The lever
-is on the workload side (smaller payloads through supervised calls); trimming
-patterns from `config/filters/secrets.toml` does not meaningfully change scan time.
+**Audit completeness.** `audit.completeness` decides how much routine activity
+is written to the audit database. `spawns` is the default. `io` adds compact
+rows for routine file reads and writes, roughly +100 MB/day under typical
+development workloads; `all` adds noise-path events too, roughly +500 MB/day.
+Both cost write volume on the supervisor thread as well as disk.
 
-### 2. Behavioural baseline computation
+<ConfigExample
+  code={`[audit]
+completeness = "spawns"   # decisions | spawns | io | all`}
+/>
 
-Symptom: latency spikes on certain calls after a long session.
+**Noise reduction.** These reduce the number of syscalls that reach the
+pipeline at all, which is usually a bigger win than shaving latency off each one.
+Both switches are on by default; turn them off only when you are recording a
+session for forensics.
 
-The behavioural filter compares each call against a per-session rolling baseline.
-If profiling shows it hot in your workload, it is a Phase 3 filter and can be
-disabled outright:
+<ConfigExample
+  code={`[supervisor.noise_reduction]
+ignore_read_only  = true
+batch_rapid_reads = true
+batch_window_ms   = 50`}
+/>
 
-```toml
-[proxy.filters.behavioural]
-enabled = false
-```
+A workspace boundary (`--workspace-only`, or
+`[supervisor.trust] restrict_to_workspace`) overrides `ignore_read_only` for
+reads outside the workspace. That is a security decision, and it costs a little
+throughput on purpose.
 
-Trade-off: you lose the out-of-pattern signal (sudden bursts, unusual
-destinations) for the session.
+**Log level.** `general.log_level` defaults to `info`. `debug` and `trace` are
+verbose enough to be felt on a busy session; use them while tuning filters, not
+in normal running.
 
-### 3. Audit log fsync
+**The behavioural filter.** It records call types from the first syscall but
+scores nothing until a session has made `min_calls_for_baseline` calls, so short
+sessions never pay for it. Raise the threshold if it fires on legitimate work,
+or set `enabled = false`.
 
-Symptom: high disk wait, even with fast SSD.
+<ConfigExample
+  code={`[proxy.filters.behavioural]
+enabled                    = true
+min_calls_for_baseline     = 200
+mild_deviation_score       = 1.0
+significant_deviation_score = 3.0`}
+/>
 
-Default: fsync per audit event. For lower disk IO:
+## The cost you actually feel is prompts
 
-```toml
-[general]
-audit_fsync = "batch"        # "per-event" (default), "batch", "none"
-audit_fsync_batch_ms = 100
-```
+A session that stops eight times to ask about the same scratch directory feels
+far slower than one paying 40µs a syscall. Most of that work is already done for
+you in v0.3.1: Chromium scratch directories, `mktemp` scratch paths, ephemeral
+port binds, and read-only D-Bus probes no longer prompt, and approving a `docker`
+command covers that command's family for the rest of the session. One measured
+Chromium run answered 57 fewer prompts; one docker session answered 14 fewer.
 
-`none` is unsafe; events can be lost on crash. `batch` is the right choice
-for high-throughput workloads.
+Where a prompt still repeats across sessions, answer it with `[l]` rather than
+`[a]`. That persists a learned rule for the active profile, so the same call is
+allowed next time without asking. Sensitive targets are never persisted this way.
 
-### 4. Reputation table size
+## When grith feels slow
 
-Symptom: daemon RSS climbs to 500MB+.
-
-The reputation table accumulates without bound by default. For very long-
-running daemons:
-
-```toml
-[reputation]
-max_entries = 50000          # cap; oldest decay first
-gc_interval_seconds = 3600
-```
-
-## Noise reduction knobs
-
-These reduce syscall *count* (not latency per call), often the bigger win:
-
-```toml
-[supervisor.noise_reduction]
-ignore_read_only = true              # skip filter pipeline for reads on open fds
-batch_rapid_reads = true             # coalesce rapid reads in same fd
-batch_window_ms = 50                 # batching window
-```
-
-Both default-on. Disable only for forensic recording.
-
-## When grith is "slow"
-
-If an agent feels noticeably slow under grith:
-
-1. Check `GET /proxy/status/full` — is the filter pipeline actually the
-   bottleneck, or is it the model latency?
-2. Check the audit log — is the agent making 10× the syscalls it would
-   without grith? Filters can't help with sheer syscall count.
-3. Try noise-reduction off vs on — sometimes coalescing reads hides
-   pathological agent behaviour worth seeing.
-
-The cost model of grith is per-syscall, not per-second. Idle agents pay
-nothing. Busy agents pay proportional to their syscall rate.
+1. Compare against the tool running unsupervised. Model latency dominates most
+   agent workloads and grith cannot make it worse.
+2. Check the prompt count, not the syscall count. Sessions that feel slow are
+   usually sessions that keep stopping.
+3. Check the audit database size. Deleting rows does not shrink the file - run
+   [`grith audit compact`](/docs/ops/logging-and-audit-retention) with the daemon
+   stopped to reclaim the space.
+4. Drop `audit.completeness` back to `spawns` if something raised it.
 
 ## See also
 
 - [Three-phase pipeline](/docs/concepts/three-phase-pipeline)
 - [`[supervisor]` config](/docs/config/supervisor)
-- [`[proxy]` config](/docs/config/proxy)
-- [Running as a daemon](/docs/ops/running-as-a-daemon)
+- [Logging and audit retention](/docs/ops/logging-and-audit-retention)

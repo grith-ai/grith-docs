@@ -49,7 +49,7 @@ const sections = [
   },
   {
     title: 'Guides',
-    description: 'Step-by-step walkthroughs for tuning, notifications, exfil response.',
+    description: 'Walkthroughs for tuning, CI, canaries and exfil response.',
     href: '/docs/guides/tuning-scoring-thresholds',
     icon: '▦',
   },
@@ -74,7 +74,7 @@ export default function Home() {
               every filter, every API route.
             </p>
             <div className="rounded-btn border-green-border bg-green-light text-accent-text mx-auto mt-5 max-w-2xl border px-4 py-3 text-sm">
-              v0.1 ships for Linux x86_64 and aarch64. macOS and Windows builds are next.
+              v0.3.1 runs on Linux x86_64 (kernel 4.8+) and aarch64 (kernel 5.3+).
             </div>
             <div className="mt-8 flex items-center justify-center gap-4">
               <Button href="/docs/start/installation" size="lg">
@@ -115,7 +115,9 @@ export default function Home() {
               </div>
             </div>
             <p className="text-text-secondary mt-3 text-sm">
-              macOS and Windows install instructions will land here as soon as those builds ship.
+              Installs to <code className="font-code">~/.local/bin</code>. The installer verifies
+              the SHA-256, and the sigstore signature when <code className="font-code">cosign</code>{' '}
+              is on your PATH.
             </p>
           </div>
         </div>

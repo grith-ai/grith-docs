@@ -1,43 +1,70 @@
 ---
-title: "[general]"
-description: "Daemon basics — log level, audit directory, plan tier."
-section: "config"
+title: '[general]'
+description: 'Log level, audit directory, and the three toggles that decide what grith talks to grith.ai about.'
+section: 'config'
 order: 1
-tier: "community"
-version: "0.1.0"
-lastUpdated: "2026-05-14"
-editUrl: "https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/general.mdx"
+tier: 'community'
+version: '0.3.1'
+lastUpdated: '2026-08-24'
+editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/config/general.mdx'
 ---
 
-The `[general]` section holds top-level daemon settings — logging, audit storage,
-the plan tier, and a few opt-in toggles for behaviour that touches grith.ai.
+Top-level daemon settings. Three of the eight keys are managed by grith rather than by you.
 
-<ConfigKeyTable section="general" />
+| Key                    | Default                        | What it does                                                                                                |
+| ---------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `log_level`            | `"info"`                       | `trace`, `debug`, `info`, `warn` or `error`. Anything else is a fatal validation error.                     |
+| `audit_dir`            | `"~/.local/share/grith/audit"` | Where `audit.db`, `digest.db`, the writer lock and the `cold/` archive live. `~` expands. Must be writable. |
+| `plan_tier`            | `"community"`                  | Reported only. The daemon overwrites it from the licence at startup.                                        |
+| `audit_sync`           | `true`                         | One of four gates on analytics upload. See below.                                                           |
+| `update_check`         | `true`                         | Whether grith checks for a newer release.                                                                   |
+| `profile_update_check` | `true`                         | Whether grith checks for supervisor-profile updates.                                                        |
+| `onboarded`            | `false`                        | Managed by grith. Set once you have run through setup.                                                      |
+| `exec_notice_seen`     | `false`                        | Managed by grith. Suppresses the one-line first-run notice on `grith exec`.                                 |
 
-## Notes
+`log_level`, `audit_dir` and `plan_tier` are settable with `grith config set`, as are the five
+booleans - though `plan_tier` is overwritten at daemon start and the last two booleans exist to
+be written by grith rather than by you.
 
-- **`log_level`** — common choice is `info` (default). Use `debug` when tuning
-  filters; `trace` is verbose enough to slow the supervisor and shouldn't be left on.
-- **`audit_dir`** — accepts `~` and `${HOME}` expansion. Must be writable by the
-  user grith runs as.
-- **`plan_tier`** — informs feature gating. Setting to `pro` without a valid
-  license has no effect — Pro features stay locked until the license cache
-  validates.
-- **`audit_sync`** — controls whether audit summaries are synced to grith.ai for
-  team-scope analytics. Set to `false` to keep everything local; license refresh
-  checks still happen.
+## `plan_tier` grants nothing
 
-## Environment variable mapping
+The licence decides the tier. At daemon start the value here is replaced with the tier derived
+from the cached licence, so setting `plan_tier = "pro"` by hand changes what `grith config`
+prints until the daemon starts and nothing after that. `GRITH_PLAN_TIER` behaves the same way.
+Sign in with [`grith pro login`](/docs/cli/pro) to get a Pro tier.
 
-Any key under `[general]` can be set via env: `GRITH_GENERAL_<KEY>` (uppercase, with
-dot replaced by underscore). For example:
+## `audit_sync`
 
-```
-GRITH_GENERAL_LOG_LEVEL=debug grith exec -- claude
-```
+The key's meaning changed in the 0.3.x line. It used to gate a raw audit-record upload; that
+upload is retired and nothing sends audit records to grith.ai now. Today `audit_sync` is one of four conditions on the **analytics** projection syncing:
+
+1. signed in
+2. a Pro entitlement
+3. `general.audit_sync = true`
+4. consent recorded
+
+Set it to `false` and analytics stays on this machine whatever the other three say. Licence
+refresh still happens - that is a separate path. For a per-machine switch that does not need
+a config edit, use [`grith analytics disable`](/docs/cli/analytics). For exactly what a
+rollup contains and what never leaves the machine, see
+[Analytics](/docs/pro/analytics).
+
+<ConfigExample
+  title="Keep everything local"
+  code={`[general]
+audit_sync = false`}
+/>
+
+## Update checks
+
+`update_check` drives an interactive upgrade prompt in the REPL and `grith run`, and a
+one-line notice on `grith exec`. `profile_update_check` governs supervisor-profile refreshes.
+Both have environment overrides that win regardless of the config value -
+`GRITH_NO_UPDATE_CHECK` and `GRITH_NO_PROFILE_UPDATE`, where the variable being set at all is
+enough. Useful in CI, where a prompt is noise.
 
 ## See also
 
-- [Configuration overview](/docs/config/overview)
-- [Logging & audit retention](/docs/ops/logging-and-audit-retention)
-- [`grith pro`](/docs/cli/pro)
+- [Environment variables](/docs/config/environment-variables)
+- [Logging and audit retention](/docs/ops/logging-and-audit-retention)
+- [`[audit]`](/docs/config/audit)
