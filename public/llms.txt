@@ -66,7 +66,7 @@ Site: https://docs.grith.ai
 - [4. Allowlist / denylist](https://docs.grith.ai/docs/filters/04-allowlist-denylist) — Your own allow and deny patterns - the one filter that can pull the composite down.
 - [5. Argument length & structure](https://docs.grith.ai/docs/filters/05-argument-length-structure) — Oversized arguments, shell metacharacters in a path, and deep traversal.
 - [6. Capability enforcement](https://docs.grith.ai/docs/filters/06-capability-enforcement) — Grant a caller a set of operation classes, and everything outside them scores 10.0.
-- [7. Secret / credential scanning](https://docs.grith.ai/docs/filters/07-secret-credential-scanning) — 1618 credential patterns, matched against the arguments of every call in a single pass.
+- [7. Secret / credential scanning](https://docs.grith.ai/docs/filters/07-secret-credential-scanning) — 1617 credential patterns, matched against the arguments of every call in a single pass.
 - [8. Command structure analysis](https://docs.grith.ai/docs/filters/08-command-structure-analysis) — Twelve shell-shape rules, with carveouts so routine invocations of sudo and systemctl do not queue.
 - [9. Destructive action](https://docs.grith.ai/docs/filters/09-destructive-action) — Formats, wipes, drops and teardowns - hard-denied when catastrophic, escalated when they target production.
 - [10. Egress policy](https://docs.grith.ai/docs/filters/10-egress-policy) — Where a call is going, on what port, over what scheme - and whether the payload is shaped like exfiltration.

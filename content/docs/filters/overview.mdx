@@ -33,7 +33,7 @@ This is also the order `grith proxy test` prints them.
 | 4   | [allowlist](/docs/filters/04-allowlist-denylist)                      | static  | -1.0 / +3.0     | Your own allow and deny patterns                                 |
 | 5   | [argument](/docs/filters/05-argument-length-structure)                | static  | 1.0 - 2.0       | Oversized arguments, metacharacters, traversal                   |
 | 6   | [capability](/docs/filters/06-capability-enforcement)                 | static  | 10.0            | Whether the caller was granted this class of operation           |
-| 7   | [secret-scan](/docs/filters/07-secret-credential-scanning)            | pattern | 1.0 - 5.0       | 1618 credential patterns over the call's arguments               |
+| 7   | [secret-scan](/docs/filters/07-secret-credential-scanning)            | pattern | 1.0 - 5.0       | 1617 credential patterns over the call's arguments               |
 | 8   | [command](/docs/filters/08-command-structure-analysis)                | pattern | 2.0 - 4.0       | 12 shell-shape rules in `commands.toml`                          |
 | 9   | [destructive-action](/docs/filters/09-destructive-action)             | pattern | 3.5 - 9.0       | Format, wipe, drop, teardown - and whether it targets production |
 | 10  | [egress-policy](/docs/filters/10-egress-policy)                       | pattern | -1.0 - 7.0      | Where the call is going, and what shape the payload is           |
