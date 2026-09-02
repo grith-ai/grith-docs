@@ -67,6 +67,7 @@
 | POST | `/api/onboarding/intro-seen` |
 | POST | `/api/policies` |
 | POST | `/api/proxy/evaluate` |
+| POST | `/api/proxy/observe` |
 | POST | `/api/proxy/test` |
 | POST | `/api/reputation/observe` |
 | POST | `/api/reputation/reset` |
