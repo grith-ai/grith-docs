@@ -112,7 +112,7 @@ one contributes a number to the [composite](/docs/concepts/composite-scoring).
 - **Bypass is not impossible.** A long enough sequence of individually harmless calls can
   compose into a leak. Canaries, behavioural baselining and taint exist to make that
   sequence expensive rather than impossible.
-- **Signature sets age.** `secret-scan` ships 1618 patterns and `dlp-gate` a curated set;
+- **Signature sets age.** `secret-scan` ships 1617 patterns and `dlp-gate` a curated set;
   a credential format nobody has seen yet is not matched until it is added.
 - **Delegated authority is escalated, not eliminated.** A spawn that hands work to a
   process outside the supervised tree - `systemd-run`, a container runtime, a
