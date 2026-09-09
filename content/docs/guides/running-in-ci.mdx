@@ -86,7 +86,7 @@ enforce_control_socket_connect = true`}
 **Or set it per run**, without touching config. Any value other than `0`, `false` or `no` forces
 the flag on; those three force it off.
 
-<Terminal command="GRITH_ENFORCE_AUTHORITY_DELEGATING_SPAWN=0 grith exec -- ./scripts/build.sh" />
+<Terminal command="GRITH_ENFORCE_AUTHORITY_DELEGATING_SPAWN=0 grith exec ./scripts/build.sh" />
 
 **Give the session a terminal.** If the job can allocate a PTY, the normal prompt flow works and
 nothing is auto-denied.
