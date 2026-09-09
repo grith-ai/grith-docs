@@ -26,14 +26,15 @@ rest of this page.
 
 ## 2. Run your agent under grith
 
-<Terminal command="grith exec -- claude" />
+<Terminal command="grith exec claude" />
 
-Everything after `--` is passed verbatim to the tool. grith picks a supervisor profile
+Everything after the command name is passed verbatim to the tool, including the tool's
+own flags. grith picks a supervisor profile
 from the command's basename - `claude` resolves to the `claude-code` profile - starts the
 local daemon if it is not already running, and hands you the tool's normal interface
 inside its own terminal UI.
 
-Any command works. `grith exec -- aider`, `grith exec -- codex`, or `grith exec -- bash`
+Any command works. `grith exec aider`, `grith exec codex`, or `grith exec bash`
 if you want to trigger decisions by hand. A basename grith does not recognise falls back
 to `supervisor.default_profile`, which ships as `generic`. See
 [Choose your agent](/docs/start/choose-your-agent) for the table, and pass

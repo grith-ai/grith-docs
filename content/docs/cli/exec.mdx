@@ -10,7 +10,7 @@ editUrl: 'https://github.com/grith-ai/grith-docs/edit/main/content/docs/cli/exec
 ---
 
 ```
-grith exec [OPTIONS] -- <COMMAND> [ARGS...]
+grith exec [OPTIONS] [--] <COMMAND> [ARGS...]
 grith exec [OPTIONS] --attach <PID>
 ```
 
@@ -19,13 +19,19 @@ attach to one already running. Everything the tool touches - files, processes, s
 D-Bus - is scored before the kernel is allowed to carry it out.
 
 ```
-grith exec -- claude
-grith exec --profile codex -- codex
+grith exec claude
+grith exec codex
 ```
 
 The [profile](/docs/profiles/how-profiles-work) is picked from the program's basename
 unless you name one. Anything unrecognised falls back to `supervisor.default_profile`,
 which ships as `generic`.
+
+The `--` separator is optional. Everything from the first non-flag argument onwards is
+passed verbatim to the tool, including its own flags, so `grith exec claude --resume`
+works as written. You only need `--` to supervise a program whose name collides with one
+of the [management verbs](#managing-sessions) below: `grith exec list` lists sessions,
+whereas `grith exec -- list` supervises a program called `list`.
 
 ## Flags
 
